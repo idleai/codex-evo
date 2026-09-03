@@ -1,5 +1,6 @@
 use codex_arg0::Arg0DispatchPaths;
 use codex_cloud_config::cloud_config_bundle_loader;
+use codex_config::CONFIG_TOML_FILE;
 use codex_config::CloudConfigBundleLoader;
 use codex_config::ConfigLayerStack;
 use codex_config::LoaderOverrides;
@@ -9,6 +10,7 @@ use codex_config::loader::load_managed_requirements_state;
 use codex_core::config::Config;
 use codex_core::config::ConfigBuilder;
 use codex_core::config::ConfigOverrides;
+use codex_core::config::resolve_profile_v2_config_path;
 use codex_exec_server::LOCAL_FS;
 use codex_features::feature_for_key;
 use codex_login::AuthManager;
@@ -423,6 +425,39 @@ impl ConfigManager {
             Some(cwd.to_path_buf()),
         )
         .await
+    }
+
+    /// Load thread configuration with an optional request-scoped user profile selection.
+    ///
+    /// `None` preserves the profile selected when app-server started, `Some(None)` selects the
+    /// base user config, and `Some(Some(name))` selects `$CODEX_HOME/<name>.config.toml`.
+    pub(crate) async fn load_for_cwd_with_profile(
+        &self,
+        request_overrides: Option<HashMap<String, serde_json::Value>>,
+        typesafe_overrides: ConfigOverrides,
+        cwd: Option<PathBuf>,
+        profile: Option<Option<String>>,
+    ) -> std::io::Result<Config> {
+        let mut config_manager = self.clone();
+        if let Some(profile) = profile {
+            let profile = profile
+                .map(|profile| {
+                    profile
+                        .parse()
+                        .map_err(|err| std::io::Error::new(std::io::ErrorKind::InvalidInput, err))
+                })
+                .transpose()?;
+            config_manager.loader_overrides.user_config_path = Some(match profile.as_ref() {
+                Some(profile) => resolve_profile_v2_config_path(self.codex_home(), profile),
+                None => {
+                    AbsolutePathBuf::resolve_path_against_base(CONFIG_TOML_FILE, self.codex_home())
+                }
+            });
+            config_manager.loader_overrides.user_config_profile = profile;
+        }
+        config_manager
+            .load_for_cwd(request_overrides, typesafe_overrides, cwd)
+            .await
     }
 
     #[instrument(level = "trace", skip_all)]
