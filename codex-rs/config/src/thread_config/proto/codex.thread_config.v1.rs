@@ -77,6 +77,10 @@ pub struct ModelProvider {
     pub supports_websockets: bool,
     #[prost(bool, tag = "18")]
     pub supports_standalone_web_search: bool,
+    #[prost(bool, optional, tag = "19")]
+    pub supports_namespace_tools: ::core::option::Option<bool>,
+    #[prost(bool, optional, tag = "20")]
+    pub supports_codex_agent_messages: ::core::option::Option<bool>,
 }
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct StringMap {

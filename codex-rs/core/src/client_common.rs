@@ -1,5 +1,6 @@
 pub use codex_api::ResponseEvent;
 use codex_protocol::error::Result;
+use codex_protocol::models::AgentMessageInputContent;
 use codex_protocol::models::BaseInstructions;
 use codex_protocol::models::ContentItem;
 use codex_protocol::models::FunctionCallOutputContentItem;
@@ -103,6 +104,32 @@ fn strip_image_details(items: &mut [ResponseItem]) {
             | ResponseItem::ContextCompaction { .. }
             | ResponseItem::Other => {}
         }
+    }
+}
+
+pub(crate) fn rewrite_codex_agent_messages_as_user_messages(items: &mut [ResponseItem]) {
+    for item in items {
+        let ResponseItem::AgentMessage { content, .. } = item else {
+            continue;
+        };
+        let content = std::mem::take(content)
+            .into_iter()
+            .map(|item| match item {
+                AgentMessageInputContent::InputText { text } => ContentItem::InputText { text },
+                AgentMessageInputContent::EncryptedContent { encrypted_content } => {
+                    ContentItem::InputText {
+                        text: encrypted_content,
+                    }
+                }
+            })
+            .collect();
+        *item = ResponseItem::Message {
+            id: None,
+            role: "user".to_string(),
+            content,
+            phase: None,
+            internal_chat_message_metadata_passthrough: None,
+        };
     }
 }
 
