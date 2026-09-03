@@ -381,13 +381,14 @@ pub(crate) async fn apply_spawn_agent_service_tier(
         )));
     }
 
-    config.service_tier = candidate_service_tiers
-        .into_iter()
-        .flatten()
-        .find(|candidate_service_tier| {
-            candidate_service_tier == SERVICE_TIER_DEFAULT_REQUEST_VALUE
-                || model_info.supports_service_tier(candidate_service_tier)
-        });
+    config.service_tier =
+        candidate_service_tiers
+            .into_iter()
+            .flatten()
+            .find(|candidate_service_tier| {
+                candidate_service_tier == SERVICE_TIER_DEFAULT_REQUEST_VALUE
+                    || model_info.supports_service_tier(candidate_service_tier)
+            });
     Ok(())
 }
 

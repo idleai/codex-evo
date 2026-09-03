@@ -191,6 +191,9 @@ fn portable_response_item_turns(items: &[RolloutItem]) -> Vec<PortableTurn> {
             }
             RolloutItem::EventMsg(_)
             | RolloutItem::Compacted(_)
+            | RolloutItem::TokenUsageRecord(_)
+            | RolloutItem::RetainedContext(_)
+            | RolloutItem::RealtimeItem(_)
             | RolloutItem::InterAgentCommunication(_)
             | RolloutItem::InterAgentCommunicationMetadata { .. }
             | RolloutItem::TurnContext(_)
@@ -233,6 +236,7 @@ fn portable_turn(turn: Turn) -> Option<PortableTurn> {
             | ThreadItem::FileChange { .. }
             | ThreadItem::McpToolCall { .. }
             | ThreadItem::DynamicToolCall { .. }
+            | ThreadItem::FunctionCallOutput { .. }
             | ThreadItem::CollabAgentToolCall { .. }
             | ThreadItem::SubAgentActivity { .. }
             | ThreadItem::WebSearch(_)
