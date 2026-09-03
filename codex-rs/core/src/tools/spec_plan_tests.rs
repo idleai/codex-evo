@@ -2274,6 +2274,7 @@ async fn multi_agent_feature_selects_one_agent_tool_family() {
         );
     }
     assert!(!properties.contains_key("agent_type"));
+    assert!(!properties.contains_key("profile"));
 
     let v2 = probe(|turn| {
         set_feature(turn, Feature::MultiAgentV2, /*enabled*/ true);
@@ -2331,7 +2332,7 @@ async fn multi_agent_feature_selects_one_agent_tool_family() {
     for property in ["model", "reasoning_effort"] {
         assert!(spawn_agent_properties.contains_key(property));
     }
-    for property in ["agent_type", "service_tier"] {
+    for property in ["agent_type", "profile", "service_tier"] {
         assert!(!spawn_agent_properties.contains_key(property));
     }
     let spawn_agent_description = spawn_agent.description.as_str();

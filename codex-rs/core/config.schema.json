@@ -40,6 +40,10 @@
           "description": "Default model for spawned subagents when the spawn call does not select one.",
           "type": "string"
         },
+        "default_subagent_profile": {
+          "description": "Default named user profile for spawned subagents when the spawn call does not select one. Native OpenAI parents use the plaintext V1 spawn protocol when this is set so delegated tasks remain readable by non-OpenAI child providers.",
+          "type": "string"
+        },
         "default_subagent_reasoning_effort": {
           "allOf": [
             {

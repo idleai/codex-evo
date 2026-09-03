@@ -7,7 +7,9 @@ use crate::agent_communication::AgentCommunicationContext;
 use crate::agent_communication::AgentCommunicationKind;
 use crate::codex_thread::ThreadConfigSnapshot;
 use crate::session::multi_agents::resolve_usage_hints;
+use crate::thread_manager::build_models_manager;
 use crate::tools::handlers::multi_agents::collab_tool_call_status;
+use crate::tools::handlers::multi_agents_profile::apply_spawn_agent_profile;
 use crate::tools::handlers::multi_agents_spec::SpawnAgentToolOptions;
 use crate::tools::handlers::multi_agents_spec::create_spawn_agent_tool_v2;
 use crate::tools::handlers::multi_agents_v2::message_tool::message_content;
@@ -109,7 +111,12 @@ async fn handle_spawn_agent(
     let turn = &step_context.turn;
     let arguments = function_arguments(payload)?;
     let args: SpawnAgentArgs = parse_arguments(&arguments)?;
-    let fork_mode = args.fork_mode()?;
+    let mut fork_mode = args.fork_mode()?;
+    let selected_profile = args
+        .profile
+        .as_deref()
+        .or(turn.config.agent_default_subagent_profile.as_deref())
+        .map(str::to_string);
     let message = message_content(args.message)?;
     let role_name = args
         .agent_type
@@ -121,20 +128,52 @@ async fn handle_spawn_agent(
     let child_depth = next_thread_spawn_depth(&session_source);
     let mut config =
         build_agent_spawn_config(&session.get_base_instructions().await, turn.as_ref())?;
+    if let Some(profile) = selected_profile.as_deref() {
+        apply_spawn_agent_profile(&mut config, profile).await?;
+    }
+    let provider_changed = config.model_provider_id != turn.config.model_provider_id;
+    if provider_changed && fork_mode.is_some() {
+        if args.fork_turns.is_some() {
+            return Err(FunctionCallError::RespondToModel(
+                "cross-provider spawn_agent profiles require `fork_turns` to be `none`".to_string(),
+            ));
+        }
+        fork_mode = None;
+    }
+    let models_manager = if selected_profile.is_some() {
+        build_models_manager(
+            &config,
+            std::sync::Arc::clone(&session.services.auth_manager),
+        )
+    } else {
+        std::sync::Arc::clone(&session.services.models_manager)
+    };
     if let Some(service_tier) = args.service_tier.as_ref() {
         config.service_tier = Some(service_tier.clone());
     }
     let is_full_history_fork = matches!(fork_mode, Some(SpawnAgentForkMode::FullHistory));
+    let profile_model = selected_profile.as_ref().and_then(|_| config.model.clone());
+    let requested_model = args.model.as_deref().or(profile_model.as_deref());
+    let requested_reasoning_effort = args.reasoning_effort.clone().or_else(|| {
+        selected_profile
+            .as_ref()
+            .and_then(|_| config.model_reasoning_effort.clone())
+    });
     apply_requested_spawn_agent_model_overrides(
-        &session,
+        &models_manager,
         turn.as_ref(),
         &mut config,
-        args.model.as_deref(),
-        args.reasoning_effort.clone(),
+        requested_model,
+        requested_reasoning_effort,
+        if selected_profile.is_some() {
+            SpawnAgentDefaultModelSource::Profile
+        } else {
+            SpawnAgentDefaultModelSource::Parent
+        },
     )
     .await?;
     if !is_full_history_fork || role_name.is_some() {
-        apply_spawn_agent_role(&session, &mut config, role_name).await?;
+        apply_spawn_agent_role(&models_manager, &mut config, role_name).await?;
         if is_full_history_fork && config.developer_instructions.is_none() {
             config
                 .developer_instructions
@@ -142,7 +181,7 @@ async fn handle_spawn_agent(
         }
     }
     apply_spawn_agent_service_tier(
-        &session,
+        &models_manager,
         &mut config,
         turn.config.service_tier.as_deref(),
         args.service_tier.as_deref(),
@@ -178,9 +217,7 @@ async fn handle_spawn_agent(
         if is_full_history_fork && turn.multi_agent_version == MultiAgentVersion::V2 {
             let child_model_info = match config.model.as_deref() {
                 Some(model) if model != turn.model_info.slug => Some(
-                    session
-                        .services
-                        .models_manager
+                    models_manager
                         .get_model_info(model, &config.to_models_manager_config())
                         .await,
                 ),
@@ -273,6 +310,7 @@ struct SpawnAgentArgs {
     message: String,
     task_name: String,
     agent_type: Option<String>,
+    profile: Option<String>,
     model: Option<String>,
     reasoning_effort: Option<ReasoningEffort>,
     service_tier: Option<String>,

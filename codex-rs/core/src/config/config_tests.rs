@@ -8214,6 +8214,7 @@ async fn load_config_rejects_missing_agent_role_config_file() -> std::io::Result
             enabled: None,
             max_concurrent_threads_per_session: None,
             max_depth: None,
+            default_subagent_profile: None,
             default_subagent_model: None,
             default_subagent_reasoning_effort: None,
             job_max_runtime_seconds: None,
@@ -9165,6 +9166,7 @@ async fn load_config_resolves_agent_controls() -> std::io::Result<()> {
         agents: Some(AgentsToml {
             enabled: Some(false),
             max_depth: Some(2),
+            default_subagent_profile: Some("dsv4".to_string()),
             default_subagent_model: Some("gpt-5.6-terra".to_string()),
             default_subagent_reasoning_effort: Some(ReasoningEffort::High),
             interrupt_message: Some(false),
@@ -9184,6 +9186,7 @@ async fn load_config_resolves_agent_controls() -> std::io::Result<()> {
         (
             config.agents_enabled,
             config.agent_max_depth,
+            config.agent_default_subagent_profile.as_deref(),
             config.agent_default_subagent_model.as_deref(),
             config.agent_default_subagent_reasoning_effort,
             config.agent_interrupt_message_enabled,
@@ -9191,6 +9194,7 @@ async fn load_config_resolves_agent_controls() -> std::io::Result<()> {
         (
             false,
             2,
+            Some("dsv4"),
             Some("gpt-5.6-terra"),
             Some(ReasoningEffort::High),
             false,
@@ -9198,6 +9202,32 @@ async fn load_config_resolves_agent_controls() -> std::io::Result<()> {
     );
 
     Ok(())
+}
+
+#[tokio::test]
+async fn load_config_rejects_invalid_default_subagent_profile() {
+    let codex_home = TempDir::new().expect("create Codex home");
+    let cfg = ConfigToml {
+        agents: Some(AgentsToml {
+            default_subagent_profile: Some("../dsv4".to_string()),
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+
+    let error = Config::load_from_base_config_with_overrides(
+        cfg,
+        ConfigOverrides::default(),
+        codex_home.abs(),
+    )
+    .await
+    .expect_err("unsafe subagent profile name should fail");
+
+    assert!(
+        error
+            .to_string()
+            .contains("agents.default_subagent_profile is invalid")
+    );
 }
 
 #[test]
@@ -9229,6 +9259,7 @@ async fn load_config_normalizes_agent_role_nickname_candidates() -> std::io::Res
             enabled: None,
             max_concurrent_threads_per_session: None,
             max_depth: None,
+            default_subagent_profile: None,
             default_subagent_model: None,
             default_subagent_reasoning_effort: None,
             job_max_runtime_seconds: None,
@@ -9275,6 +9306,7 @@ async fn load_config_rejects_empty_agent_role_nickname_candidates() -> std::io::
             enabled: None,
             max_concurrent_threads_per_session: None,
             max_depth: None,
+            default_subagent_profile: None,
             default_subagent_model: None,
             default_subagent_reasoning_effort: None,
             job_max_runtime_seconds: None,
@@ -9315,6 +9347,7 @@ async fn load_config_rejects_duplicate_agent_role_nickname_candidates() -> std::
             enabled: None,
             max_concurrent_threads_per_session: None,
             max_depth: None,
+            default_subagent_profile: None,
             default_subagent_model: None,
             default_subagent_reasoning_effort: None,
             job_max_runtime_seconds: None,
@@ -9355,6 +9388,7 @@ async fn load_config_rejects_unsafe_agent_role_nickname_candidates() -> std::io:
             enabled: None,
             max_concurrent_threads_per_session: None,
             max_depth: None,
+            default_subagent_profile: None,
             default_subagent_model: None,
             default_subagent_reasoning_effort: None,
             job_max_runtime_seconds: None,

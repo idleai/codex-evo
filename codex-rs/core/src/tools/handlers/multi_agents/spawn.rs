@@ -5,6 +5,8 @@ use crate::agent::control::render_input_preview;
 use crate::agent::exceeds_thread_spawn_depth_limit;
 use crate::agent::next_thread_spawn_depth;
 use crate::agent::role::DEFAULT_ROLE_NAME;
+use crate::thread_manager::build_models_manager;
+use crate::tools::handlers::multi_agents_profile::apply_spawn_agent_profile;
 use crate::tools::handlers::multi_agents_spec::SpawnAgentToolOptions;
 use crate::tools::handlers::multi_agents_spec::create_spawn_agent_tool_v1;
 use codex_tools::ToolSpec;
@@ -31,7 +33,7 @@ impl ToolExecutor<ToolInvocation> for Handler {
 
     fn search_info(&self) -> Option<ToolSearchInfo> {
         multi_agent_tool_search_info(
-            "spawn_agent spawn agent subagent sub-agent delegate delegation parallel work worker explorer no-apps fork model reasoning",
+            "spawn_agent spawn agent subagent sub-agent delegate delegation parallel work worker explorer no-apps fork profile provider model reasoning",
             self.spec(),
         )
     }
@@ -54,6 +56,11 @@ async fn handle_spawn_agent(
     let turn = &step_context.turn;
     let arguments = function_arguments(payload)?;
     let args: SpawnAgentArgs = parse_arguments(&arguments)?;
+    let selected_profile = args
+        .profile
+        .as_deref()
+        .or(turn.config.agent_default_subagent_profile.as_deref())
+        .map(str::to_string);
     let role_name = args
         .agent_type
         .as_deref()
@@ -88,25 +95,54 @@ async fn handle_spawn_agent(
         .await;
     let mut config =
         build_agent_spawn_config(&session.get_base_instructions().await, turn.as_ref())?;
+    if let Some(profile) = selected_profile.as_deref() {
+        apply_spawn_agent_profile(&mut config, profile).await?;
+    }
+    if config.model_provider_id != turn.config.model_provider_id && args.fork_context {
+        return Err(FunctionCallError::RespondToModel(
+            "cross-provider spawn_agent profiles cannot fork parent context; set `fork_context` to false"
+                .to_string(),
+        ));
+    }
+    let models_manager = if selected_profile.is_some() {
+        build_models_manager(
+            &config,
+            std::sync::Arc::clone(&session.services.auth_manager),
+        )
+    } else {
+        std::sync::Arc::clone(&session.services.models_manager)
+    };
     if let Some(service_tier) = args.service_tier.as_ref() {
         config.service_tier = Some(service_tier.clone());
     }
     if args.fork_context {
         reject_full_fork_agent_type_override(role_name)?;
     }
+    let profile_model = selected_profile.as_ref().and_then(|_| config.model.clone());
+    let requested_model = args.model.as_deref().or(profile_model.as_deref());
+    let requested_reasoning_effort = args.reasoning_effort.clone().or_else(|| {
+        selected_profile
+            .as_ref()
+            .and_then(|_| config.model_reasoning_effort.clone())
+    });
     apply_requested_spawn_agent_model_overrides(
-        &session,
+        &models_manager,
         turn.as_ref(),
         &mut config,
-        args.model.as_deref(),
-        args.reasoning_effort.clone(),
+        requested_model,
+        requested_reasoning_effort,
+        if selected_profile.is_some() {
+            SpawnAgentDefaultModelSource::Profile
+        } else {
+            SpawnAgentDefaultModelSource::Parent
+        },
     )
     .await?;
     if !args.fork_context {
-        apply_spawn_agent_role(&session, &mut config, role_name).await?;
+        apply_spawn_agent_role(&models_manager, &mut config, role_name).await?;
     }
     apply_spawn_agent_service_tier(
-        &session,
+        &models_manager,
         &mut config,
         turn.config.service_tier.as_deref(),
         args.service_tier.as_deref(),
@@ -231,6 +267,7 @@ struct SpawnAgentArgs {
     message: Option<String>,
     items: Option<Vec<UserInput>>,
     agent_type: Option<String>,
+    profile: Option<String>,
     model: Option<String>,
     reasoning_effort: Option<ReasoningEffort>,
     service_tier: Option<String>,
