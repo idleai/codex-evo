@@ -127,6 +127,7 @@ use crate::attestation::X_OAI_ATTESTATION_HEADER;
 use crate::client_common::Prompt;
 use crate::client_common::ResponseEvent;
 use crate::client_common::ResponseStream;
+use crate::client_common::rewrite_codex_agent_messages_as_user_messages;
 use crate::context::BaseInstructionsFragment;
 use crate::context::ContextualUserFragment;
 use crate::cyber_access_program;
@@ -907,6 +908,9 @@ impl ModelClient {
             // Unsupported models and disabled overrides must also accept saved history.
             // Filter only the request copy; persisted history remains unchanged.
             input.retain(|item| !matches!(item, ResponseItem::ConfigurationUpdate { .. }));
+        }
+        if !self.state.provider.capabilities().codex_agent_messages {
+            rewrite_codex_agent_messages_as_user_messages(&mut input);
         }
         let is_openai = self.state.provider.info().is_openai();
         let (instructions, tools) = if model_info.use_responses_lite {

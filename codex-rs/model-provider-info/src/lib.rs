@@ -192,6 +192,19 @@ pub struct ModelProviderInfo {
     /// Whether this provider supports the standalone web-search endpoint.
     #[serde(default)]
     pub supports_standalone_web_search: bool,
+    /// Whether this provider accepts Responses API namespace tool definitions.
+    ///
+    /// Omission preserves the historical behavior of treating configured providers as
+    /// namespace-capable. Set this to `false` for OpenAI-compatible servers that only accept
+    /// ordinary function tools.
+    #[serde(default)]
+    pub supports_namespace_tools: Option<bool>,
+    /// Whether this provider accepts Codex's internal `agent_message` Responses input items.
+    ///
+    /// Omission preserves the historical behavior. Set this to `false` for OpenAI-compatible
+    /// servers that only accept public Responses API input item types.
+    #[serde(default)]
+    pub supports_codex_agent_messages: Option<bool>,
 }
 
 /// AWS SigV4 auth configuration for a model provider.
@@ -547,6 +560,8 @@ other non-default provider fields are not supported"
             requires_openai_auth: true,
             supports_websockets: true,
             supports_standalone_web_search: true,
+            supports_namespace_tools: None,
+            supports_codex_agent_messages: None,
         }
     }
 
@@ -585,6 +600,8 @@ other non-default provider fields are not supported"
             requires_openai_auth: false,
             supports_websockets: false,
             supports_standalone_web_search: false,
+            supports_namespace_tools: None,
+            supports_codex_agent_messages: None,
         }
     }
 
@@ -757,6 +774,8 @@ pub fn create_oss_provider_with_base_url(base_url: &str, wire_api: WireApi) -> M
         requires_openai_auth: false,
         supports_websockets: false,
         supports_standalone_web_search: false,
+        supports_namespace_tools: None,
+        supports_codex_agent_messages: None,
     }
 }
 

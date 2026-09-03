@@ -316,6 +316,8 @@ mod tests {
             requires_openai_auth: false,
             supports_websockets: true,
             supports_standalone_web_search: true,
+            supports_namespace_tools: None,
+            supports_codex_agent_messages: None,
         }
     }
 }

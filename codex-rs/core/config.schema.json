@@ -2684,6 +2684,16 @@
           "minimum": 0.0,
           "type": "integer"
         },
+        "supports_codex_agent_messages": {
+          "default": null,
+          "description": "Whether this provider accepts Codex's internal `agent_message` Responses input items.\n\nOmission preserves the historical behavior. Set this to `false` for OpenAI-compatible servers that only accept public Responses API input item types.",
+          "type": "boolean"
+        },
+        "supports_namespace_tools": {
+          "default": null,
+          "description": "Whether this provider accepts Responses API namespace tool definitions.\n\nOmission preserves the historical behavior of treating configured providers as namespace-capable. Set this to `false` for OpenAI-compatible servers that only accept ordinary function tools.",
+          "type": "boolean"
+        },
         "supports_standalone_web_search": {
           "default": false,
           "description": "Whether this provider supports the standalone web-search endpoint.",

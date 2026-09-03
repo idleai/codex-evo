@@ -50,6 +50,8 @@ message ModelProvider {
   bool supports_websockets = 17;
   bool supports_standalone_web_search = 18;
   optional string model_catalog_url = 19;
+  optional bool supports_namespace_tools = 1001;
+  optional bool supports_codex_agent_messages = 1002;
 }
 
 message StringMap {
