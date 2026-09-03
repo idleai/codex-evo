@@ -4716,6 +4716,7 @@ impl ThreadRequestProcessor {
             model_provider,
             service_tier,
             cwd,
+            profile,
             runtime_workspace_roots,
             approval_policy,
             approvals_reviewer,
@@ -4727,6 +4728,7 @@ impl ThreadRequestProcessor {
             ephemeral,
             thread_source,
             exclude_turns,
+            portable_history,
             defer_goal_continuation,
         } = params;
         let include_turns = !exclude_turns;
@@ -4928,7 +4930,7 @@ impl ThreadRequestProcessor {
         // Derive a Config using the same logic as new conversation, honoring overrides if provided.
         let config = self
             .config_manager
-            .load_for_cwd(request_overrides, typesafe_overrides, history_cwd)
+            .load_for_cwd_with_profile(request_overrides, typesafe_overrides, history_cwd, profile)
             .await
             .map_err(|err| config_load_error(&err))?;
         let goals_enabled = config.features.enabled(Feature::Goals);
@@ -4954,6 +4956,11 @@ impl ThreadRequestProcessor {
                 (Some(_), Some(_)) => unreachable!("fork boundaries are mutually exclusive"),
             };
             Arc::new(history_items)
+        };
+        let history_items = if portable_history {
+            Arc::new(portable_handoff_history(&history_items))
+        } else {
+            history_items
         };
 
         let ephemeral_preview = if ephemeral {
@@ -4986,7 +4993,23 @@ impl ThreadRequestProcessor {
             .await?
         };
 
-        let new_thread = if let Some(prepared_fork) = prepared_fork {
+        let new_thread = if portable_history {
+            self.thread_manager
+                .fork_thread_from_history(
+                    ForkSnapshot::Interrupted,
+                    config,
+                    InitialHistory::Resumed(ResumedHistory {
+                        conversation_id: source_thread_id,
+                        history: history_items,
+                        rollout_path: None,
+                    }),
+                    thread_source,
+                    parent_trace,
+                    client_mcp_extensions,
+                    reserved_thread_id,
+                )
+                .await
+        } else if let Some(prepared_fork) = prepared_fork {
             self.thread_manager
                 .fork_prepared_thread(
                     config,
