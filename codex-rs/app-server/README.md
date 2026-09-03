@@ -199,6 +199,28 @@ updates. Realtime connections use separate routing configuration and are not che
 Interrupt, realtime stop, and goal pause/clear remain available. User and project
 configuration changes alone do not invalidate existing threads.
 
+# Portable profile forks (experimental)
+
+To continue through a different provider profile without sending source-provider
+tool or reasoning items to the target, send `thread/fork` with `profile` selecting
+`$CODEX_HOME/<profile>.config.toml` and `portableHistory: true`:
+
+```json
+{
+  "method": "thread/fork",
+  "id": 13,
+  "params": {
+    "threadId": "thr_123",
+    "profile": "dsv4",
+    "portableHistory": true
+  }
+}
+```
+
+The fork copies a bounded user/assistant text projection while dropping
+provider-specific reasoning and tool items. It remains linked through
+`forkedFromId` and emits the normal `thread/started` notification.
+
 # Amazon Bedrock authentication
 
 If `model_providers.amazon-bedrock.aws.credential_export` is configured, Bedrock setup and
