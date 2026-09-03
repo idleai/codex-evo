@@ -198,6 +198,7 @@ impl ModelProvider for AmazonBedrockModelProvider {
     fn capabilities(&self) -> ProviderCapabilities {
         ProviderCapabilities {
             namespace_tools: true,
+            codex_agent_messages: true,
             image_generation: false,
             web_search: self.endpoint == BedrockEndpoint::Mantle,
             external_web_access: false,
@@ -553,6 +554,7 @@ mod tests {
             provider.capabilities(),
             ProviderCapabilities {
                 namespace_tools: true,
+                codex_agent_messages: true,
                 image_generation: false,
                 web_search: true,
                 external_web_access: false,
@@ -572,6 +574,7 @@ mod tests {
             provider.capabilities(),
             ProviderCapabilities {
                 namespace_tools: true,
+                codex_agent_messages: true,
                 image_generation: false,
                 web_search: false,
                 external_web_access: false,

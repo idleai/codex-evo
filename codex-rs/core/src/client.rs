@@ -115,6 +115,7 @@ use crate::attestation::X_OAI_ATTESTATION_HEADER;
 use crate::client_common::Prompt;
 use crate::client_common::ResponseEvent;
 use crate::client_common::ResponseStream;
+use crate::client_common::rewrite_codex_agent_messages_as_user_messages;
 use crate::feedback_tags;
 use crate::responses_metadata::CodexResponsesMetadata;
 use crate::responses_metadata::subagent_header_value;
@@ -874,6 +875,9 @@ impl ModelClient {
         responses_metadata: &CodexResponsesMetadata,
     ) -> Result<ResponsesApiRequest> {
         let mut input = prompt.get_formatted_input_for_request(model_info.use_responses_lite);
+        if !self.state.provider.capabilities().codex_agent_messages {
+            rewrite_codex_agent_messages_as_user_messages(&mut input);
+        }
         let is_openai = self.state.provider.info().is_openai();
         if !is_openai {
             for item in &mut input {
