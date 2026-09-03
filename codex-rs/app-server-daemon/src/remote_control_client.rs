@@ -28,6 +28,7 @@ use crate::RemoteControlReadyStatus;
 use crate::client;
 
 const REMOTE_CONTROL_READY_TIMEOUT: Duration = Duration::from_secs(10);
+const REMOTE_CONTROL_PAIRING_RESPONSE_TIMEOUT: Duration = Duration::from_secs(35);
 const REMOTE_CONTROL_REQUEST_ID: RequestId = RequestId::Integer(2);
 const INVALID_PARAMS_ERROR_CODE: i64 = -32602;
 
@@ -70,6 +71,7 @@ pub(crate) async fn start_pairing(socket_path: &Path) -> Result<RemoteControlPai
         &mut websocket,
         &REMOTE_CONTROL_REQUEST_ID,
         "remoteControl/pairing/start",
+        REMOTE_CONTROL_PAIRING_RESPONSE_TIMEOUT,
     )
     .await?
     {
@@ -167,7 +169,14 @@ where
         Some(params),
     )
     .await?;
-    match read_remote_control_response(websocket, &REMOTE_CONTROL_REQUEST_ID, method).await? {
+    match read_remote_control_response(
+        websocket,
+        &REMOTE_CONTROL_REQUEST_ID,
+        method,
+        client::CONTROL_SOCKET_RESPONSE_TIMEOUT,
+    )
+    .await?
+    {
         RemoteControlRpcResponse::Success(response) => Ok(response),
         RemoteControlRpcResponse::InvalidParams => {
             send_remote_control_request(
@@ -177,8 +186,13 @@ where
                 /*params*/ None,
             )
             .await?;
-            match read_remote_control_response(websocket, &REMOTE_CONTROL_REQUEST_ID, method)
-                .await?
+            match read_remote_control_response(
+                websocket,
+                &REMOTE_CONTROL_REQUEST_ID,
+                method,
+                client::CONTROL_SOCKET_RESPONSE_TIMEOUT,
+            )
+            .await?
             {
                 RemoteControlRpcResponse::Success(response) => Ok(response),
                 RemoteControlRpcResponse::InvalidParams => {
@@ -217,18 +231,16 @@ async fn read_remote_control_response<S, T>(
     websocket: &mut WebSocketStream<S>,
     request_id: &RequestId,
     method: &str,
+    response_timeout: Duration,
 ) -> Result<RemoteControlRpcResponse<T>>
 where
     S: AsyncRead + AsyncWrite + Unpin,
     T: DeserializeOwned,
 {
     loop {
-        let message = timeout(
-            client::CONTROL_SOCKET_RESPONSE_TIMEOUT,
-            client::read_message(websocket),
-        )
-        .await
-        .with_context(|| format!("timed out waiting for {method} response"))??;
+        let message = timeout(response_timeout, client::read_message(websocket))
+            .await
+            .with_context(|| format!("timed out waiting for {method} response"))??;
         match message {
             JSONRPCMessage::Response(response) if response.id == *request_id => {
                 let response = serde_json::from_value::<T>(response.result)
@@ -570,7 +582,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn start_pairing_requests_manual_code() -> Result<()> {
+    async fn start_pairing_waits_longer_than_control_socket_timeout() -> Result<()> {
         let dir = TempDir::new()?;
         let socket_path = dir.path().join("app-server.sock");
         let listener = UnixListener::bind(&socket_path).await?;
@@ -586,6 +598,10 @@ mod tests {
                 pairing.params,
                 Some(serde_json::json!({ "manualCode": true }))
             );
+            tokio::time::sleep(
+                client::CONTROL_SOCKET_RESPONSE_TIMEOUT + Duration::from_millis(100),
+            )
+            .await;
             client::send_message(
                 &mut websocket,
                 &JSONRPCMessage::Response(JSONRPCResponse {
