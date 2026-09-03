@@ -554,6 +554,18 @@ pub struct ThreadForkParams {
     pub service_tier: Option<Option<String>>,
     #[ts(optional = nullable)]
     pub cwd: Option<String>,
+    /// Select a named `$CODEX_HOME/<name>.config.toml` profile for the fork.
+    /// Explicit `null` selects the base `$CODEX_HOME/config.toml`; omission
+    /// preserves the profile selected when app-server started.
+    #[experimental("thread/fork.profile")]
+    #[serde(
+        default,
+        deserialize_with = "crate::protocol::serde_helpers::deserialize_double_option",
+        serialize_with = "crate::protocol::serde_helpers::serialize_double_option",
+        skip_serializing_if = "Option::is_none"
+    )]
+    #[ts(optional = nullable)]
+    pub profile: Option<Option<String>>,
     /// Replace the thread's runtime workspace roots. Paths must be absolute.
     #[experimental("thread/fork.runtimeWorkspaceRoots")]
     #[ts(optional = nullable)]
@@ -589,6 +601,12 @@ pub struct ThreadForkParams {
     #[experimental("thread/fork.excludeTurns")]
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub exclude_turns: bool,
+    /// Copy only a bounded, provider-neutral projection of user and assistant
+    /// text into the fork. Provider-specific reasoning and tool items are
+    /// omitted so the fork can safely use a different model provider.
+    #[experimental("thread/fork.portableHistory")]
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub portable_history: bool,
     /// When true, carry the source thread's current goal into the fork without
     /// starting its initial automatic continuation. The next explicit turn owns
     /// the goal lifecycle, and normal automatic continuation resumes after it.
