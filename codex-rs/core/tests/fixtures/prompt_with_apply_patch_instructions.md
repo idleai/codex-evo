@@ -129,7 +129,7 @@ You MUST adhere to the following criteria when solving queries:
 - Working on the repo(s) in the current environment is allowed, even if they are proprietary.
 - Analyzing code for vulnerabilities is allowed.
 - Showing user code and tool call details is allowed.
-- Use the `apply_patch` tool to edit files (NEVER try `applypatch` or `apply-patch`, only `apply_patch`): {"command":["apply_patch","*** Begin Patch\\n*** Update File: path/to/file.py\\n@@ def example():\\n- pass\\n+ return 123\\n*** End Patch"]}
+- Edit files with `apply_patch`. Call the declared `apply_patch` tool when it is available; otherwise run the `apply_patch` executable through a declared shell or exec tool, using that tool's actual input schema. Never emit a tool call for an undeclared tool or assume that a shell wrapper accepts a `command` array.
 
 If completing the user's task requires writing or modifying files, your code and final answer should follow these coding guidelines, though user instructions (i.e. AGENTS.md) may override these guidelines:
 
@@ -344,8 +344,13 @@ It is important to remember:
 - You must prefix new lines with `+` even when creating a new file
 - File references can only be relative, NEVER ABSOLUTE.
 
-You can invoke apply_patch like:
+The patch body itself looks like this:
 
 ```
-shell {"command":["apply_patch","*** Begin Patch\n*** Add File: hello.txt\n+Hello, world!\n*** End Patch\n"]}
+*** Begin Patch
+*** Add File: hello.txt
++Hello, world!
+*** End Patch
 ```
+
+Pass that body directly to a declared `apply_patch` tool. If no such tool is declared, invoke the `apply_patch` executable through the declared shell or exec tool and follow that tool's exact schema.

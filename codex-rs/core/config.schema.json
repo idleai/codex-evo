@@ -40,6 +40,10 @@
           "description": "Default model for spawned subagents when the spawn call does not select one.",
           "type": "string"
         },
+        "default_subagent_profile": {
+          "description": "Default named user profile for spawned subagents when the spawn call does not select one. Native OpenAI parents use the plaintext V1 spawn protocol when this is set so delegated tasks remain readable by non-OpenAI child providers.",
+          "type": "string"
+        },
         "default_subagent_reasoning_effort": {
           "allOf": [
             {
@@ -2278,6 +2282,16 @@
           "format": "uint64",
           "minimum": 0.0,
           "type": "integer"
+        },
+        "supports_codex_agent_messages": {
+          "default": null,
+          "description": "Whether this provider accepts Codex's internal `agent_message` Responses input items.\n\nOmission preserves the historical behavior. Set this to `false` for OpenAI-compatible servers that only accept public Responses API input item types.",
+          "type": "boolean"
+        },
+        "supports_namespace_tools": {
+          "default": null,
+          "description": "Whether this provider accepts Responses API namespace tool definitions.\n\nOmission preserves the historical behavior of treating configured providers as namespace-capable. Set this to `false` for OpenAI-compatible servers that only accept ordinary function tools.",
+          "type": "boolean"
         },
         "supports_standalone_web_search": {
           "default": false,

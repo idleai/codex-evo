@@ -3,12 +3,12 @@ use crate::config::Config;
 use crate::config::DEFAULT_MULTI_AGENT_V2_MIN_WAIT_TIMEOUT_MS;
 use crate::config::HARD_MAX_MULTI_AGENT_V2_TIMEOUT_MS;
 use crate::function_tool::FunctionCallError;
-use crate::session::session::Session;
 use crate::session::turn_context::TurnContext;
 use crate::tools::context::FunctionToolOutput;
 use crate::tools::context::ToolOutput;
 use crate::tools::context::ToolPayload;
 use codex_models_manager::manager::RefreshStrategy;
+use codex_models_manager::manager::SharedModelsManager;
 use codex_protocol::AgentPath;
 use codex_protocol::ThreadId;
 use codex_protocol::config_types::SERVICE_TIER_DEFAULT_REQUEST_VALUE;
@@ -31,6 +31,12 @@ pub(crate) const MIN_WAIT_TIMEOUT_MS: i64 = DEFAULT_MULTI_AGENT_V2_MIN_WAIT_TIME
 pub(crate) const DEFAULT_WAIT_TIMEOUT_MS: i64 = 30_000;
 pub(crate) const MAX_WAIT_TIMEOUT_MS: i64 = HARD_MAX_MULTI_AGENT_V2_TIMEOUT_MS;
 pub(crate) const MAX_SPAWN_AGENT_MODEL_OVERRIDES: usize = 5;
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum SpawnAgentDefaultModelSource {
+    Parent,
+    Profile,
+}
 
 pub(crate) fn model_supports_multi_agent_backend(
     model: &ModelPreset,
@@ -262,23 +268,30 @@ pub(crate) fn apply_spawn_agent_runtime_overrides(
 }
 
 pub(crate) async fn apply_requested_spawn_agent_model_overrides(
-    session: &Session,
+    models_manager: &SharedModelsManager,
     turn: &TurnContext,
     config: &mut Config,
     requested_model: Option<&str>,
     requested_reasoning_effort: Option<ReasoningEffort>,
+    default_model_source: SpawnAgentDefaultModelSource,
 ) -> Result<(), FunctionCallError> {
-    let requested_model = requested_model.or(turn.config.agent_default_subagent_model.as_deref());
-    let requested_reasoning_effort = requested_reasoning_effort
-        .or_else(|| turn.config.agent_default_subagent_reasoning_effort.clone());
+    let requested_model = requested_model.or_else(|| match default_model_source {
+        SpawnAgentDefaultModelSource::Parent => turn.config.agent_default_subagent_model.as_deref(),
+        SpawnAgentDefaultModelSource::Profile => None,
+    });
+    let requested_reasoning_effort =
+        requested_reasoning_effort.or_else(|| match default_model_source {
+            SpawnAgentDefaultModelSource::Parent => {
+                turn.config.agent_default_subagent_reasoning_effort.clone()
+            }
+            SpawnAgentDefaultModelSource::Profile => None,
+        });
     if requested_model.is_none() && requested_reasoning_effort.is_none() {
         return Ok(());
     }
 
     if let Some(requested_model) = requested_model {
-        let available_models = session
-            .services
-            .models_manager
+        let available_models = models_manager
             .list_models(RefreshStrategy::Offline, config.http_client_factory())
             .await;
         let selected_model_name = find_spawn_agent_model_name(
@@ -286,9 +299,7 @@ pub(crate) async fn apply_requested_spawn_agent_model_overrides(
             requested_model,
             turn.multi_agent_version,
         )?;
-        let selected_model_info = session
-            .services
-            .models_manager
+        let selected_model_info = models_manager
             .get_model_info(&selected_model_name, &config.to_models_manager_config())
             .await;
 
@@ -308,9 +319,16 @@ pub(crate) async fn apply_requested_spawn_agent_model_overrides(
     }
 
     if let Some(reasoning_effort) = requested_reasoning_effort {
+        let model = config
+            .model
+            .as_deref()
+            .unwrap_or(turn.model_info().slug.as_str());
+        let model_info = models_manager
+            .get_model_info(model, &config.to_models_manager_config())
+            .await;
         validate_spawn_agent_reasoning_effort(
-            &turn.model_info().slug,
-            &turn.model_info().supported_reasoning_levels,
+            model,
+            &model_info.supported_reasoning_levels,
             &reasoning_effort,
         )?;
         config.model_reasoning_effort = Some(reasoning_effort);
@@ -320,15 +338,18 @@ pub(crate) async fn apply_requested_spawn_agent_model_overrides(
 }
 
 pub(crate) async fn apply_spawn_agent_service_tier(
-    session: &Session,
+    models_manager: &SharedModelsManager,
     config: &mut Config,
+    parent_service_tier: Option<&str>,
+    requested_service_tier: Option<&str>,
 ) -> Result<(), FunctionCallError> {
-    let Some(service_tier) = session.services.agent_control.root_service_tier() else {
+    let candidate_service_tiers = [
+        config.service_tier.clone(),
+        requested_service_tier.map(str::to_string),
+        parent_service_tier.map(str::to_string),
+    ];
+    if candidate_service_tiers.iter().all(Option::is_none) {
         config.service_tier = None;
-        return Ok(());
-    };
-    if service_tier == SERVICE_TIER_DEFAULT_REQUEST_VALUE {
-        config.service_tier = Some(service_tier);
         return Ok(());
     }
 
@@ -337,20 +358,42 @@ pub(crate) async fn apply_spawn_agent_service_tier(
             "spawn_agent could not resolve the child model for service tier validation".to_string(),
         )
     })?;
-    let model_info = session
-        .services
-        .models_manager
+    let model_info = models_manager
         .get_model_info(model.as_str(), &config.to_models_manager_config())
         .await;
 
-    config.service_tier = model_info
-        .supports_service_tier(service_tier.as_str())
-        .then_some(service_tier);
+    if let Some(requested_service_tier) = requested_service_tier
+        && requested_service_tier != SERVICE_TIER_DEFAULT_REQUEST_VALUE
+        && !model_info.supports_service_tier(requested_service_tier)
+    {
+        let supported_service_tiers = if model_info.service_tiers.is_empty() {
+            "none".to_string()
+        } else {
+            model_info
+                .service_tiers
+                .iter()
+                .map(|tier| tier.id.as_str())
+                .collect::<Vec<_>>()
+                .join(", ")
+        };
+        return Err(FunctionCallError::RespondToModel(format!(
+            "Service tier `{requested_service_tier}` is not supported for model `{model}`. Supported service tiers: {supported_service_tiers}"
+        )));
+    }
+
+    config.service_tier =
+        candidate_service_tiers
+            .into_iter()
+            .flatten()
+            .find(|candidate_service_tier| {
+                candidate_service_tier == SERVICE_TIER_DEFAULT_REQUEST_VALUE
+                    || model_info.supports_service_tier(candidate_service_tier)
+            });
     Ok(())
 }
 
 pub(crate) async fn apply_spawn_agent_role(
-    session: &Session,
+    models_manager: &SharedModelsManager,
     config: &mut Config,
     role_name: Option<&str>,
 ) -> Result<(), FunctionCallError> {
@@ -373,9 +416,7 @@ pub(crate) async fn apply_spawn_agent_role(
                 .to_string(),
         )
     })?;
-    let model_info = session
-        .services
-        .models_manager
+    let model_info = models_manager
         .get_model_info(&model, &config.to_models_manager_config())
         .await;
     if model_info.used_fallback_model_metadata {

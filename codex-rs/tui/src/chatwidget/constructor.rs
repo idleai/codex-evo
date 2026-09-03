@@ -128,6 +128,7 @@ impl ChatWidget {
             permission_popup_request_id: None,
             permission_profiles_menu_opened: false,
             model_popup_model_ids: Vec::new(),
+            model_picker_catalog_available: true,
             session_telemetry,
             session_header: SessionHeader::new(header_model),
             initial_user_message,

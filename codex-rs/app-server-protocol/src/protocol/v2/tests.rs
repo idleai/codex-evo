@@ -1199,6 +1199,37 @@ fn thread_fork_last_turn_id_round_trips() {
 }
 
 #[test]
+fn thread_fork_handoff_fields_round_trip() {
+    let named: ThreadForkParams = serde_json::from_value(json!({
+        "threadId": "thread-1",
+        "profile": "dsv4",
+        "portableHistory": true,
+    }))
+    .expect("named handoff params deserialize");
+    assert_eq!(
+        named.profile,
+        Some(Some("dsv4".to_string())),
+        "named profile should preserve its explicit value"
+    );
+    assert!(named.portable_history);
+
+    let base: ThreadForkParams = serde_json::from_value(json!({
+        "threadId": "thread-1",
+        "profile": null,
+    }))
+    .expect("base handoff params deserialize");
+    assert_eq!(base.profile, Some(None));
+
+    let omitted = serde_json::to_value(ThreadForkParams {
+        thread_id: "thread-1".to_string(),
+        ..Default::default()
+    })
+    .expect("default fork params serialize");
+    assert_eq!(omitted.get("profile"), None);
+    assert_eq!(omitted.get("portableHistory"), None);
+}
+
+#[test]
 fn fs_get_metadata_response_round_trips_minimal_fields() {
     let response = FsGetMetadataResponse {
         is_directory: false,

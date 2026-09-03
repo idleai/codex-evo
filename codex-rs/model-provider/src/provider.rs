@@ -58,6 +58,7 @@ pub enum RemoteCompactionSupport {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ProviderCapabilities {
     pub namespace_tools: bool,
+    pub codex_agent_messages: bool,
     pub image_generation: bool,
     pub web_search: bool,
     pub external_web_access: bool,
@@ -68,6 +69,7 @@ impl Default for ProviderCapabilities {
     fn default() -> Self {
         Self {
             namespace_tools: true,
+            codex_agent_messages: true,
             image_generation: true,
             web_search: true,
             external_web_access: true,
@@ -360,6 +362,8 @@ impl ModelProvider for ConfiguredModelProvider {
         };
 
         ProviderCapabilities {
+            namespace_tools: self.info.supports_namespace_tools.unwrap_or(true),
+            codex_agent_messages: self.info.supports_codex_agent_messages.unwrap_or(true),
             remote_compaction,
             ..ProviderCapabilities::default()
         }
@@ -586,6 +590,8 @@ mod tests {
             requires_openai_auth: false,
             supports_websockets: false,
             supports_standalone_web_search: false,
+            supports_namespace_tools: None,
+            supports_codex_agent_messages: None,
         }
     }
 
@@ -650,6 +656,27 @@ mod tests {
             provider.capabilities(),
             ProviderCapabilities {
                 remote_compaction: RemoteCompactionSupport::V2,
+                ..ProviderCapabilities::default()
+            }
+        );
+    }
+
+    #[test]
+    fn configured_provider_can_disable_namespace_tools() {
+        let provider = create_model_provider(
+            ModelProviderInfo {
+                supports_namespace_tools: Some(false),
+                supports_codex_agent_messages: Some(false),
+                ..ModelProviderInfo::default()
+            },
+            /*auth_manager*/ None,
+        );
+
+        assert_eq!(
+            provider.capabilities(),
+            ProviderCapabilities {
+                namespace_tools: false,
+                codex_agent_messages: false,
                 ..ProviderCapabilities::default()
             }
         );
