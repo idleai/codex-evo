@@ -5,11 +5,16 @@
 
 use crate::agent::role::DEFAULT_ROLE_NAME;
 use crate::agent::role::apply_role_to_config;
+use crate::agent::types::SpawnAgentForkMode;
 use crate::config::Config;
 use crate::session::session::Session;
 use crate::session::step_context::StepContext;
 use crate::session::turn_context::TurnContext;
+use crate::thread_manager::build_models_manager;
+use crate::tools::handlers::multi_agents_profile::apply_spawn_agent_profile;
 use codex_models_manager::manager::RefreshStrategy;
+use codex_models_manager::manager::SharedModelsManager;
+use std::sync::Arc;
 use codex_protocol::config_types::SERVICE_TIER_DEFAULT_REQUEST_VALUE;
 use codex_protocol::models::BaseInstructions;
 use codex_protocol::openai_models::ModelPreset;
@@ -36,8 +41,11 @@ pub(crate) enum SpawnConfigVersion {
 
 pub(crate) struct SpawnConfigOptions<'a> {
     pub(crate) version: SpawnConfigVersion,
-    pub(crate) full_history_fork: bool,
+    pub(crate) fork_mode: Option<SpawnAgentForkMode>,
+    pub(crate) explicit_fork: bool,
     pub(crate) role_name: Option<&'a str>,
+    pub(crate) profile: Option<&'a str>,
+    pub(crate) service_tier: Option<&'a str>,
     pub(crate) model: Option<&'a str>,
     pub(crate) reasoning_effort: Option<ReasoningEffort>,
 }
@@ -45,6 +53,8 @@ pub(crate) struct SpawnConfigOptions<'a> {
 pub(crate) struct PreparedSpawnConfig {
     pub(crate) config: Config,
     pub(crate) role_name: Option<String>,
+    pub(crate) fork_mode: Option<SpawnAgentForkMode>,
+    pub(crate) models_manager: SharedModelsManager,
 }
 
 /// Resolves child settings before starting the thread, retaining the invoking tool's precedence.
@@ -56,23 +66,53 @@ pub(crate) async fn prepare_agent_spawn_config(
     let turn = step_context.turn.as_ref();
     let mut config =
         build_agent_spawn_config(&session.get_base_instructions().await, step_context)?;
-    if options.version == SpawnConfigVersion::V1 && options.full_history_fork {
+    let profile = options.profile.or(turn.config.agent_default_subagent_profile.as_deref());
+    if let Some(profile) = profile {
+        apply_spawn_agent_profile(&mut config, profile).await.map_err(|err| err.to_string())?;
+    }
+    let mut fork_mode = options.fork_mode;
+    if config.model_provider_id != turn.config.model_provider_id && fork_mode.is_some() {
+        if options.explicit_fork {
+            return Err("cross-provider spawn_agent profiles cannot fork parent context; use `fork_turns: none` (or `fork_context: false` for v1)".to_string());
+        }
+        fork_mode = None;
+    }
+    let full_history_fork = matches!(fork_mode, Some(SpawnAgentForkMode::FullHistory));
+    let models_manager = if profile.is_some() {
+        build_models_manager(&config, Arc::clone(&session.services.auth_manager))
+    } else {
+        Arc::clone(&session.services.models_manager)
+    };
+    let child_service_tier = options.service_tier.map(str::to_owned).or_else(|| {
+        profile.and(config.service_tier.clone())
+    });
+    let default_model = if profile.is_some() {
+        config.model.clone()
+    } else {
+        turn.config.agent_default_subagent_model.clone()
+    };
+    let default_reasoning_effort = if profile.is_some() {
+        config.model_reasoning_effort.clone()
+    } else {
+        turn.config.agent_default_subagent_reasoning_effort.clone()
+    };
+    if options.version == SpawnConfigVersion::V1 && full_history_fork {
         reject_full_fork_agent_type_override(options.role_name)?;
     }
     apply_requested_spawn_agent_model_overrides(
-        session,
+        &models_manager,
         step_context,
         &mut config,
-        options.model,
-        options.reasoning_effort,
+        options.model.or(default_model.as_deref()),
+        options.reasoning_effort.or(default_reasoning_effort),
     )
     .await?;
-    if !options.full_history_fork
+    if !full_history_fork
         || (options.version == SpawnConfigVersion::V2 && options.role_name.is_some())
     {
-        apply_spawn_agent_role(session, &mut config, options.role_name).await?;
+        apply_spawn_agent_role(&models_manager, &mut config, options.role_name).await?;
         if options.version == SpawnConfigVersion::V2
-            && options.full_history_fork
+            && full_history_fork
             && config.developer_instructions.is_none()
         {
             config
@@ -80,7 +120,14 @@ pub(crate) async fn prepare_agent_spawn_config(
                 .clone_from(&turn.developer_instructions);
         }
     }
-    apply_spawn_agent_service_tier(session, &mut config).await?;
+    config.service_tier = child_service_tier;
+    let parent_service_tier = session.services.agent_control.service_tier();
+    apply_spawn_agent_service_tier(
+        &models_manager,
+        &mut config,
+        parent_service_tier.as_deref(),
+        options.service_tier,
+    ).await?;
     apply_spawn_agent_runtime_overrides(&mut config, turn)?;
 
     // Remember an applied configured default so cold reload reapplies its restrictions.
@@ -88,7 +135,7 @@ pub(crate) async fn prepare_agent_spawn_config(
         .role_name
         .or_else(|| {
             (options.version == SpawnConfigVersion::V2
-                && !options.full_history_fork
+                && !full_history_fork
                 && config
                     .agent_roles
                     .get(DEFAULT_ROLE_NAME)
@@ -96,7 +143,7 @@ pub(crate) async fn prepare_agent_spawn_config(
             .then_some(DEFAULT_ROLE_NAME)
         })
         .map(str::to_owned);
-    Ok(PreparedSpawnConfig { config, role_name })
+    Ok(PreparedSpawnConfig { config, role_name, fork_mode, models_manager })
 }
 
 /// Builds the base config snapshot for a newly spawned sub-agent.
@@ -194,24 +241,19 @@ fn apply_spawn_agent_runtime_overrides(
 }
 
 async fn apply_requested_spawn_agent_model_overrides(
-    session: &Session,
+    models_manager: &SharedModelsManager,
     step_context: &StepContext,
     config: &mut Config,
     requested_model: Option<&str>,
     requested_reasoning_effort: Option<ReasoningEffort>,
 ) -> Result<(), String> {
     let turn = step_context.turn.as_ref();
-    let requested_model = requested_model.or(turn.config.agent_default_subagent_model.as_deref());
-    let requested_reasoning_effort = requested_reasoning_effort
-        .or_else(|| turn.config.agent_default_subagent_reasoning_effort.clone());
     if requested_model.is_none() && requested_reasoning_effort.is_none() {
         return Ok(());
     }
 
     if let Some(requested_model) = requested_model {
-        let available_models = session
-            .services
-            .models_manager
+        let available_models = models_manager
             .list_models(RefreshStrategy::Offline, config.http_client_factory())
             .await;
         let selected_model_name = find_spawn_agent_model_name(
@@ -219,9 +261,7 @@ async fn apply_requested_spawn_agent_model_overrides(
             requested_model,
             turn.multi_agent_version,
         )?;
-        let selected_model_info = session
-            .services
-            .models_manager
+        let selected_model_info = models_manager
             .get_model_info(&selected_model_name, &config.to_models_manager_config())
             .await;
 
@@ -253,10 +293,15 @@ async fn apply_requested_spawn_agent_model_overrides(
 }
 
 pub(crate) async fn apply_spawn_agent_service_tier(
-    session: &Session,
+    models_manager: &SharedModelsManager,
     config: &mut Config,
+    parent_service_tier: Option<&str>,
+    requested_service_tier: Option<&str>,
 ) -> Result<(), String> {
-    let Some(service_tier) = session.services.agent_control.service_tier() else {
+    let Some(service_tier) = requested_service_tier
+        .or(config.service_tier.as_deref())
+        .or(parent_service_tier)
+        .map(str::to_owned) else {
         config.service_tier = None;
         return Ok(());
     };
@@ -268,12 +313,13 @@ pub(crate) async fn apply_spawn_agent_service_tier(
     let model = config.model.clone().ok_or_else(|| {
         "spawn_agent could not resolve the child model for service tier validation".to_string()
     })?;
-    let model_info = session
-        .services
-        .models_manager
+    let model_info = models_manager
         .get_model_info(model.as_str(), &config.to_models_manager_config())
         .await;
 
+    if requested_service_tier.is_some() && !model_info.supports_service_tier(service_tier.as_str()) {
+        return Err(format!("Service tier `{service_tier}` is not supported for model `{model}`"));
+    }
     config.service_tier = model_info
         .supports_service_tier(service_tier.as_str())
         .then_some(service_tier);
@@ -281,7 +327,7 @@ pub(crate) async fn apply_spawn_agent_service_tier(
 }
 
 async fn apply_spawn_agent_role(
-    session: &Session,
+    models_manager: &SharedModelsManager,
     config: &mut Config,
     role_name: Option<&str>,
 ) -> Result<(), String> {
@@ -299,9 +345,7 @@ async fn apply_spawn_agent_role(
     let model = config.model.clone().ok_or_else(|| {
         "spawn_agent could not resolve the child model for reasoning effort validation".to_string()
     })?;
-    let model_info = session
-        .services
-        .models_manager
+    let model_info = models_manager
         .get_model_info(&model, &config.to_models_manager_config())
         .await;
     if model_info.used_fallback_model_metadata {

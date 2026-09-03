@@ -1323,6 +1323,7 @@ fn add_collaboration_tools(context: &CoreToolPlanContext<'_>, registry: &mut Too
                             agent_type_description,
                             expose_agent_type: !turn_context.config.agent_roles.is_empty(),
                             hide_agent_type_model_reasoning: hide_spawn_agent_metadata,
+                            expose_spawn_agent_profile_override: !turn_context.config.model_provider.is_openai(),
                             expose_spawn_agent_model_overrides: turn_context
                                 .config
                                 .multi_agent_v2
@@ -1407,6 +1408,7 @@ fn add_collaboration_tools(context: &CoreToolPlanContext<'_>, registry: &mut Too
                     agent_type_description,
                     expose_agent_type: !turn_context.config.agent_roles.is_empty(),
                     hide_agent_type_model_reasoning: false,
+                    expose_spawn_agent_profile_override: !turn_context.config.model_provider.is_openai(),
                     expose_spawn_agent_model_overrides: true,
                     multi_agent_version: turn_context.multi_agent_version,
                     usage_hint_text: turn_context.config.multi_agent_v2.usage_hint_text.clone(),

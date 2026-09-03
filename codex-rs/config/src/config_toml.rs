@@ -717,6 +717,10 @@ pub struct AgentsToml {
     pub max_concurrent_threads_per_session: Option<usize>,
     /// Maximum nesting depth for V1 agent threads. Ignored by V2.
     pub max_depth: Option<i32>,
+    /// Default named user profile for spawned subagents when the spawn call does not select one.
+    /// Native OpenAI parents use the plaintext V1 spawn protocol when this is set so delegated
+    /// tasks remain readable by non-OpenAI child providers.
+    pub default_subagent_profile: Option<String>,
     /// Default model for spawned subagents when the spawn call does not select one.
     pub default_subagent_model: Option<String>,
     /// Default reasoning effort for spawned subagents when the spawn call does not select one.
