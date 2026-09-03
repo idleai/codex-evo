@@ -3058,6 +3058,64 @@ async fn slash_fork_with_name_requests_named_fork() {
 }
 
 #[tokio::test]
+async fn slash_handoff_requests_named_profile() {
+    let (mut chat, mut rx, _op_rx) = make_chatwidget_manual(/*model_override*/ None).await;
+    chat.bottom_pane
+        .set_composer_text("/handoff dsv4".to_string(), Vec::new(), Vec::new());
+
+    chat.handle_key_event(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+
+    assert_matches!(
+        rx.try_recv(),
+        Ok(AppEvent::HandoffCurrentSession {
+            profile: Some(profile)
+        }) if profile == "dsv4"
+    );
+}
+
+#[tokio::test]
+async fn slash_handoff_base_requests_base_config() {
+    let (mut chat, mut rx, _op_rx) = make_chatwidget_manual(/*model_override*/ None).await;
+    chat.bottom_pane
+        .set_composer_text("/handoff --base".to_string(), Vec::new(), Vec::new());
+
+    chat.handle_key_event(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+
+    assert_matches!(
+        rx.try_recv(),
+        Ok(AppEvent::HandoffCurrentSession { profile: None })
+    );
+}
+
+#[tokio::test]
+async fn slash_handoff_without_profile_shows_usage() {
+    let (mut chat, mut rx, _op_rx) = make_chatwidget_manual(/*model_override*/ None).await;
+
+    chat.dispatch_command(SlashCommand::Handoff);
+
+    let [cell]: [_; 1] = drain_insert_history(&mut rx).try_into().expect("one cell");
+    insta::assert_snapshot!(
+        lines_to_single_string(&cell),
+        @"• Usage: /handoff <profile> or /handoff --base"
+    );
+}
+
+#[tokio::test]
+async fn model_picker_without_handoff_catalog_explains_profile_switching() {
+    let (mut chat, mut rx, _op_rx) = make_chatwidget_manual(/*model_override*/ None).await;
+    chat.thread_id = Some(ThreadId::new());
+    chat.set_model_picker_catalog_available(false);
+
+    chat.dispatch_command(SlashCommand::Model);
+
+    let [cell]: [_; 1] = drain_insert_history(&mut rx).try_into().expect("one cell");
+    insta::assert_snapshot!(
+        lines_to_single_string(&cell),
+        @"• The model picker does not have the catalog for provider 'openai'. Use /handoff <profile> to switch providers, or /handoff --base for the base config."
+    );
+}
+
+#[tokio::test]
 async fn slash_app_requests_desktop_handoff() {
     let (mut chat, mut rx, _op_rx) = make_chatwidget_manual(/*model_override*/ None).await;
     let thread_id = ThreadId::new();

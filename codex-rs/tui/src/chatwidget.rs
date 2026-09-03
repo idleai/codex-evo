@@ -581,6 +581,7 @@ pub(crate) struct ChatWidget {
     permission_popup_request_id: Option<uuid::Uuid>,
     permission_profiles_menu_opened: bool,
     model_popup_model_ids: Vec<String>,
+    model_picker_catalog_available: bool,
     session_telemetry: SessionTelemetry,
     session_header: SessionHeader,
     initial_user_message: Option<UserMessage>,
