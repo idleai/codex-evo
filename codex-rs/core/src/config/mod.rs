@@ -875,6 +875,9 @@ pub struct Config {
     /// User-configured maximum number of spawned agent threads per session.
     pub agent_max_threads: Option<usize>,
 
+    /// Default named user profile for spawned subagents when the spawn call does not select one.
+    pub agent_default_subagent_profile: Option<String>,
+
     /// Default model for spawned subagents when the spawn call does not select one.
     pub agent_default_subagent_model: Option<String>,
 
@@ -1534,7 +1537,15 @@ impl Config {
     }
 
     pub(crate) fn multi_agent_version_override(&self) -> Option<MultiAgentVersion> {
-        if self.features.enabled(Feature::MultiAgentV2) {
+        if self.agents_enabled
+            && self.agent_default_subagent_profile.is_some()
+            && self.model_provider.is_openai()
+        {
+            // OpenAI's reserved V2 spawn schema encrypts delegated task text for
+            // OpenAI children. Cross-provider defaults need the stock V1 schema,
+            // whose message field remains plaintext for the local child provider.
+            Some(MultiAgentVersion::V1)
+        } else if self.features.enabled(Feature::MultiAgentV2) {
             Some(MultiAgentVersion::V2)
         } else if !self.agents_enabled {
             Some(MultiAgentVersion::Disabled)
@@ -3800,6 +3811,18 @@ impl Config {
             .as_ref()
             .and_then(|agents| agents.max_depth)
             .unwrap_or(DEFAULT_AGENT_MAX_DEPTH);
+        let agent_default_subagent_profile = cfg
+            .agents
+            .as_ref()
+            .and_then(|agents| agents.default_subagent_profile.clone());
+        if let Some(profile) = agent_default_subagent_profile.as_deref() {
+            profile.parse::<ProfileV2Name>().map_err(|err| {
+                std::io::Error::new(
+                    std::io::ErrorKind::InvalidInput,
+                    format!("agents.default_subagent_profile is invalid: {err}"),
+                )
+            })?;
+        }
         let agent_default_subagent_model = cfg
             .agents
             .as_ref()
@@ -4229,6 +4252,7 @@ impl Config {
             tool_output_token_limit: cfg.tool_output_token_limit,
             agents_enabled,
             agent_max_threads,
+            agent_default_subagent_profile,
             agent_default_subagent_model,
             agent_default_subagent_reasoning_effort,
             agent_max_depth,
