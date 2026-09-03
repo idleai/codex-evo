@@ -386,7 +386,7 @@ codex
 
 For example: `Spawn one subagent to inspect Cargo.toml and README.md, wait for it, and summarize its findings.`
 
-## Current active release
+## Active release before the idle rebase handoff
 
 The active standalone installation on 2026-09-03 is:
 
@@ -410,3 +410,81 @@ core run passed 3,564 of 3,567 tests, with the remaining failures caused by chec
 1,271 of 1,272 tests, with one unrelated Cursor-migration fixture failure. The TUI handoff tests
 passed, and there are no pending TUI snapshots; the broader TUI suite encountered unrelated
 environment-dependent IDE socket and global `AGENTS.md` tests.
+
+## Idle rebase and 0.151.0 release handoff
+
+On 2026-09-03, the complete custom patch stack was replayed onto the fork's `idle` branch. The
+branch now has a linear history above this exact upstream-main baseline:
+
+```text
+728cb12fe5794b0c3a8e776fb4994b1650b973a8
+```
+
+That baseline is marked by the annotated tag `codex-evo-upstream-main-20260903`. The official
+annotated `rust-v0.151.0` tag is also present locally; it peels to release commit
+`78c290807ce710180111df227df3b7a4fe845452`. The `idle` baseline is newer than that official
+release commit, so this package is intentionally an upstream-main snapshot with a `0.151.0`
+runtime identity, not a byte-for-byte derivative of the official release tag.
+
+The replay retained all ten original custom commits, followed by two integration fixes:
+
+| Area | Rebase result |
+| --- | --- |
+| Provider compatibility | Direct Responses-compatible providers retain custom header, message-role, and request-shape controls. |
+| Thread-local routing | Each thread can own its provider-specific model manager and static model catalog. |
+| Portable handoff | App-server and TUI profile handoffs preserve bounded user/assistant text while dropping provider-specific tool, reasoning, realtime, and retained-context records. |
+| Profiled subagents | OpenAI parents can route children through named profiles such as `dsv4`, with the child's provider and model catalog created independently. |
+| Service tier | Explicit spawn tier, selected-profile tier, and root preference now have stable precedence; ordinary role-local tiers cannot unexpectedly override them. |
+| Remote pairing | The longer pairing-response timeout remains in the app-server daemon client. |
+| Upstream adaptation | Current thread settings, task tools, MCP hydration, Windows proxy settings, originators, and newer rollout variants were integrated during the replay. |
+
+The final custom source is tagged with the annotated tag `codex-evo-v0.151.0-idle.1`. The old
+`dsv4-sglang-handoff` branch remains untouched as a historical reference.
+
+### Prepared standalone package
+
+```text
+/mnt/hot/ambientlight/.codex/packages/standalone/releases/0.151.0-codex-evo-idle.1-20260903-x86_64-unknown-linux-gnu
+```
+
+| Artifact | SHA-256 |
+| --- | --- |
+| `bin/codex` | `a908a0d1d25673fe3dd7da7336fffcda201d674efe5f857a189d6503f2bce56f` |
+| `bin/codex-code-mode-host` | `07aa85992de9f38606b50a7a9b31e89ced276fd3d0b605c9ee44335f974a7205` |
+
+The repository's canonical package assembler created the package with a GNU/Linux target, a
+freshly compiled and checksum-backed V8 code-mode host, and the latest installed standalone
+resource binaries. The root-level `codex -> bin/codex` compatibility entrypoint is present. Both
+the binary and `codex-package.json` report `0.151.0`.
+
+The release build temporarily changed the Cargo workspace version from `0.0.0` to `0.151.0`.
+After packaging, `Cargo.toml` and `Cargo.lock` were restored byte-for-byte to these original hashes:
+
+| File | Restored SHA-256 |
+| --- | --- |
+| `codex-rs/Cargo.toml` | `d0da87a7ea903a8bd17a61d9164cbffdbab9031d00c90f90ff040cde58feca9f` |
+| `codex-rs/Cargo.lock` | `c441d9fd25810acab8b75a489f9b61ff8e585a3215eff86e4393987587194024` |
+
+### Validation
+
+| Check | Result |
+| --- | --- |
+| Compile | `cargo check` passed for core, app-server, TUI, and app-server daemon. |
+| App-server protocol | 299 tests passed, 1 skipped. |
+| DSV4 subagent profiles | Both explicit-profile and configured-default integration tests passed. |
+| Service-tier behavior | Profile/root inheritance tests and all 40 matching service-tier tests passed. |
+| Provider catalogs and role rewriting | 7 model-catalog tests and the Responses message-role rewrite test passed. |
+| Portable handoff | The cross-provider app-server integration test passed. |
+| TUI handoff | All 3 matching slash-handoff tests passed. |
+| Remote pairing timeout | The focused daemon regression test passed. |
+| Lint and formatting | Scoped Clippy fixes completed for all affected crates; `just fmt` and `git diff --check` passed. |
+
+The restart helper is pinned to this package and verifies `codex-cli 0.151.0` before changing the
+managed `standalone/current` symlink. It was deliberately not executed from the Remote session
+that built it, because restarting that daemon would disconnect the session. Activate it from an
+ordinary SSH or local shell:
+
+```bash
+cd /mnt/hot/ambientlight/repos/codex
+./restart-custom-codex-daemon.sh
+```

@@ -1,16 +1,23 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-custom_release="/mnt/hot/ambientlight/.codex/packages/standalone/releases/0.149.0-dsv4-responses-v12-promptfix-20260902-x86_64-unknown-linux-gnu"
+custom_release="/mnt/hot/ambientlight/.codex/packages/standalone/releases/0.151.0-codex-evo-idle.1-20260903-x86_64-unknown-linux-gnu"
 standalone_dir="/mnt/hot/ambientlight/.codex/packages/standalone"
 current_link="$standalone_dir/current"
 updater_pid_file="/mnt/hot/ambientlight/.codex/app-server-daemon/app-server-updater.pid"
 package_codex="$custom_release/bin/codex"
 managed_codex="$custom_release/codex"
 installed_codex="/mnt/hot/ambientlight/.local/bin/codex"
+expected_cli_version="codex-cli 0.151.0"
 
 if [[ ! -x "$package_codex" ]]; then
     echo "Custom Codex binary is missing or not executable: $package_codex" >&2
+    exit 1
+fi
+
+actual_cli_version="$("$package_codex" --version)"
+if [[ "$actual_cli_version" != "$expected_cli_version" ]]; then
+    echo "Custom Codex version mismatch: expected '$expected_cli_version', got '$actual_cli_version'" >&2
     exit 1
 fi
 
