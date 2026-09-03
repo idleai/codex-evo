@@ -65,6 +65,7 @@ use codex_protocol::error::Result as CodexResult;
 use codex_protocol::mcp::ClientMcpExtensions;
 use codex_protocol::mcp::OPENAI_STANDARD_FORM_INPUT_EXTENSION_ID;
 use codex_protocol::openai_models::ModelPreset;
+use codex_protocol::openai_models::ModelsResponse;
 use codex_protocol::protocol::Event;
 use codex_protocol::protocol::EventMsg;
 use codex_protocol::protocol::InternalSessionSource;
@@ -409,6 +410,8 @@ pub(crate) struct ThreadManagerState {
     auth_manager: Arc<AuthManager>,
     models_manager: SharedModelsManager,
     git_root_discovery: Arc<GitRootDiscovery>,
+    model_provider: ModelProviderInfo,
+    model_catalog: Option<ModelsResponse>,
     environment_manager: Arc<EnvironmentManager>,
     starting_mcp_runtimes: std::sync::Mutex<Vec<std::sync::Weak<AtomicBool>>>,
     skills_service: Arc<HostSkillsService>,
@@ -571,6 +574,8 @@ impl ThreadManager {
                 agent_control_factory: None,
                 models_manager,
                 git_root_discovery: Arc::default(),
+                model_provider: config.model_provider.clone(),
+                model_catalog: config.model_catalog.clone(),
                 environment_manager,
                 starting_mcp_runtimes: std::sync::Mutex::new(Vec::new()),
                 skills_service,
@@ -741,9 +746,11 @@ impl ThreadManager {
                 thread_created_tx,
                 thread_id_generator: default_thread_id_generator(),
                 agent_control_factory: None,
-                models_manager: create_model_provider(provider, Some(auth_manager.clone()))
+                models_manager: create_model_provider(provider.clone(), Some(auth_manager.clone()))
                     .models_manager(codex_home, /*config_model_catalog*/ None),
                 git_root_discovery: Arc::default(),
+                model_provider: provider,
+                model_catalog: None,
                 environment_manager,
                 starting_mcp_runtimes: std::sync::Mutex::new(Vec::new()),
                 skills_service,
@@ -2253,14 +2260,21 @@ impl ThreadManagerState {
         };
         let attachment_source =
             forked_from_thread_id.filter(|_| matches!(&initial_history, InitialHistory::Forked(_)));
-        let (session, io) = Session::spawn(SessionSpawnArgs {
+        let models_manager = if config.model_provider == self.model_provider
+            && config.model_catalog == self.model_catalog
+        {
+            Arc::clone(&self.models_manager)
+        } else {
+            build_models_manager(&config, Arc::clone(&auth_manager))
+        };
+        let (session, io) = Box::pin(Session::spawn(SessionSpawnArgs {
             startup,
             config,
             allow_provider_model_fallback,
             instructions,
             installation_id: self.installation_id.clone(),
             auth_manager,
-            models_manager: Arc::clone(&self.models_manager),
+            models_manager,
             git_root_discovery: Arc::clone(&self.git_root_discovery),
             environment_manager: Arc::clone(&self.environment_manager),
             skills_service: Arc::clone(&self.skills_service),
@@ -2313,7 +2327,7 @@ impl ThreadManagerState {
                 GitEnrichmentPolicy::Fresh
             },
             windows_sandbox_proxy_settings_mode,
-        })
+        }))
         .await?;
         if let Some(source_thread_id) = attachment_source
             && session.live_thread().is_some()
