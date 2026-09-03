@@ -195,6 +195,8 @@ fn model_provider_from_proto(
         supports_websockets: provider.supports_websockets,
         supports_standalone_web_search: provider.supports_standalone_web_search,
         include_internal_metadata: false,
+        supports_namespace_tools: provider.supports_namespace_tools,
+        supports_codex_agent_messages: provider.supports_codex_agent_messages,
     };
     Ok((id, info))
 }
@@ -226,6 +228,8 @@ fn model_provider_to_proto(
         supports_websockets,
         supports_standalone_web_search,
         include_internal_metadata: _,
+        supports_namespace_tools,
+        supports_codex_agent_messages,
     } = provider;
 
     proto::ModelProvider {
@@ -248,6 +252,8 @@ fn model_provider_to_proto(
         requires_openai_auth,
         supports_websockets,
         supports_standalone_web_search,
+        supports_namespace_tools,
+        supports_codex_agent_messages,
     }
 }
 
@@ -517,6 +523,8 @@ mod tests {
                             requires_openai_auth: false,
                             supports_websockets: true,
                             supports_standalone_web_search: true,
+                            supports_namespace_tools: Some(false),
+                            supports_codex_agent_messages: Some(false),
                         }],
                         features: HashMap::from([
                             ("plugins".to_string(), false),
@@ -580,6 +588,8 @@ mod tests {
             supports_websockets: true,
             supports_standalone_web_search: true,
             gateway_oauth: None,
+            supports_namespace_tools: Some(false),
+            supports_codex_agent_messages: Some(false),
             aws: None,
             include_internal_metadata: false,
         }

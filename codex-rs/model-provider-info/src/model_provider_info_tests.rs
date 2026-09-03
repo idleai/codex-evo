@@ -97,6 +97,8 @@ base_url = "http://localhost:11434/v1"
         supports_websockets: false,
         supports_standalone_web_search: false,
         include_internal_metadata: false,
+        supports_namespace_tools: None,
+        supports_codex_agent_messages: None,
     };
 
     let provider: ModelProviderInfo = toml::from_str(azure_provider_toml).unwrap();
@@ -135,6 +137,8 @@ query_params = { api-version = "2025-04-01-preview" }
         supports_websockets: false,
         supports_standalone_web_search: false,
         include_internal_metadata: false,
+        supports_namespace_tools: None,
+        supports_codex_agent_messages: None,
     };
 
     let provider: ModelProviderInfo = toml::from_str(azure_provider_toml).unwrap();
@@ -177,10 +181,31 @@ supports_standalone_web_search = true
         supports_websockets: false,
         supports_standalone_web_search: true,
         include_internal_metadata: false,
+        supports_namespace_tools: None,
+        supports_codex_agent_messages: None,
     };
 
     let provider: ModelProviderInfo = toml::from_str(azure_provider_toml).unwrap();
     assert_eq!(expected_provider, provider);
+}
+
+#[test]
+fn test_deserialize_provider_without_codex_responses_extensions() {
+    let provider_toml = r#"
+name = "SGLang"
+base_url = "http://localhost:8000/v1"
+supports_namespace_tools = false
+supports_codex_agent_messages = false
+        "#;
+
+    let provider: ModelProviderInfo = toml::from_str(provider_toml).unwrap();
+    assert_eq!(
+        (
+            provider.supports_namespace_tools,
+            provider.supports_codex_agent_messages,
+        ),
+        (Some(false), Some(false))
+    );
 }
 
 #[test]
@@ -366,6 +391,8 @@ fn test_create_amazon_bedrock_provider() {
             supports_websockets: false,
             supports_standalone_web_search: false,
             include_internal_metadata: false,
+            supports_namespace_tools: None,
+            supports_codex_agent_messages: None,
         }
     );
 }

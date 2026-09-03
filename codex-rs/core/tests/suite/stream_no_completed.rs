@@ -71,6 +71,8 @@ async fn retries_on_early_close() {
         supports_websockets: false,
         supports_standalone_web_search: false,
         include_internal_metadata: false,
+        supports_namespace_tools: None,
+        supports_codex_agent_messages: None,
     };
 
     let TestCodex { codex, .. } = test_codex()

@@ -79,6 +79,10 @@ pub struct ModelProvider {
     pub supports_standalone_web_search: bool,
     #[prost(string, optional, tag = "19")]
     pub model_catalog_url: ::core::option::Option<::prost::alloc::string::String>,
+    #[prost(bool, optional, tag = "1001")]
+    pub supports_namespace_tools: ::core::option::Option<bool>,
+    #[prost(bool, optional, tag = "1002")]
+    pub supports_codex_agent_messages: ::core::option::Option<bool>,
 }
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct StringMap {

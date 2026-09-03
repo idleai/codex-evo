@@ -4,6 +4,7 @@ use codex_api::TextControls;
 use codex_api::create_text_param_for_request;
 use codex_models_manager::model_info::model_info_from_slug;
 use codex_protocol::config_types::ServiceTier;
+use codex_protocol::models::AgentMessageInputContent;
 use codex_protocol::models::FunctionCallOutputPayload;
 use codex_protocol::models::ImageDetail;
 use codex_protocol::models::ImageReference;
@@ -105,6 +106,44 @@ fn request_copies_project_image_details_for_receiving_model(
         );
     }
     assert_eq!(prompt.input, original);
+}
+
+#[test]
+fn rewrites_codex_agent_messages_as_user_messages() {
+    let mut input = vec![ResponseItem::AgentMessage {
+        id: None,
+        author: "/root".to_string(),
+        recipient: "/root/child".to_string(),
+        content: vec![
+            AgentMessageInputContent::InputText {
+                text: "Message Type: NEW_TASK".to_string(),
+            },
+            AgentMessageInputContent::EncryptedContent {
+                encrypted_content: "Inspect the repository.".to_string(),
+            },
+        ],
+        internal_chat_message_metadata_passthrough: None,
+    }];
+
+    rewrite_codex_agent_messages_as_user_messages(&mut input);
+
+    assert_eq!(
+        input,
+        vec![ResponseItem::Message {
+            id: None,
+            role: "user".to_string(),
+            content: vec![
+                ContentItem::InputText {
+                    text: "Message Type: NEW_TASK".to_string(),
+                },
+                ContentItem::InputText {
+                    text: "Inspect the repository.".to_string(),
+                },
+            ],
+            phase: None,
+            internal_chat_message_metadata_passthrough: None,
+        }]
+    );
 }
 
 #[test]
