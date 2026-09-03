@@ -51,11 +51,13 @@ use codex_app_server_protocol::UserInput;
 use codex_config::types::AuthCredentialsStoreMode;
 use codex_features::Feature;
 use codex_login::REFRESH_TOKEN_URL_OVERRIDE_ENV_VAR;
+use codex_models_manager::model_info::model_info_from_slug;
 use codex_protocol::ThreadId;
 use codex_protocol::items::TurnItem as CoreTurnItem;
 use codex_protocol::items::UserMessageItem;
 use codex_protocol::models::ContentItem;
 use codex_protocol::models::ResponseItem;
+use codex_protocol::openai_models::ModelsResponse;
 use codex_protocol::protocol::EventMsg;
 use codex_protocol::protocol::ItemCompletedEvent;
 use codex_protocol::protocol::MultiAgentVersion;
@@ -285,6 +287,242 @@ async fn thread_fork_creates_new_thread_and_emits_started() -> Result<()> {
     let mut expected_started_thread = thread;
     expected_started_thread.turns.clear();
     assert_eq!(started.thread, expected_started_thread);
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn thread_fork_portable_profile_handoff_switches_provider_and_broadcasts_thread() -> Result<()>
+{
+    let source_server = create_mock_responses_server_repeating_assistant("source").await;
+    let target_server = create_mock_responses_server_repeating_assistant("target").await;
+    let codex_home = TempDir::new()?;
+    MockResponsesConfig::new(&source_server.uri()).write(codex_home.path())?;
+
+    let catalog_path = codex_home.path().join("dsv4-models.json");
+    std::fs::write(
+        &catalog_path,
+        serde_json::to_vec_pretty(&ModelsResponse {
+            models: vec![model_info_from_slug("deepseek-v4-flash")],
+        })?,
+    )?;
+    std::fs::write(
+        codex_home.path().join("dsv4.config.toml"),
+        format!(
+            r#"
+model = "deepseek-v4-flash"
+model_provider = "sglang_dsv4"
+model_catalog_json = "{}"
+model_reasoning_effort = "medium"
+
+[model_providers.sglang_dsv4]
+name = "Local SGLang DSV4"
+base_url = "{}/v1"
+wire_api = "responses"
+requires_openai_auth = false
+request_max_retries = 0
+stream_max_retries = 0
+"#,
+            catalog_path.display(),
+            target_server.uri(),
+        ),
+    )?;
+
+    let source_thread_id = create_fake_rollout(
+        codex_home.path(),
+        "2025-01-05T12-00-00",
+        "2025-01-05T12:00:00Z",
+        "Keep this user message",
+        Some("mock_provider"),
+        /*git_info*/ None,
+    )?;
+    let source_path = rollout_path(codex_home.path(), "2025-01-05T12-00-00", &source_thread_id);
+    append_rollout_item_to_path(
+        &source_path,
+        &RolloutItem::ResponseItem(
+            ResponseItem::FunctionCall {
+                id: None,
+                name: "web_search".to_string(),
+                namespace: None,
+                arguments: "{\"query\":\"provider-specific\"}".to_string(),
+                encrypted_function_args: None,
+                call_id: "source-call".to_string(),
+                internal_chat_message_metadata_passthrough: None,
+            }
+            .into(),
+        ),
+    )
+    .await?;
+    append_rollout_item_to_path(
+        &source_path,
+        &RolloutItem::ResponseItem(
+            ResponseItem::Message {
+                id: None,
+                role: "assistant".to_string(),
+                content: vec![ContentItem::OutputText {
+                    text: "Keep this assistant message".to_string(),
+                }],
+                phase: None,
+                internal_chat_message_metadata_passthrough: None,
+            }
+            .into(),
+        ),
+    )
+    .await?;
+    append_rollout_item_to_path(
+        &source_path,
+        &RolloutItem::EventMsg(EventMsg::TurnComplete(TurnCompleteEvent {
+            turn_id: "source-turn".to_string(),
+            last_agent_message: None,
+            error: None,
+            started_at: None,
+            completed_at: None,
+            duration_ms: None,
+            time_to_first_token_ms: None,
+        })),
+    )
+    .await?;
+
+    let mut mcp = TestAppServer::builder()
+        .with_codex_home(codex_home.path())
+        .without_managed_config()
+        .build_initialized()
+        .await?;
+    let fork_id = mcp
+        .send_thread_fork_request(ThreadForkParams {
+            thread_id: source_thread_id.clone(),
+            profile: Some(Some("dsv4".to_string())),
+            portable_history: true,
+            thread_source: Some(ThreadSource::User),
+            ..Default::default()
+        })
+        .await?;
+    let response: ThreadForkResponse =
+        timeout(DEFAULT_READ_TIMEOUT, mcp.read_response(fork_id)).await??;
+
+    assert_eq!(response.model, "deepseek-v4-flash");
+    assert_eq!(response.model_provider, "sglang_dsv4");
+    assert_eq!(
+        response.thread.forked_from_id.as_deref(),
+        Some(source_thread_id.as_str())
+    );
+    assert!(response.thread.turns.iter().all(|turn| {
+        turn.items.iter().all(|item| {
+            matches!(
+                item,
+                ThreadItem::UserMessage { .. } | ThreadItem::AgentMessage { .. }
+            )
+        })
+    }));
+
+    let started = timeout(
+        DEFAULT_READ_TIMEOUT,
+        mcp.read_stream_until_notification_message("thread/started"),
+    )
+    .await??;
+    let started: ThreadStartedNotification =
+        serde_json::from_value(started.params.expect("thread/started params"))?;
+    assert_eq!(started.thread.id, response.thread.id);
+    assert_eq!(started.thread.model_provider, "sglang_dsv4");
+
+    let turn_id = mcp
+        .send_turn_start_request(TurnStartParams {
+            thread_id: response.thread.id.clone(),
+            input: vec![UserInput::Text {
+                text: "Continue on the target".to_string(),
+                text_elements: Vec::new(),
+            }],
+            ..Default::default()
+        })
+        .await?;
+    let _: TurnStartResponse = timeout(DEFAULT_READ_TIMEOUT, mcp.read_response(turn_id)).await??;
+    timeout(
+        DEFAULT_READ_TIMEOUT,
+        mcp.read_stream_until_notification_message("turn/completed"),
+    )
+    .await??;
+
+    let requests = target_server
+        .received_requests()
+        .await
+        .expect("target response requests");
+    let request = requests
+        .iter()
+        .find(|request| request.url.path().ends_with("/responses"))
+        .expect("target model request");
+    let request_body = request.body_json::<Value>()?;
+    assert_eq!(request_body["model"], "deepseek-v4-flash");
+    let input = request_body["input"].to_string();
+    assert!(input.contains("Keep this user message"));
+    assert!(input.contains("Keep this assistant message"));
+    assert!(input.contains("Continue on the target"));
+    assert!(!input.contains("source-call"));
+    assert!(!input.contains("provider-specific"));
+
+    let back_fork_id = mcp
+        .send_thread_fork_request(ThreadForkParams {
+            thread_id: response.thread.id.clone(),
+            profile: Some(None),
+            portable_history: true,
+            thread_source: Some(ThreadSource::User),
+            ..Default::default()
+        })
+        .await?;
+    let back_response: ThreadForkResponse =
+        timeout(DEFAULT_READ_TIMEOUT, mcp.read_response(back_fork_id)).await??;
+    assert_eq!(back_response.model, "mock-model");
+    assert_eq!(back_response.model_provider, "mock_provider");
+    assert_eq!(
+        back_response.thread.forked_from_id.as_deref(),
+        Some(response.thread.id.as_str())
+    );
+
+    let back_started = timeout(
+        DEFAULT_READ_TIMEOUT,
+        mcp.read_stream_until_notification_message("thread/started"),
+    )
+    .await??;
+    let back_started: ThreadStartedNotification =
+        serde_json::from_value(back_started.params.expect("thread/started params"))?;
+    assert_eq!(back_started.thread.id, back_response.thread.id);
+    assert_eq!(back_started.thread.model_provider, "mock_provider");
+
+    let back_turn_id = mcp
+        .send_turn_start_request(TurnStartParams {
+            thread_id: back_response.thread.id,
+            input: vec![UserInput::Text {
+                text: "Continue on the base provider".to_string(),
+                text_elements: Vec::new(),
+            }],
+            ..Default::default()
+        })
+        .await?;
+    let _: TurnStartResponse =
+        timeout(DEFAULT_READ_TIMEOUT, mcp.read_response(back_turn_id)).await??;
+    timeout(
+        DEFAULT_READ_TIMEOUT,
+        mcp.read_stream_until_notification_message("turn/completed"),
+    )
+    .await??;
+
+    let source_requests = source_server
+        .received_requests()
+        .await
+        .expect("source response requests");
+    let source_request = source_requests
+        .iter()
+        .find(|request| request.url.path().ends_with("/responses"))
+        .expect("base model request after return handoff");
+    let source_request_body = source_request.body_json::<Value>()?;
+    assert_eq!(source_request_body["model"], "mock-model");
+    let source_input = source_request_body["input"].to_string();
+    assert!(source_input.contains("Keep this user message"));
+    assert!(source_input.contains("Keep this assistant message"));
+    assert!(source_input.contains("Continue on the target"));
+    assert!(source_input.contains("target"));
+    assert!(source_input.contains("Continue on the base provider"));
+    assert!(!source_input.contains("source-call"));
+    assert!(!source_input.contains("provider-specific"));
 
     Ok(())
 }
