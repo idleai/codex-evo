@@ -115,9 +115,11 @@ async fn handle_spawn_agent(
     } else {
         std::sync::Arc::clone(&session.services.models_manager)
     };
-    if let Some(service_tier) = args.service_tier.as_ref() {
-        config.service_tier = Some(service_tier.clone());
-    }
+    let child_service_tier = args.service_tier.clone().or_else(|| {
+        selected_profile
+            .as_ref()
+            .and_then(|_| config.service_tier.clone())
+    });
     if args.fork_context {
         reject_full_fork_agent_type_override(role_name)?;
     }
@@ -144,6 +146,7 @@ async fn handle_spawn_agent(
     if !args.fork_context {
         apply_spawn_agent_role(&models_manager, &mut config, role_name).await?;
     }
+    config.service_tier = child_service_tier;
     let parent_service_tier = session.services.agent_control.root_service_tier();
     apply_spawn_agent_service_tier(
         &models_manager,

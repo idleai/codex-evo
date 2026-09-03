@@ -151,9 +151,11 @@ async fn handle_spawn_agent(
     } else {
         std::sync::Arc::clone(&session.services.models_manager)
     };
-    if let Some(service_tier) = args.service_tier.as_ref() {
-        config.service_tier = Some(service_tier.clone());
-    }
+    let child_service_tier = args.service_tier.clone().or_else(|| {
+        selected_profile
+            .as_ref()
+            .and_then(|_| config.service_tier.clone())
+    });
     let is_full_history_fork = matches!(fork_mode, Some(SpawnAgentForkMode::FullHistory));
     let profile_model = selected_profile.as_ref().and_then(|_| config.model.clone());
     let requested_model = args.model.as_deref().or(profile_model.as_deref());
@@ -183,6 +185,7 @@ async fn handle_spawn_agent(
                 .clone_from(&turn.developer_instructions);
         }
     }
+    config.service_tier = child_service_tier;
     let parent_service_tier = session.services.agent_control.root_service_tier();
     apply_spawn_agent_service_tier(
         &models_manager,
