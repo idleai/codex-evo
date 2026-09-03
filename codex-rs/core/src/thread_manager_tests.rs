@@ -16,6 +16,7 @@ use codex_extension_api::empty_extension_registry;
 use codex_history::InitialHistory;
 use codex_history::ResumedHistory;
 use codex_models_manager::manager::RefreshStrategy;
+use codex_models_manager::model_info::model_info_from_slug;
 use codex_protocol::ResponseItemId;
 use codex_protocol::capabilities::CapabilityRootLocation;
 use codex_protocol::capabilities::SelectedCapabilityRoot;
@@ -2266,6 +2267,63 @@ async fn injected_models_manager_controls_refresh_policy() {
         2
     );
     assert!(!config.codex_home.join("models_cache.json").exists());
+}
+
+#[tokio::test]
+async fn thread_with_different_provider_uses_its_own_model_catalog() {
+    let temp_dir = tempdir().expect("tempdir");
+    let mut config = test_config().await;
+    config.codex_home = temp_dir.path().join("codex-home").abs();
+    config.cwd = config.codex_home.abs();
+    std::fs::create_dir_all(&config.codex_home).expect("create codex home");
+
+    let auth_manager = AuthManager::from_auth_for_testing(CodexAuth::from_api_key("dummy"));
+    let manager = ThreadManager::new(
+        &config,
+        Arc::clone(&auth_manager),
+        build_models_manager(&config, auth_manager),
+        crate::CodexAppsToolsCache::default(),
+        SessionSource::Exec,
+        Arc::new(codex_exec_server::EnvironmentManager::default_for_tests()),
+        empty_extension_registry(),
+        Arc::new(crate::test_support::EmptyUserInstructionsProvider),
+        /*analytics_events_client*/ None,
+        thread_store_from_config(&config, /*state_db*/ None),
+        /*agent_graph_store*/ None,
+        TEST_INSTALLATION_ID.to_string(),
+        /*attestation_provider*/ None,
+        /*external_time_provider*/ None,
+    );
+
+    let target_model = "deepseek-v4-flash";
+    let mut target_config = config;
+    target_config.model = Some(target_model.to_string());
+    target_config.model_provider.name = "Local SGLang DSV4".to_string();
+    target_config.model_provider.base_url = Some("http://127.0.0.1:8000/v1".to_string());
+    target_config.model_provider_id = "sglang_dsv4".to_string();
+    target_config.model_catalog = Some(ModelsResponse {
+        models: vec![model_info_from_slug(target_model)],
+    });
+
+    let thread = manager
+        .start_thread(StartThreadOptions::new(target_config))
+        .await
+        .expect("start target-provider thread");
+    let models = thread
+        .thread
+        .session
+        .services
+        .models_manager
+        .try_list_models()
+        .expect("target catalog should be available without locking");
+
+    assert_eq!(
+        models
+            .iter()
+            .map(|model| model.model.as_str())
+            .collect::<Vec<_>>(),
+        vec![target_model]
+    );
 }
 
 #[test]
