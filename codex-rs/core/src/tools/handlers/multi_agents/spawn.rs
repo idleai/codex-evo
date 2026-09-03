@@ -100,8 +100,11 @@ async fn handle_spawn_agent(
         step_context.as_ref(),
         SpawnConfigOptions {
             version: SpawnConfigVersion::V1,
-            full_history_fork: args.fork_context,
+            fork_mode: args.fork_context.then_some(SpawnAgentForkMode::FullHistory),
+            explicit_fork: args.fork_context,
             role_name,
+            profile: args.profile.as_deref(),
+            service_tier: args.service_tier.as_deref(),
             model: args.model.as_deref(),
             reasoning_effort: args.reasoning_effort.clone(),
         },
@@ -109,7 +112,7 @@ async fn handle_spawn_agent(
     .await
     .map_err(FunctionCallError::RespondToModel)?;
     let config = prepared.config;
-    let fork_mode = args.fork_context.then_some(SpawnAgentForkMode::FullHistory);
+    let fork_mode = prepared.fork_mode;
     let result = session
         .services
         .agent_control
@@ -218,6 +221,8 @@ struct SpawnAgentArgs {
     message: Option<String>,
     items: Option<Vec<UserInput>>,
     agent_type: Option<String>,
+    profile: Option<String>,
+    service_tier: Option<String>,
     model: Option<String>,
     reasoning_effort: Option<ReasoningEffort>,
     #[serde(default)]

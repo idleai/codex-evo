@@ -135,8 +135,11 @@ async fn handle_spawn_agent(
         step_context.as_ref(),
         SpawnConfigOptions {
             version: SpawnConfigVersion::V2,
-            full_history_fork: matches!(fork_mode, Some(SpawnAgentForkMode::FullHistory)),
+            fork_mode,
+            explicit_fork: args.fork_turns.is_some(),
             role_name,
+            profile: args.profile.as_deref(),
+            service_tier: args.service_tier.as_deref(),
             model: args.model.as_deref(),
             reasoning_effort: args.reasoning_effort.clone(),
         },
@@ -144,6 +147,7 @@ async fn handle_spawn_agent(
     .await
     .map_err(FunctionCallError::RespondToModel)?;
     let config = prepared.config;
+    let fork_mode = prepared.fork_mode;
     let is_full_history_fork = matches!(fork_mode, Some(SpawnAgentForkMode::FullHistory));
     let spawn_source = thread_spawn_source(
         session.thread_id,
@@ -161,9 +165,7 @@ async fn handle_spawn_agent(
         if is_full_history_fork && turn.multi_agent_version == MultiAgentVersion::V2 {
             let child_model_info = match config.model.as_deref() {
                 Some(model) if model != turn.model_info().slug => Some(
-                    session
-                        .services
-                        .models_manager
+                    prepared.models_manager
                         .get_model_info(model, &config.to_models_manager_config())
                         .await,
                 ),
@@ -264,6 +266,8 @@ struct SpawnAgentArgs {
     message: String,
     task_name: String,
     agent_type: Option<String>,
+    profile: Option<String>,
+    service_tier: Option<String>,
     model: Option<String>,
     reasoning_effort: Option<ReasoningEffort>,
     fork_turns: Option<String>,
