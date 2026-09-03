@@ -151,6 +151,16 @@ impl ChatWidget {
         self.status_line_project_root_name_cache = None;
         let forked_from_id = session.forked_from_id;
         let default_model = session.model.clone();
+        self.config.model = Some(default_model.clone());
+        if let Some(model_provider) = self
+            .config
+            .model_providers
+            .get(&session.model_provider_id)
+            .cloned()
+        {
+            self.config.model_provider_id = session.model_provider_id.clone();
+            self.config.model_provider = model_provider;
+        }
         self.current_collaboration_mode = self.current_collaboration_mode.with_updates(
             Some(default_model.clone()),
             Some(session.reasoning_effort.clone()),

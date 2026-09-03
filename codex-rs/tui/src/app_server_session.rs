@@ -892,6 +892,45 @@ impl AppServerSession {
         .await
     }
 
+    /// Fork the visible conversation through a profile selected on the app-server host.
+    ///
+    /// Unlike a regular fork, this deliberately omits client-side model and provider overrides
+    /// and requests a provider-neutral text projection of the source history.
+    pub(crate) async fn handoff_thread(
+        &mut self,
+        local_settings: &LocalSettings,
+        config: Config,
+        thread_id: ThreadId,
+        profile: Option<String>,
+    ) -> Result<AppServerStartedThread> {
+        let fork_parent = self
+            .thread_read(thread_id, /*include_turns*/ false)
+            .await
+            .ok();
+        let exclude_turns = self.history_support == ThreadHistorySupport::Paginated
+            && fork_parent
+                .as_ref()
+                .is_some_and(|thread| thread.history_mode == ThreadHistoryMode::Paginated);
+        let params = ThreadForkParams {
+            thread_id: thread_id.to_string(),
+            profile: Some(profile),
+            portable_history: true,
+            exclude_turns,
+            thread_source: Some(ThreadSource::User),
+            ..ThreadForkParams::default()
+        };
+        self.request_fork_thread(
+            local_settings,
+            config,
+            thread_id,
+            fork_parent,
+            params,
+            ForkPresentation::Regular,
+            ThreadParamsMode::Remote,
+        )
+        .await
+    }
+
     #[expect(
         clippy::too_many_arguments,
         reason = "keep local preferences separate while the legacy Config parameter is still required"
@@ -921,7 +960,6 @@ impl AppServerSession {
                 .as_ref()
                 .is_some_and(|thread| thread.history_mode == ThreadHistoryMode::Paginated)
                 || presentation == ForkPresentation::SideConversation);
-        let request_id = self.next_request_id();
         let session_config = if config.model.is_none() {
             // Avoid inferring a tier from the stale client default model.
             config.clone()
@@ -963,6 +1001,33 @@ impl AppServerSession {
         }
         self.thread_tool_transport()
             .configure_mcp(&mut params.config);
+        self.request_fork_thread(
+            local_settings,
+            config,
+            thread_id,
+            fork_parent,
+            params,
+            presentation,
+            self.thread_params_mode(),
+        )
+        .await
+    }
+
+    #[expect(
+        clippy::too_many_arguments,
+        reason = "the helper preserves the source thread and local hydration settings"
+    )]
+    async fn request_fork_thread(
+        &mut self,
+        local_settings: &LocalSettings,
+        config: Config,
+        source_thread_id: ThreadId,
+        fork_parent: Option<Thread>,
+        mut params: ThreadForkParams,
+        presentation: ForkPresentation,
+        response_thread_params_mode: ThreadParamsMode,
+    ) -> Result<AppServerStartedThread> {
+        let request_id = self.next_request_id();
         let response: ThreadForkResponse = match self
             .client
             .request_typed(ClientRequest::ThreadFork {
@@ -1016,11 +1081,11 @@ impl AppServerSession {
             response,
             local_settings,
             &config,
-            self.thread_params_mode(),
+            response_thread_params_mode,
         )
         .await?;
         started.session.fork_parent_title = fork_parent.and_then(|thread| thread.name);
-        if self.task_tools_available(thread_id) {
+        if self.task_tools_available(source_thread_id) {
             started.task_tools_available = true;
             self.remember_task_tool_thread(started.session.thread_id);
         }

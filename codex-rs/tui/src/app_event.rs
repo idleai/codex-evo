@@ -598,6 +598,12 @@ pub(crate) enum AppEvent {
         name: Option<String>,
     },
 
+    /// Continue the visible conversation in a linked fork using a server-side config profile.
+    /// `None` selects the base config instead of a named profile.
+    HandoffCurrentSession {
+        profile: Option<String>,
+    },
+
     /// Revert before a selected prompt, retaining its identity across queued history pages.
     RevertSessionForPromptEdit {
         thread_id: ThreadId,

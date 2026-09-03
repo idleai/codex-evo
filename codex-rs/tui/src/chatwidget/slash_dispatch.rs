@@ -37,6 +37,7 @@ const SIDE_STARTING_CONTEXT_LABEL: &str = "Side starting...";
 const SIDE_SLASH_COMMAND_UNAVAILABLE_HINT: &str =
     "Press Ctrl+C to return to the main thread first.";
 const GOAL_USAGE_HINT: &str = "Example: /goal improve benchmark coverage";
+const HANDOFF_USAGE: &str = "Usage: /handoff <profile> or /handoff --base";
 const RAW_USAGE: &str = "Usage: /raw [on|off]";
 const USAGE_CHATGPT_LOGIN_REQUIRED: &str = "Sign in with ChatGPT to use /usage.";
 
@@ -276,6 +277,9 @@ impl ChatWidget {
             }
             SlashCommand::Worktree => {
                 self.show_managed_worktree_picker();
+            }
+            SlashCommand::Handoff => {
+                self.add_info_message(HANDOFF_USAGE.to_string(), /*hint*/ None);
             }
             SlashCommand::App => {
                 let Some(thread_id) = self.thread_id else {
@@ -862,6 +866,21 @@ impl ChatWidget {
                     Some(trimmed.to_string()),
                 );
             }
+            SlashCommand::Handoff if !trimmed.is_empty() => {
+                let profile = if trimmed == "--base" {
+                    None
+                } else if trimmed
+                    .bytes()
+                    .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'_' | b'-'))
+                {
+                    Some(trimmed.to_string())
+                } else {
+                    self.add_error_message(HANDOFF_USAGE.to_string());
+                    return;
+                };
+                self.app_event_tx
+                    .send(AppEvent::HandoffCurrentSession { profile });
+            }
             SlashCommand::Plan if !trimmed.is_empty() => {
                 let plan_available = self.apply_plan_slash_command();
                 let mut user_message = self.prepared_inline_user_message(
@@ -1251,6 +1270,7 @@ impl ChatWidget {
             | SlashCommand::Clear
             | SlashCommand::Resume
             | SlashCommand::Fork
+            | SlashCommand::Handoff
             | SlashCommand::Init
             | SlashCommand::Compact
             | SlashCommand::Review

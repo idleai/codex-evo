@@ -1533,6 +1533,16 @@ impl App {
         turns: Vec<Turn>,
         presentation: ThreadAttachPresentation,
     ) -> Result<()> {
+        self.config.model = Some(session.model.clone());
+        if let Some(model_provider) = self
+            .config
+            .model_providers
+            .get(&session.model_provider_id)
+            .cloned()
+        {
+            self.config.model_provider_id = session.model_provider_id.clone();
+            self.config.model_provider = model_provider;
+        }
         if let Err(err) = self
             .config
             .permissions

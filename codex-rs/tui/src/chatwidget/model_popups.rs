@@ -32,11 +32,28 @@ impl ChatWidget {
                 return;
             }
         };
+        if !self.model_picker_catalog_available {
+            self.add_info_message(
+                format!(
+                    "The model picker does not have the catalog for provider '{}'.",
+                    self.config.model_provider_id
+                ),
+                /*hint*/ Some(
+                    "Use /handoff <profile> to switch providers, or /handoff --base for the base config."
+                        .to_string(),
+                ),
+            );
+            return;
+        }
         let request_id = uuid::Uuid::new_v4();
         self.model_popup_request_id = Some(request_id);
         self.open_model_popup_with_presets(presets);
         // Show cached choices immediately and update any still-present picker when the reply arrives.
         self.app_event_tx.send(AppEvent::FetchModels { request_id });
+    }
+
+    pub(crate) fn set_model_picker_catalog_available(&mut self, available: bool) {
+        self.model_picker_catalog_available = available;
     }
 
     pub(super) fn model_menu_header(&self, title: &str, subtitle: &str) -> Box<dyn Renderable> {
