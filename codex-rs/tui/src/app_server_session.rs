@@ -694,6 +694,42 @@ impl AppServerSession {
         .await
     }
 
+    /// Fork the visible conversation through a profile selected on the app-server host.
+    ///
+    /// Unlike a regular fork, this deliberately omits client-side model and provider overrides
+    /// and requests a provider-neutral text projection of the source history.
+    pub(crate) async fn handoff_thread(
+        &mut self,
+        config: Config,
+        thread_id: ThreadId,
+        profile: Option<String>,
+    ) -> Result<AppServerStartedThread> {
+        let fork_parent = self
+            .thread_read(thread_id, /*include_turns*/ false)
+            .await
+            .ok();
+        let exclude_turns = self.history_support == ThreadHistorySupport::Paginated
+            && fork_parent
+                .as_ref()
+                .is_some_and(|thread| thread.history_mode == ThreadHistoryMode::Paginated);
+        let params = ThreadForkParams {
+            thread_id: thread_id.to_string(),
+            profile: Some(profile),
+            portable_history: true,
+            exclude_turns,
+            thread_source: Some(ThreadSource::User),
+            ..ThreadForkParams::default()
+        };
+        self.request_fork_thread(
+            config,
+            fork_parent,
+            params,
+            ForkPresentation::Regular,
+            ThreadParamsMode::Remote,
+        )
+        .await
+    }
+
     async fn fork_thread_at_with_presentation(
         &mut self,
         config: Config,
@@ -715,9 +751,8 @@ impl AppServerSession {
                 .as_ref()
                 .is_some_and(|thread| thread.history_mode == ThreadHistoryMode::Paginated)
                 || presentation == ForkPresentation::SideConversation);
-        let request_id = self.next_request_id();
         let session_config = self.session_config_with_effective_service_tier(&config);
-        let mut params = ThreadForkParams {
+        let params = ThreadForkParams {
             last_turn_id,
             before_turn_id,
             defer_goal_continuation: goal_continuation == ForkGoalContinuation::DeferUntilNextTurn,
@@ -729,6 +764,25 @@ impl AppServerSession {
                 self.remote_cwd_override.as_deref(),
             )
         };
+        self.request_fork_thread(
+            config,
+            fork_parent,
+            params,
+            presentation,
+            self.thread_params_mode(),
+        )
+        .await
+    }
+
+    async fn request_fork_thread(
+        &mut self,
+        config: Config,
+        fork_parent: Option<Thread>,
+        mut params: ThreadForkParams,
+        presentation: ForkPresentation,
+        response_thread_params_mode: ThreadParamsMode,
+    ) -> Result<AppServerStartedThread> {
+        let request_id = self.next_request_id();
         let response: ThreadForkResponse = match self
             .client
             .request_typed(ClientRequest::ThreadFork {
@@ -778,7 +832,8 @@ impl AppServerSession {
             );
         }
         let mut started =
-            started_thread_from_fork_response(response, &config, self.thread_params_mode()).await?;
+            started_thread_from_fork_response(response, &config, response_thread_params_mode)
+                .await?;
         started.session.fork_parent_title = fork_parent.and_then(|thread| thread.name);
         Ok(started)
     }

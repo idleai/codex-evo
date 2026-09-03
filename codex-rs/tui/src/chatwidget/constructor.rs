@@ -119,6 +119,7 @@ impl ChatWidget {
             has_chatgpt_account,
             has_codex_backend_auth,
             model_catalog,
+            model_picker_catalog_available: true,
             session_telemetry,
             session_header: SessionHeader::new(header_model),
             initial_user_message,

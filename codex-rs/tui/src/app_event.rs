@@ -375,6 +375,12 @@ pub(crate) enum AppEvent {
         name: Option<String>,
     },
 
+    /// Continue the visible conversation in a linked fork using a server-side config profile.
+    /// `None` selects the base config instead of a named profile.
+    HandoffCurrentSession {
+        profile: Option<String>,
+    },
+
     /// Branch before a selected prompt and reopen it in the new thread's composer.
     ForkSessionForPromptEdit {
         thread_id: ThreadId,

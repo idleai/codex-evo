@@ -29,7 +29,24 @@ impl ChatWidget {
                 return;
             }
         };
+        if !self.model_picker_catalog_available {
+            self.add_info_message(
+                format!(
+                    "The model picker does not have the catalog for provider '{}'.",
+                    self.config.model_provider_id
+                ),
+                /*hint*/ Some(
+                    "Use /handoff <profile> to switch providers, or /handoff --base for the base config."
+                        .to_string(),
+                ),
+            );
+            return;
+        }
         self.open_model_popup_with_presets(presets);
+    }
+
+    pub(crate) fn set_model_picker_catalog_available(&mut self, available: bool) {
+        self.model_picker_catalog_available = available;
     }
 
     fn model_menu_header(&self, title: &str, subtitle: &str) -> Box<dyn Renderable> {
