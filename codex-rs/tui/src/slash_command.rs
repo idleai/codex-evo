@@ -34,6 +34,7 @@ pub enum SlashCommand {
     Resume,
     Fork,
     Worktree,
+    Handoff,
     App,
     Init,
     Compact,
@@ -102,6 +103,7 @@ impl SlashCommand {
             SlashCommand::Clear => "clear the terminal and start a new chat",
             SlashCommand::Fork => "fork the current chat",
             SlashCommand::Worktree => "start or continue a conversation in a new worktree",
+            SlashCommand::Handoff => "continue this chat through another config profile",
             SlashCommand::App => "continue this session in the Desktop app",
             SlashCommand::Quit | SlashCommand::Exit => "exit Codex",
             SlashCommand::Copy => "copy the last response or part of it",
@@ -171,6 +173,7 @@ impl SlashCommand {
                 | SlashCommand::New
                 | SlashCommand::Clear
                 | SlashCommand::Fork
+                | SlashCommand::Handoff
                 | SlashCommand::Plan
                 | SlashCommand::Goal
                 | SlashCommand::Voice
@@ -243,6 +246,7 @@ impl SlashCommand {
             | SlashCommand::Delete
             | SlashCommand::Fork
             | SlashCommand::Worktree
+            | SlashCommand::Handoff
             | SlashCommand::Init
             | SlashCommand::Compact
             | SlashCommand::Recap
