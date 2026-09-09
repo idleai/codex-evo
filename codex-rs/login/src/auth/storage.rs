@@ -17,6 +17,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::Mutex;
 use tracing::warn;
+use url::Url;
 
 use super::BedrockAccessKeysAuth;
 use super::BedrockApiKeyAuth;
@@ -58,10 +59,151 @@ pub struct AuthDotJson {
     pub personal_access_token: Option<String>,
 
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub github_copilot: Option<GitHubCopilotAuth>,
+
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub bedrock_api_key: Option<BedrockApiKeyAuth>,
 
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub bedrock_access_keys: Option<BedrockAccessKeysAuth>,
+}
+
+/// Persisted GitHub credential and the Copilot inference boundary discovered at login.
+#[derive(Deserialize, Serialize, Clone, PartialEq, Eq)]
+pub struct GitHubCopilotAuth {
+    access_token: String,
+    api_endpoint: String,
+    login: Option<String>,
+    copilot_sku: Option<String>,
+    models: Vec<String>,
+}
+
+impl GitHubCopilotAuth {
+    pub fn new(
+        access_token: String,
+        api_endpoint: String,
+        login: Option<String>,
+        copilot_sku: Option<String>,
+        models: Vec<String>,
+    ) -> std::io::Result<Self> {
+        let access_token = access_token.trim().to_string();
+        if access_token.is_empty() {
+            return Err(std::io::Error::other(
+                "GitHub Copilot auth is missing an access token",
+            ));
+        }
+
+        let api_endpoint = api_endpoint.trim().trim_end_matches('/').to_string();
+        if api_endpoint.is_empty() {
+            return Err(std::io::Error::other(
+                "GitHub Copilot auth is missing an API endpoint",
+            ));
+        }
+
+        let mut normalized_models = Vec::new();
+        for model in models {
+            let model = model.trim().to_string();
+            if !model.is_empty() && !normalized_models.contains(&model) {
+                normalized_models.push(model);
+            }
+        }
+        let models = normalized_models;
+        if models.is_empty() {
+            return Err(std::io::Error::other(
+                "GitHub Copilot did not advertise an OpenAI model with Responses API support",
+            ));
+        }
+
+        let auth = Self {
+            access_token,
+            api_endpoint,
+            login: login
+                .map(|login| login.trim().to_string())
+                .filter(|login| !login.is_empty()),
+            copilot_sku: copilot_sku
+                .map(|sku| sku.trim().to_string())
+                .filter(|sku| !sku.is_empty()),
+            models,
+        };
+        auth.validate()?;
+        Ok(auth)
+    }
+
+    pub fn access_token(&self) -> &str {
+        &self.access_token
+    }
+
+    pub fn api_endpoint(&self) -> &str {
+        &self.api_endpoint
+    }
+
+    pub fn login(&self) -> Option<&str> {
+        self.login.as_deref()
+    }
+
+    pub fn copilot_sku(&self) -> Option<&str> {
+        self.copilot_sku.as_deref()
+    }
+
+    pub fn models(&self) -> &[String] {
+        &self.models
+    }
+
+    pub fn default_model(&self) -> &str {
+        &self.models[0]
+    }
+
+    /// Validates the complete persisted credential boundary after deserialization.
+    pub fn validate(&self) -> std::io::Result<()> {
+        if self.access_token.trim().is_empty() {
+            return Err(std::io::Error::other(
+                "GitHub Copilot auth is missing an access token",
+            ));
+        }
+        if self.models.is_empty() || self.models.iter().any(|model| model.trim().is_empty()) {
+            return Err(std::io::Error::other(
+                "GitHub Copilot auth has no valid Responses API models",
+            ));
+        }
+        self.validate_api_endpoint()?;
+        Ok(())
+    }
+
+    /// Rejects endpoints that could exfiltrate the GitHub credential outside Copilot.
+    pub fn validate_api_endpoint(&self) -> std::io::Result<Url> {
+        let endpoint = Url::parse(&self.api_endpoint).map_err(|err| {
+            std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                format!("invalid GitHub Copilot API endpoint: {err}"),
+            )
+        })?;
+        let host = endpoint.host_str().unwrap_or_default();
+        if endpoint.scheme() != "https"
+            || !(host == "githubcopilot.com" || host.ends_with(".githubcopilot.com"))
+            || !endpoint.username().is_empty()
+            || endpoint.password().is_some()
+            || endpoint.query().is_some()
+            || endpoint.fragment().is_some()
+        {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::PermissionDenied,
+                "GitHub Copilot API endpoint must be an HTTPS githubcopilot.com URL without credentials, query, or fragment",
+            ));
+        }
+        Ok(endpoint)
+    }
+}
+
+impl Debug for GitHubCopilotAuth {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("GitHubCopilotAuth")
+            .field("access_token", &"<redacted>")
+            .field("api_endpoint", &self.api_endpoint)
+            .field("login", &self.login)
+            .field("copilot_sku", &self.copilot_sku)
+            .field("models", &self.models)
+            .finish()
+    }
 }
 
 #[derive(Deserialize, Serialize, Clone, Debug, PartialEq, Eq)]

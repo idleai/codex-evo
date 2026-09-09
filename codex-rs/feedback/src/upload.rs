@@ -1,35 +1,55 @@
 use std::io;
 use std::io::Write;
+#[cfg(test)]
 use std::time::Duration;
+#[cfg(test)]
 use std::time::Instant;
+#[cfg(test)]
 use std::time::SystemTime;
 
+#[cfg(test)]
 use anyhow::Context;
+#[cfg(test)]
 use anyhow::Result;
+#[cfg(test)]
 use bytes::Bytes;
+#[cfg(test)]
 use codex_http_client::RouteAwareClientPool;
+#[cfg(test)]
 use codex_http_client::RouteAwareRequestBuilder;
 use flate2::Compression;
 use flate2::write::GzEncoder;
+#[cfg(test)]
 use http::HeaderMap;
+#[cfg(test)]
 use http::StatusCode;
+#[cfg(test)]
 use sentry::ClientOptions;
+#[cfg(test)]
 use sentry::protocol::Attachment;
 use sentry::protocol::Envelope;
+#[cfg(test)]
 use sentry::protocol::EnvelopeHeaders;
+#[cfg(test)]
 use sentry::types::Dsn;
 
+#[cfg(test)]
 use crate::MAX_DECODED_UPLOAD_BYTES;
+#[cfg(test)]
 use crate::MAX_UPLOAD_BYTES;
+#[cfg(test)]
 use crate::attachment_truncation::truncate_attachment;
 
+#[cfg(test)]
 pub(super) const DEFAULT_RATE_LIMIT: Duration = Duration::from_secs(/*secs*/ 60);
 
+#[cfg(test)]
 pub(super) enum EnvelopeKind {
     Event,
     Attachment,
 }
 
+#[cfg(test)]
 pub(super) fn gzip_envelope_request(
     client_pool: &RouteAwareClientPool,
     dsn: &Dsn,
@@ -47,6 +67,7 @@ pub(super) fn gzip_envelope_request(
 }
 
 /// Send an already-serialized envelope within the report's shared deadline.
+#[cfg(test)]
 pub(super) async fn send_gzip_envelope(
     client_pool: &RouteAwareClientPool,
     dsn: &Dsn,
@@ -122,6 +143,7 @@ pub(super) async fn send_gzip_envelope(
         .context("failed to upload feedback to Sentry")
 }
 
+#[cfg(test)]
 pub(super) fn sentry_rate_limit_delay(headers: &HeaderMap) -> Option<Duration> {
     let mut retry_after = None;
     for value in headers.get_all("X-Sentry-Rate-Limits") {
@@ -147,6 +169,7 @@ pub(super) fn sentry_rate_limit_delay(headers: &HeaderMap) -> Option<Duration> {
     retry_after
 }
 
+#[cfg(test)]
 pub(super) fn parse_retry_after(value: &str) -> Option<Duration> {
     value
         .parse::<u64>()
@@ -167,6 +190,7 @@ pub(super) fn gzip_envelope(envelope: &Envelope) -> io::Result<(Vec<u8>, usize)>
     Ok((writer.inner.finish()?, writer.bytes))
 }
 
+#[cfg(test)]
 pub(super) fn gzip_attachment_envelope(
     headers: &EnvelopeHeaders,
     mut attachment: Attachment,

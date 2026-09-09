@@ -170,6 +170,7 @@ pub fn write_chatgpt_auth(
         last_refresh,
         agent_identity: None,
         personal_access_token: None,
+        github_copilot: None,
         bedrock_api_key: None,
         bedrock_access_keys: None,
     };

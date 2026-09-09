@@ -590,6 +590,12 @@ impl ModelClient {
         if prompt.input.is_empty() {
             return Ok(Vec::new());
         }
+        if self.state.provider.info().is_github_copilot() {
+            return Err(CodexErr::UnsupportedOperation(
+                "remote compaction is not supported by the GitHub Copilot Responses endpoint"
+                    .to_string(),
+            ));
+        }
         let client_setup = self.current_client_setup().await?;
         let transport =
             self.build_api_transport(&client_setup.api_provider, RESPONSES_COMPACT_ENDPOINT)?;
@@ -694,6 +700,12 @@ impl ModelClient {
         mut extra_headers: ApiHeaderMap,
         api_provider_override: Option<ApiProvider>,
     ) -> Result<RealtimeWebrtcCallStart> {
+        if self.state.provider.info().is_github_copilot() {
+            return Err(CodexErr::UnsupportedOperation(
+                "realtime inference is not supported by the GitHub Copilot Responses endpoint"
+                    .to_string(),
+            ));
+        }
         // Create the media call over HTTP first, then retain matching auth so realtime can attach
         // the server-side control WebSocket to the call id from that HTTP response.
         let client_setup = self.current_client_setup().await?;
@@ -721,6 +733,12 @@ impl ModelClient {
         &self,
         mut extra_headers: ApiHeaderMap,
     ) -> Result<ApiHeaderMap> {
+        if self.state.provider.info().is_github_copilot() {
+            return Err(CodexErr::UnsupportedOperation(
+                "realtime inference is not supported by the GitHub Copilot Responses endpoint"
+                    .to_string(),
+            ));
+        }
         let client_setup = self.current_client_setup().await?;
         if let Some(header_value) = self.generate_attestation_header_for().await {
             extra_headers.insert(X_OAI_ATTESTATION_HEADER, header_value);
@@ -746,6 +764,13 @@ impl ModelClient {
     ) -> Result<Vec<ApiMemorySummarizeOutput>> {
         if raw_memories.is_empty() {
             return Ok(Vec::new());
+        }
+
+        if self.state.provider.info().is_github_copilot() {
+            return Err(CodexErr::UnsupportedOperation(
+                "the GitHub Copilot provider does not expose the memory-summary endpoint"
+                    .to_string(),
+            ));
         }
 
         let client_setup = self.current_client_setup().await?;
@@ -897,6 +922,7 @@ impl ModelClient {
         service_tier: Option<String>,
         responses_metadata: &CodexResponsesMetadata,
     ) -> Result<ResponsesApiRequest> {
+        self.state.provider.validate_model(&model_info.slug)?;
         let mut input = prompt.get_formatted_input_for_request(model_info.use_responses_lite);
         let is_openai = self.state.provider.info().is_openai();
         let (instructions, tools) = if model_info.use_responses_lite {
@@ -1321,6 +1347,11 @@ impl ModelClientSession {
                     headers.insert(X_OAI_ATTESTATION_HEADER, header_value);
                 }
                 add_responses_lite_header(&mut headers, use_responses_lite);
+                if self.client.state.provider.info().is_github_copilot()
+                    && let Ok(request_id) = HeaderValue::from_str(&Uuid::new_v4().to_string())
+                {
+                    headers.insert("X-Request-Id", request_id);
+                }
                 headers
             },
             compression,
@@ -1620,6 +1651,9 @@ impl ModelClientSession {
                 client_setup.auth.as_ref(),
                 endpoint,
             );
+            if self.client.state.provider.info().is_github_copilot() {
+                add_github_copilot_input_headers(&mut options.extra_headers, &request.input);
+            }
             if endpoint == ResponsesEndpoint::Guardian {
                 request.service_tier = None;
             }
@@ -2155,6 +2189,41 @@ fn add_responses_lite_header(headers: &mut ApiHeaderMap, use_responses_lite: boo
     }
 }
 
+fn add_github_copilot_input_headers(headers: &mut ApiHeaderMap, input: &[ResponseItem]) {
+    let initiator = if input.iter().any(|item| match item {
+        ResponseItem::Message { role, .. } | ResponseItem::AdditionalTools { role, .. } => {
+            role == "assistant"
+        }
+        _ => true,
+    }) {
+        "agent"
+    } else {
+        "user"
+    };
+    headers.insert("X-Initiator", HeaderValue::from_static(initiator));
+
+    let has_image = serde_json::to_value(input)
+        .ok()
+        .is_some_and(|input| contains_input_image(&input));
+    if has_image {
+        headers.insert("Copilot-Vision-Request", HeaderValue::from_static("true"));
+    }
+}
+
+fn contains_input_image(value: &serde_json::Value) -> bool {
+    match value {
+        serde_json::Value::Array(values) => values.iter().any(contains_input_image),
+        serde_json::Value::Object(fields) => {
+            fields.get("type").and_then(serde_json::Value::as_str) == Some("input_image")
+                || fields.values().any(contains_input_image)
+        }
+        serde_json::Value::Null
+        | serde_json::Value::Bool(_)
+        | serde_json::Value::Number(_)
+        | serde_json::Value::String(_) => false,
+    }
+}
+
 const RESPONSE_STREAM_CHANNEL_CAPACITY: usize = 1600;
 const STREAM_DROPPED_REASON: &str = "response stream dropped before provider terminal event";
 
@@ -2382,6 +2451,7 @@ impl AuthRequestTelemetryContext {
                 AuthMode::ApiKey | AuthMode::BedrockApiKey | AuthMode::BedrockAccessKeys => {
                     "ApiKey"
                 }
+                AuthMode::GitHubCopilot => "GitHubCopilot",
                 AuthMode::Chatgpt
                 | AuthMode::ChatgptAuthTokens
                 | AuthMode::Headers

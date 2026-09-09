@@ -741,16 +741,13 @@ async fn thread_archive_succeeds_when_descendant_archive_fails() -> Result<()> {
             .iter()
             .filter(|event| event["event_type"] == "codex_thread_archive_event")
         {
-            for (header, expected) in [
-                ("authorization", "Bearer chatgpt-token"),
-                ("chatgpt-account-id", "account-123"),
-            ] {
+            for header in ["authorization", "chatgpt-account-id"] {
                 assert_eq!(
                     request
                         .headers
                         .get(header)
                         .and_then(|value| value.to_str().ok()),
-                    Some(expected)
+                    None,
                 );
             }
             archive_events.push(event.clone());

@@ -37,13 +37,27 @@ struct ImageGenerationExtensionConfig {
 impl ImageGenerationExtensionConfig {
     /// Resolves the image provider and save root for a thread.
     fn from_config(config: &Config, resolve_save_root: &SaveRootResolver) -> Self {
+        let available = config.model_provider.is_openai()
+            || config.model_provider.requires_openai_auth
+            || config.model_provider.uses_openai_actor_authorization();
         Self {
-            available: config.model_provider.is_openai()
-                || config.model_provider.requires_openai_auth
-                || config.model_provider.uses_openai_actor_authorization(),
+            available,
             provider: config.model_provider.clone(),
             save_root: resolve_save_root(config),
         }
+    }
+
+    fn from_active_provider(
+        config: &Config,
+        resolve_save_root: &SaveRootResolver,
+        auth_manager: Arc<AuthManager>,
+    ) -> Self {
+        let mut resolved = Self::from_config(config, resolve_save_root);
+        resolved.available &=
+            create_model_provider(config.model_provider.clone(), Some(auth_manager))
+                .capabilities()
+                .image_generation;
+        resolved
     }
 }
 
@@ -56,9 +70,10 @@ impl ThreadLifecycleContributor<Config> for ImageGenerationExtension {
         Box::pin(async move {
             input
                 .thread_store
-                .insert(ImageGenerationExtensionConfig::from_config(
+                .insert(ImageGenerationExtensionConfig::from_active_provider(
                     input.config,
                     self.resolve_save_root.as_ref(),
+                    Arc::clone(&self.auth_manager),
                 ));
         })
     }
@@ -73,9 +88,10 @@ impl ConfigContributor<Config> for ImageGenerationExtension {
         _previous_config: &Config,
         new_config: &Config,
     ) {
-        thread_store.insert(ImageGenerationExtensionConfig::from_config(
+        thread_store.insert(ImageGenerationExtensionConfig::from_active_provider(
             new_config,
             self.resolve_save_root.as_ref(),
+            Arc::clone(&self.auth_manager),
         ));
     }
 }
@@ -94,9 +110,15 @@ impl ToolContributor for ImageGenerationExtension {
             return Vec::new();
         }
 
+        let provider =
+            create_model_provider(config.provider.clone(), Some(self.auth_manager.clone()));
+        if !provider.capabilities().image_generation {
+            return Vec::new();
+        }
+
         vec![Arc::new(ImageGenerationTool::new(
             CodexImagesBackend::new(
-                create_model_provider(config.provider.clone(), Some(self.auth_manager.clone())),
+                provider,
                 thread_store
                     .get::<ThreadOriginator>()
                     .map(|originator| originator.0.clone()),
@@ -121,3 +143,7 @@ pub fn install(
     registry.config_contributor(extension.clone());
     registry.tool_contributor(extension);
 }
+
+#[cfg(test)]
+#[path = "extension_tests.rs"]
+mod tests;

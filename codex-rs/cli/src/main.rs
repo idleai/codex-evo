@@ -17,6 +17,7 @@ use codex_cli::run_login_with_access_token;
 use codex_cli::run_login_with_api_key;
 use codex_cli::run_login_with_chatgpt;
 use codex_cli::run_login_with_device_code;
+use codex_cli::run_login_with_github_copilot;
 use codex_cli::run_logout;
 use codex_cloud_config::cloud_config_bundle_loader_for_storage;
 use codex_cloud_tasks::Cli as CloudTasksCli;
@@ -539,6 +540,12 @@ struct LoginCommand {
 enum LoginSubcommand {
     /// Show login status.
     Status,
+    /// Sign in directly to GitHub Copilot using GitHub's device flow.
+    GithubCopilot {
+        /// Optional OAuth App client ID override.
+        #[arg(long = "client-id", value_name = "CLIENT_ID")]
+        client_id: Option<String>,
+    },
 }
 
 #[derive(Debug, Parser)]
@@ -1598,6 +1605,9 @@ async fn cli_main(
             match login_cli.action {
                 Some(LoginSubcommand::Status) => {
                     run_login_status(login_cli.config_overrides).await;
+                }
+                Some(LoginSubcommand::GithubCopilot { client_id }) => {
+                    run_login_with_github_copilot(login_cli.config_overrides, client_id).await;
                 }
                 None => {
                     if login_cli.with_api_key && login_cli.with_access_token {

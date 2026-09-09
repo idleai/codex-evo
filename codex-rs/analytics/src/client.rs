@@ -59,6 +59,7 @@ use codex_app_server_protocol::TurnStatus;
 use codex_app_server_protocol::item_event_to_server_notification;
 use codex_login::AuthManager;
 use codex_login::CodexAuth;
+#[cfg(debug_assertions)]
 use codex_login::default_client::create_client;
 use codex_plugin::PluginId;
 use codex_plugin::PluginTelemetryMetadata;
@@ -70,6 +71,7 @@ use codex_protocol::protocol::Event;
 use codex_protocol::protocol::EventMsg;
 use codex_protocol::request_permissions::RequestPermissionsResponse;
 use std::collections::HashSet;
+#[cfg(debug_assertions)]
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::Mutex;
@@ -78,6 +80,7 @@ use tokio::sync::mpsc;
 use tokio::sync::oneshot;
 
 const ANALYTICS_EVENTS_QUEUE_SIZE: usize = 256;
+#[cfg(debug_assertions)]
 const ANALYTICS_EVENTS_TIMEOUT: Duration = Duration::from_secs(10);
 // Covers two sequential POSTs plus queue/barrier scheduling; additional queued sends remain best-effort.
 const ANALYTICS_EVENTS_FLUSH_TIMEOUT: Duration = Duration::from_secs(25);
@@ -102,22 +105,39 @@ pub struct AnalyticsEventsClient {
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 enum AnalyticsEventsDestination {
-    Http {
-        url: String,
-    },
     #[cfg(debug_assertions)]
     CaptureFile {
         path: PathBuf,
     },
+    #[cfg(debug_assertions)]
+    LoopbackHttp {
+        url: String,
+    },
+    Disabled,
 }
 
 impl AnalyticsEventsDestination {
     fn from_base_url(base_url: String) -> Self {
         let capture_file = analytics_capture_file_from_env();
-        Self::from_base_url_and_capture_file(base_url, capture_file)
+        let capture = Self::from_capture_file(capture_file);
+        if capture.is_enabled() {
+            return capture;
+        }
+
+        #[cfg(debug_assertions)]
+        if is_literal_loopback_url(&base_url) {
+            return Self::LoopbackHttp {
+                url: format!(
+                    "{}/codex/analytics-events/events",
+                    base_url.trim_end_matches('/')
+                ),
+            };
+        }
+
+        Self::Disabled
     }
 
-    fn from_base_url_and_capture_file(base_url: String, capture_file: Option<PathBuf>) -> Self {
+    fn from_capture_file(capture_file: Option<PathBuf>) -> Self {
         #[cfg(debug_assertions)]
         if let Some(path) = capture_file {
             if let Err(err) = crate::analytics_capture::initialize(&path) {
@@ -136,10 +156,11 @@ impl AnalyticsEventsDestination {
         #[cfg(not(debug_assertions))]
         let _ = capture_file;
 
-        let base_url = base_url.trim_end_matches('/');
-        Self::Http {
-            url: format!("{base_url}/codex/analytics-events/events"),
-        }
+        Self::Disabled
+    }
+
+    fn is_enabled(&self) -> bool {
+        !matches!(self, Self::Disabled)
     }
 }
 
@@ -244,7 +265,7 @@ impl AnalyticsEventsClient {
     ) -> Self {
         let destination = AnalyticsEventsDestination::from_base_url(base_url);
         Self {
-            queue: (analytics_enabled != Some(false))
+            queue: (analytics_enabled != Some(false) && destination.is_enabled())
                 .then(|| AnalyticsEventsQueue::new(Arc::clone(&auth_manager), destination)),
         }
     }
@@ -843,7 +864,7 @@ async fn send_track_events(
     };
     if auth.is_api_key_auth() {
         events.retain(TrackEventRequest::can_send_with_api_key_auth);
-    } else if !auth.uses_codex_backend() {
+    } else if !auth.uses_codex_backend() && !auth.is_github_copilot_auth() {
         return;
     }
     if events.is_empty() {
@@ -879,7 +900,7 @@ fn track_event_request_batches(events: Vec<TrackEventRequest>) -> Vec<Vec<TrackE
 }
 
 async fn send_track_events_request(
-    auth: &CodexAuth,
+    _auth: &CodexAuth,
     destination: &AnalyticsEventsDestination,
     events: Vec<TrackEventRequest>,
 ) {
@@ -890,44 +911,71 @@ async fn send_track_events_request(
     let payload = TrackEventsRequest { events };
 
     #[cfg(debug_assertions)]
-    if capture_track_events_request(destination, &payload) {
-        return;
+    match destination {
+        AnalyticsEventsDestination::CaptureFile { .. } => {
+            capture_track_events_request(destination, &payload);
+        }
+        AnalyticsEventsDestination::LoopbackHttp { url } => {
+            // Debug-only local capture intentionally omits account credentials.
+            let response = create_client()
+                .post(url)
+                .timeout(ANALYTICS_EVENTS_TIMEOUT)
+                .header("Content-Type", "application/json")
+                .json(&payload)
+                .send()
+                .await;
+            if let Err(err) = response {
+                tracing::warn!("failed to send analytics to the loopback capture: {err}");
+            }
+        }
+        AnalyticsEventsDestination::Disabled => {}
     }
+}
 
-    let url = match destination {
-        AnalyticsEventsDestination::Http { url } => url,
-        #[cfg(debug_assertions)]
-        AnalyticsEventsDestination::CaptureFile { .. } => return,
+#[cfg(debug_assertions)]
+fn is_literal_loopback_url(base_url: &str) -> bool {
+    let Some(authority) = base_url
+        .strip_prefix("http://")
+        .or_else(|| base_url.strip_prefix("https://"))
+        .and_then(|rest| rest.split('/').next())
+    else {
+        return false;
     };
-    let response = create_client()
-        .post(url)
-        .timeout(ANALYTICS_EVENTS_TIMEOUT)
-        .headers(codex_model_provider::auth_provider_from_auth(auth).to_auth_headers())
-        .header("Content-Type", "application/json")
-        .json(&payload)
-        .send()
-        .await;
-
-    match response {
-        Ok(response) if response.status().is_success() => {}
-        Ok(response) => {
-            let status = response.status();
-            let body = response.text().await.unwrap_or_default();
-            tracing::warn!("events failed with status {status}: {body}");
-        }
-        Err(err) => {
-            tracing::warn!("failed to send events request: {err}");
-        }
+    if authority.contains('@') {
+        return false;
     }
+
+    let (host, port) = if let Some(rest) = authority.strip_prefix('[') {
+        let Some((host, suffix)) = rest.split_once(']') else {
+            return false;
+        };
+        let port = match suffix.strip_prefix(':') {
+            Some(port) => Some(port),
+            None if suffix.is_empty() => None,
+            None => return false,
+        };
+        (host, port)
+    } else {
+        match authority.rsplit_once(':') {
+            Some((host, port)) => (host, Some(port)),
+            None => (authority, None),
+        }
+    };
+    if port.is_some_and(|port| port.parse::<u16>().is_err()) {
+        return false;
+    }
+
+    host.parse::<std::net::IpAddr>()
+        .is_ok_and(|address| address.is_loopback())
 }
 
 #[cfg(debug_assertions)]
 fn capture_track_events_request(
     destination: &AnalyticsEventsDestination,
     payload: &TrackEventsRequest,
-) -> bool {
+) {
     let AnalyticsEventsDestination::CaptureFile { path } = destination else {
-        return false;
+        return;
     };
 
     if let Err(err) = crate::analytics_capture::append_payload(path, payload) {
@@ -936,7 +984,6 @@ fn capture_track_events_request(
             "failed to capture analytics events; network delivery remains disabled: {err}"
         );
     }
-    true
 }
 
 #[cfg(test)]

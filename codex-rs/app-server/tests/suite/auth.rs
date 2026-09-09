@@ -18,7 +18,10 @@ use codex_app_server_protocol::LoginAccountResponse;
 use codex_app_server_protocol::RequestId;
 use codex_config::types::AuthCredentialsStoreMode;
 use codex_features::Feature;
+use codex_login::AuthKeyringBackendKind;
+use codex_login::GitHubCopilotAuth;
 use codex_login::REFRESH_TOKEN_URL_OVERRIDE_ENV_VAR;
+use codex_login::login_with_github_copilot;
 use codex_protocol::account::PlanType as AccountPlanType;
 use pretty_assertions::assert_eq;
 use std::path::Path;
@@ -259,6 +262,67 @@ async fn get_auth_status_with_api_key_when_auth_not_required() -> Result<()> {
         status.requires_openai_auth,
         Some(false),
         "requires_openai_auth should be false",
+    );
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn github_copilot_auth_overrides_custom_provider_without_exporting_token() -> Result<()> {
+    let codex_home = TempDir::new()?;
+    create_config_toml_custom_provider(codex_home.path(), /*requires_openai_auth*/ false)?;
+    login_with_github_copilot(
+        codex_home.path(),
+        GitHubCopilotAuth::new(
+            "github-secret-token".to_string(),
+            "https://api.individual.githubcopilot.com".to_string(),
+            Some("octocat".to_string()),
+            Some("copilot_individual".to_string()),
+            vec!["gpt-5.6-sol".to_string()],
+        )?,
+        AuthCredentialsStoreMode::File,
+        AuthKeyringBackendKind::default(),
+    )?;
+
+    let mut mcp = TestAppServer::builder()
+        .with_codex_home(codex_home.path())
+        .without_auto_env()
+        .with_env_overrides(&[("OPENAI_API_KEY", Some("ambient-openai-key"))])
+        .build_initialized_with_timeout(DEFAULT_READ_TIMEOUT)
+        .await?;
+
+    let request_id = mcp
+        .send_get_auth_status_request(GetAuthStatusParams {
+            include_token: Some(true),
+            refresh_token: Some(false),
+        })
+        .await?;
+    let status: GetAuthStatusResponse =
+        timeout(DEFAULT_READ_TIMEOUT, mcp.read_response(request_id)).await??;
+    assert_eq!(
+        status,
+        GetAuthStatusResponse {
+            auth_method: Some(AuthMode::GitHubCopilot),
+            auth_token: None,
+            requires_openai_auth: Some(true),
+        }
+    );
+
+    let request_id = mcp
+        .send_get_account_request(GetAccountParams {
+            refresh_token: false,
+        })
+        .await?;
+    let account: GetAccountResponse =
+        timeout(DEFAULT_READ_TIMEOUT, mcp.read_response(request_id)).await??;
+    assert_eq!(
+        account,
+        GetAccountResponse {
+            account: Some(Account::GitHubCopilot {
+                login: Some("octocat".to_string()),
+                copilot_sku: Some("copilot_individual".to_string()),
+            }),
+            requires_openai_auth: true,
+        }
     );
     Ok(())
 }

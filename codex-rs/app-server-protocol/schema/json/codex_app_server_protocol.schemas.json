@@ -6541,6 +6541,36 @@
           },
           {
             "properties": {
+              "copilotSku": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "login": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "type": {
+                "enum": [
+                  "githubCopilot"
+                ],
+                "title": "GithubCopilotAccountType",
+                "type": "string"
+              }
+            },
+            "required": [
+              "copilotSku",
+              "login",
+              "type"
+            ],
+            "title": "GithubCopilotAccount",
+            "type": "object"
+          },
+          {
+            "properties": {
               "email": {
                 "type": [
                   "string",
@@ -7797,12 +7827,19 @@
         "type": "object"
       },
       "AuthMode": {
-        "description": "Authentication mode for OpenAI-backed providers.",
+        "description": "Authentication mode for model providers managed by Codex.",
         "oneOf": [
           {
             "description": "OpenAI API key provided by the caller and stored by Codex.",
             "enum": [
               "apikey"
+            ],
+            "type": "string"
+          },
+          {
+            "description": "GitHub OAuth credential scoped to direct GitHub Copilot inference.",
+            "enum": [
+              "githubCopilot"
             ],
             "type": "string"
           },
@@ -13719,6 +13756,29 @@
           },
           {
             "properties": {
+              "clientId": {
+                "description": "Optional GitHub OAuth app client ID override. When omitted, the app-server reads `GITHUB_COPILOT_CLIENT_ID`, then falls back to its bundled public client ID.",
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "type": {
+                "enum": [
+                  "githubCopilot"
+                ],
+                "title": "GithubCopilotv2::LoginAccountParamsType",
+                "type": "string"
+              }
+            },
+            "required": [
+              "type"
+            ],
+            "title": "GithubCopilotv2::LoginAccountParams",
+            "type": "object"
+          },
+          {
+            "properties": {
               "appBrand": {
                 "anyOf": [
                   {
@@ -13880,6 +13940,34 @@
               "type"
             ],
             "title": "ApiKeyv2::LoginAccountResponse",
+            "type": "object"
+          },
+          {
+            "properties": {
+              "loginId": {
+                "type": "string"
+              },
+              "type": {
+                "enum": [
+                  "githubCopilot"
+                ],
+                "title": "GithubCopilotv2::LoginAccountResponseType",
+                "type": "string"
+              },
+              "userCode": {
+                "type": "string"
+              },
+              "verificationUrl": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "loginId",
+              "type",
+              "userCode",
+              "verificationUrl"
+            ],
+            "title": "GithubCopilotv2::LoginAccountResponse",
             "type": "object"
           },
           {

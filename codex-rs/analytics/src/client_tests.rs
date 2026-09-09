@@ -291,10 +291,7 @@ fn client_with_receiver() -> (
 #[cfg(debug_assertions)]
 fn analytics_destination_uses_explicit_capture_file() {
     let capture_path = unique_capture_path("destination");
-    let destination = AnalyticsEventsDestination::from_base_url_and_capture_file(
-        "https://chatgpt.com/backend-api/".to_string(),
-        Some(capture_path.clone()),
-    );
+    let destination = AnalyticsEventsDestination::from_capture_file(Some(capture_path.clone()));
 
     assert_eq!(
         destination,
@@ -320,34 +317,39 @@ fn analytics_destination_uses_explicit_capture_file() {
 }
 
 #[test]
-fn analytics_destination_uses_http_without_capture_file() {
-    let destination = AnalyticsEventsDestination::from_base_url_and_capture_file(
-        "https://chatgpt.com/backend-api/".to_string(),
-        /*capture_file*/ None,
-    );
+fn analytics_destination_disables_network_without_capture_file() {
+    let destination = AnalyticsEventsDestination::from_capture_file(/*capture_file*/ None);
 
+    assert_eq!(destination, AnalyticsEventsDestination::Disabled);
+}
+
+#[test]
+#[cfg(debug_assertions)]
+fn analytics_destination_only_allows_literal_loopback_capture() {
     assert_eq!(
-        destination,
-        AnalyticsEventsDestination::Http {
-            url: "https://chatgpt.com/backend-api/codex/analytics-events/events".to_string()
+        AnalyticsEventsDestination::from_base_url("http://127.0.0.1:1234".to_string()),
+        AnalyticsEventsDestination::LoopbackHttp {
+            url: "http://127.0.0.1:1234/codex/analytics-events/events".to_string()
         }
+    );
+    assert_eq!(
+        AnalyticsEventsDestination::from_base_url("https://chatgpt.com/backend-api".to_string()),
+        AnalyticsEventsDestination::Disabled
+    );
+    assert_eq!(
+        AnalyticsEventsDestination::from_base_url("http://127.0.0.1.evil.test".to_string()),
+        AnalyticsEventsDestination::Disabled
     );
 }
 
 #[test]
 #[cfg(not(debug_assertions))]
 fn analytics_destination_ignores_capture_file_in_release() {
-    let destination = AnalyticsEventsDestination::from_base_url_and_capture_file(
-        "https://chatgpt.com/backend-api/".to_string(),
-        Some(std::path::PathBuf::from("ignored.jsonl")),
-    );
+    let destination = AnalyticsEventsDestination::from_capture_file(Some(
+        std::path::PathBuf::from("ignored.jsonl"),
+    ));
 
-    assert_eq!(
-        destination,
-        AnalyticsEventsDestination::Http {
-            url: "https://chatgpt.com/backend-api/codex/analytics-events/events".to_string()
-        }
-    );
+    assert_eq!(destination, AnalyticsEventsDestination::Disabled);
 }
 
 #[tokio::test]
@@ -535,7 +537,7 @@ fn capture_write_failure_still_consumes_delivery() {
         events: vec![sample_regular_track_event("thread-1")],
     };
 
-    assert!(capture_track_events_request(&destination, &payload));
+    capture_track_events_request(&destination, &payload);
 }
 
 fn sample_turn_start_request() -> ClientRequest {

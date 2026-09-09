@@ -19,6 +19,7 @@ fn api_key_auth() -> AuthDotJson {
         last_refresh: None,
         agent_identity: None,
         personal_access_token: None,
+        github_copilot: None,
         bedrock_api_key: None,
         bedrock_access_keys: None,
     }
@@ -32,6 +33,7 @@ fn bedrock_only_auth() -> AuthDotJson {
         last_refresh: None,
         agent_identity: None,
         personal_access_token: None,
+        github_copilot: None,
         bedrock_api_key: Some(bedrock_auth()),
         bedrock_access_keys: None,
     }
@@ -91,6 +93,7 @@ async fn login_with_bedrock_api_key_replaces_openai_auth() -> anyhow::Result<()>
         last_refresh: None,
         agent_identity: None,
         personal_access_token: None,
+        github_copilot: None,
         bedrock_api_key: Some(bedrock_auth()),
         bedrock_access_keys: None,
     };
@@ -105,6 +108,7 @@ async fn login_with_bedrock_api_key_replaces_openai_auth() -> anyhow::Result<()>
             | CodexAuth::Headers(_)
             | CodexAuth::AgentIdentity(_)
             | CodexAuth::PersonalAccessToken(_)
+            | CodexAuth::GitHubCopilot(_)
             | CodexAuth::BedrockAccessKeys(_) => None,
         }),
         Some(bedrock_auth())
@@ -176,6 +180,7 @@ async fn access_keys_auth_round_trips_and_logs_out() -> anyhow::Result<()> {
             | CodexAuth::Headers(_)
             | CodexAuth::AgentIdentity(_)
             | CodexAuth::PersonalAccessToken(_)
+            | CodexAuth::GitHubCopilot(_)
             | CodexAuth::BedrockApiKey(_) => None,
         }),
         Some(crate::auth::BedrockAccessKeysAuth {
@@ -224,6 +229,7 @@ async fn bedrock_only_auth_storage_creates_primary_auth() -> anyhow::Result<()> 
             | CodexAuth::Headers(_)
             | CodexAuth::AgentIdentity(_)
             | CodexAuth::PersonalAccessToken(_)
+            | CodexAuth::GitHubCopilot(_)
             | CodexAuth::BedrockAccessKeys(_) => None,
         }),
         Some(bedrock_auth())

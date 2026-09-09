@@ -1918,6 +1918,9 @@ async fn get_login_status(
     let account = app_server.read_account().await?;
     let login_status = match &account.account {
         Some(AppServerAccount::ApiKey {}) => LoginStatus::AuthMode(AuthMode::ApiKey),
+        Some(AppServerAccount::GitHubCopilot { .. }) => {
+            LoginStatus::AuthMode(AuthMode::GitHubCopilot)
+        }
         Some(AppServerAccount::Chatgpt { .. }) => LoginStatus::AuthMode(AuthMode::Chatgpt),
         Some(AppServerAccount::AmazonBedrock { .. }) | None => LoginStatus::NotAuthenticated,
     };

@@ -544,12 +544,19 @@
       "type": "object"
     },
     "AuthMode": {
-      "description": "Authentication mode for OpenAI-backed providers.",
+      "description": "Authentication mode for model providers managed by Codex.",
       "oneOf": [
         {
           "description": "OpenAI API key provided by the caller and stored by Codex.",
           "enum": [
             "apikey"
+          ],
+          "type": "string"
+        },
+        {
+          "description": "GitHub OAuth credential scoped to direct GitHub Copilot inference.",
+          "enum": [
+            "githubCopilot"
           ],
           "type": "string"
         },

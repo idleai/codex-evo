@@ -9,14 +9,20 @@ use std::path::Path;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::Mutex;
+#[cfg(test)]
 use std::time::Duration;
+#[cfg(test)]
 use std::time::Instant;
 
+#[cfg(test)]
 use anyhow::Context;
 use anyhow::Result;
+#[cfg(test)]
 use anyhow::anyhow;
+#[cfg(test)]
 use codex_http_client::ClientRouteClass;
 use codex_http_client::HttpClientFactory;
+#[cfg(test)]
 use codex_http_client::RouteAwareClientPool;
 use codex_login::AuthEnvTelemetry;
 use codex_protocol::ThreadId;
@@ -30,6 +36,7 @@ use tracing_subscriber::filter::Targets;
 use tracing_subscriber::fmt::writer::MakeWriter;
 use tracing_subscriber::registry::LookupSpan;
 
+#[cfg(test)]
 mod attachment_truncation;
 pub(crate) mod feedback_diagnostics;
 mod guardian;
@@ -54,15 +61,13 @@ pub const CODEX_APP_DIRECTORY_CACHE_ATTACHMENT_FILENAME: &str = "codex-app-direc
 /// Filename used for the Windows sandbox log feedback attachment.
 pub const WINDOWS_SANDBOX_LOG_ATTACHMENT_FILENAME: &str = "windows-sandbox.log";
 const DEFAULT_MAX_BYTES: usize = 4 * 1024 * 1024; // 4 MiB
-const SENTRY_DSN: &str =
-    "https://ae32ed50620d7a7792c1ce5df38b3e3e@o33249.ingest.us.sentry.io/4510195390611458";
+#[cfg(test)]
 const UPLOAD_TIMEOUT: Duration = Duration::from_secs(/*secs*/ 300);
 // Raw collection budgets used by the report API, not the interactive upload.
 pub const MAX_ATTACHMENT_BYTES: usize = 64 * 1024 * 1024;
 pub const MAX_ATTACHMENTS_BYTES: usize = 126 * 1024 * 1024;
-// Check complete envelopes against Sentry's published limits, including framing:
+// Check complete feedback envelopes against their published limits, including framing:
 // https://develop.sentry.dev/sdk/foundations/envelopes/#size-limits
-// https://docs.sentry.io/platforms/javascript/enriching-events/attachments/
 const MAX_DECODED_UPLOAD_BYTES: usize = 200 * 1024 * 1024;
 const MAX_EVENT_BYTES: usize = 1024 * 1024;
 const MAX_UPLOAD_BYTES: usize = 40_000_000;
@@ -392,6 +397,7 @@ pub struct FeedbackAttachmentPath {
 
 enum AttachmentReadMode {
     Whole,
+    #[cfg(test)]
     Prefix,
 }
 
@@ -578,21 +584,18 @@ impl FeedbackSnapshot {
         self.feedback_diagnostics.attachment_text()
     }
 
-    /// Upload feedback to Sentry with optional attachments.
+    /// Remote feedback delivery is disabled in this build.
     pub async fn upload_feedback(
         &self,
-        options: FeedbackUploadOptions<'_>,
-        http_client_factory: &HttpClientFactory,
+        _options: FeedbackUploadOptions<'_>,
+        _http_client_factory: &HttpClientFactory,
     ) -> Result<()> {
-        self.upload_feedback_with_dsn(
-            options,
-            http_client_factory,
-            SENTRY_DSN,
-            Instant::now() + UPLOAD_TIMEOUT,
-        )
-        .await
+        Err(anyhow::anyhow!(
+            "remote OpenAI feedback delivery is disabled in this build"
+        ))
     }
 
+    #[cfg(test)]
     async fn upload_feedback_with_dsn(
         &self,
         options: FeedbackUploadOptions<'_>,
@@ -755,6 +758,7 @@ impl FeedbackSnapshot {
         tags
     }
 
+    #[cfg(test)]
     fn feedback_attachments<'a>(
         &'a self,
         include_logs: bool,

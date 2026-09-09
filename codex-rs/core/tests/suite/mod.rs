@@ -71,6 +71,7 @@ mod extension_sandbox;
 mod external_auth;
 mod fork_thread;
 mod git_enrichment;
+mod github_copilot;
 mod guardian_authorization;
 mod guardian_history;
 mod guardian_mcp_elicitation;

@@ -19,6 +19,34 @@
     },
     {
       "properties": {
+        "loginId": {
+          "type": "string"
+        },
+        "type": {
+          "enum": [
+            "githubCopilot"
+          ],
+          "title": "GithubCopilotv2::LoginAccountResponseType",
+          "type": "string"
+        },
+        "userCode": {
+          "type": "string"
+        },
+        "verificationUrl": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "loginId",
+        "type",
+        "userCode",
+        "verificationUrl"
+      ],
+      "title": "GithubCopilotv2::LoginAccountResponse",
+      "type": "object"
+    },
+    {
+      "properties": {
         "authUrl": {
           "description": "URL the client should open in a browser to initiate the OAuth flow.",
           "type": "string"

@@ -8,8 +8,14 @@ use crate::external_auth::ExternalAuthBridge;
 use chrono::DateTime;
 use codex_app_server_protocol::DesktopOnboardingEntrypoint;
 use codex_app_server_protocol::GetAccountRateLimitsParams;
+use codex_login::GITHUB_COPILOT_CLIENT_ID_ENV_VAR;
+use codex_login::GITHUB_COPILOT_DEFAULT_CLIENT_ID;
+use codex_login::GitHubCopilotLoginOptions;
 use codex_login::LoginOnboardingEntrypoint;
+use codex_login::complete_github_copilot_device_code_login;
 use codex_login::login_with_bedrock_access_keys;
+use codex_login::login_with_github_copilot;
+use codex_login::request_github_copilot_device_code;
 use codex_model_provider::is_supported_amazon_bedrock_region;
 
 mod bedrock_setup;
@@ -301,6 +307,9 @@ impl AccountRequestProcessor {
                 self.login_api_key_v2(request_id, LoginApiKeyParams { api_key })
                     .await;
             }
+            LoginAccountParams::GitHubCopilot { client_id } => {
+                self.login_github_copilot_v2(request_id, client_id).await;
+            }
             LoginAccountParams::Chatgpt {
                 app_brand,
                 codex_streamlined_login,
@@ -450,6 +459,117 @@ impl AccountRequestProcessor {
             self.send_login_success_notifications(/*login_id*/ None)
                 .await;
         }
+    }
+
+    async fn login_github_copilot_v2(
+        &self,
+        request_id: ConnectionRequestId,
+        client_id: Option<String>,
+    ) {
+        let result = self.github_copilot_login_response(client_id).await;
+        self.outgoing.send_result(request_id, result).await;
+    }
+
+    async fn github_copilot_login_response(
+        &self,
+        client_id: Option<String>,
+    ) -> Result<LoginAccountResponse, JSONRPCErrorError> {
+        if self.auth_manager.is_external_chatgpt_auth_active() {
+            return Err(self.external_auth_active_error());
+        }
+        if !self
+            .auth_manager
+            .is_login_method_allowed(ForcedLoginMethod::Api)
+        {
+            return Err(invalid_request(
+                "GitHub Copilot login is disabled by the configured login requirements.",
+            ));
+        }
+        let client_id = client_id
+            .map(|client_id| client_id.trim().to_string())
+            .filter(|client_id| !client_id.is_empty())
+            .or_else(|| std::env::var(GITHUB_COPILOT_CLIENT_ID_ENV_VAR).ok())
+            .map(|client_id| client_id.trim().to_string())
+            .filter(|client_id| !client_id.is_empty())
+            .unwrap_or_else(|| GITHUB_COPILOT_DEFAULT_CLIENT_ID.to_string());
+        let options = GitHubCopilotLoginOptions::new(client_id, self.config.auth_route_config())
+            .map_err(|err| invalid_request(err.to_string()))?;
+        let device_code = request_github_copilot_device_code(&options)
+            .await
+            .map_err(|err| {
+                internal_error(format!("failed to request GitHub device code: {err}"))
+            })?;
+        let login_id = Uuid::new_v4();
+        let cancel = CancellationToken::new();
+        {
+            let mut guard = self.active_login.lock().await;
+            if let Some(existing) = guard.take() {
+                drop(existing);
+            }
+            *guard = Some(ActiveLogin::DeviceCode {
+                cancel: cancel.clone(),
+                login_id,
+            });
+        }
+
+        let verification_url = device_code.verification_url.clone();
+        let user_code = device_code.user_code.clone();
+        let outgoing = Arc::clone(&self.outgoing);
+        let config_manager = self.config_manager.clone();
+        let thread_manager = Arc::clone(&self.thread_manager);
+        let config = Arc::clone(&self.config);
+        let active_login = Arc::clone(&self.active_login);
+        tokio::spawn(async move {
+            let result = tokio::select! {
+                _ = cancel.cancelled() => Err("Login was not completed".to_string()),
+                result = complete_github_copilot_device_code_login(&options, device_code) => {
+                    match result {
+                        Ok(auth) => async {
+                            let auth_manager = thread_manager.auth_manager();
+                            auth_manager
+                                .logout_with_revoke()
+                                .await
+                                .map_err(|err| format!("failed to clear previous authentication: {err}"))?;
+                            login_with_github_copilot(
+                                &config.codex_home,
+                                auth,
+                                config.cli_auth_credentials_store_mode,
+                                config.auth_keyring_backend_kind(),
+                            )
+                            .map_err(|err| format!("failed to save GitHub Copilot authentication: {err}"))?;
+                            Ok(())
+                        }
+                        .await,
+                        Err(err) => Err(err.to_string()),
+                    }
+                }
+            };
+            let success = result.is_ok();
+            Self::send_github_copilot_login_completion_notifications(
+                &outgoing,
+                config_manager,
+                thread_manager,
+                config,
+                AccountLoginCompletedNotification {
+                    login_id: Some(login_id.to_string()),
+                    success,
+                    error: result.err(),
+                    onboarding_entrypoint: None,
+                },
+            )
+            .await;
+
+            let mut guard = active_login.lock().await;
+            if guard.as_ref().map(ActiveLogin::login_id) == Some(login_id) {
+                *guard = None;
+            }
+        });
+
+        Ok(LoginAccountResponse::GitHubCopilot {
+            login_id: login_id.to_string(),
+            verification_url,
+            user_code,
+        })
     }
 
     async fn login_amazon_bedrock_v2(
@@ -904,6 +1024,47 @@ impl AccountRequestProcessor {
             .await;
     }
 
+    async fn send_github_copilot_login_completion_notifications(
+        outgoing: &OutgoingMessageSender,
+        config_manager: ConfigManager,
+        thread_manager: Arc<ThreadManager>,
+        config: Arc<Config>,
+        payload: AccountLoginCompletedNotification,
+    ) {
+        let success = payload.success;
+        outgoing
+            .send_server_notification(ServerNotification::AccountLoginCompleted(payload))
+            .await;
+        if !success {
+            return;
+        }
+
+        let auth_manager = thread_manager.auth_manager();
+        auth_manager.reload().await;
+        config_manager.clear_cloud_config_bundle_loader();
+        Self::maybe_refresh_plugin_caches_for_current_config(
+            &config_manager,
+            &thread_manager,
+            auth_manager.auth_cached(),
+        )
+        .await;
+        let _ = thread_manager
+            .list_models(RefreshStrategy::Online, config.http_client_factory())
+            .await;
+        outgoing
+            .send_server_notification(ServerNotification::AccountUpdated(
+                AccountUpdatedNotification {
+                    auth_mode: auth_manager
+                        .auth_cached()
+                        .as_ref()
+                        .map(CodexAuth::api_auth_mode)
+                        .map(auth_mode_to_api),
+                    plan_type: None,
+                },
+            ))
+            .await;
+    }
+
     async fn send_chatgpt_login_completion_notifications(
         outgoing: &OutgoingMessageSender,
         config_manager: ConfigManager,
@@ -1042,7 +1203,11 @@ impl AccountRequestProcessor {
         // If a custom provider is configured with `requires_openai_auth == false`,
         // then no auth step is required; otherwise, default to requiring auth.
         let config = self.load_latest_config().await;
-        let requires_openai_auth = config.model_provider.requires_openai_auth;
+        let requires_openai_auth = config.model_provider.requires_openai_auth
+            || self
+                .auth_manager
+                .auth_cached()
+                .is_some_and(|auth| auth.is_github_copilot_auth());
 
         let response = if !requires_openai_auth {
             GetAuthStatusResponse {
@@ -1068,6 +1233,7 @@ impl AccountRequestProcessor {
                                 CodexAuth::Headers(_)
                                     | CodexAuth::AgentIdentity(_)
                                     | CodexAuth::PersonalAccessToken(_)
+                                    | CodexAuth::GitHubCopilot(_)
                             )
                             || include_token && permanent_refresh_failure
                         {

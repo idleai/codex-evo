@@ -321,6 +321,9 @@ pub fn auth_provider_from_auth(auth: &CodexAuth) -> SharedAuthProvider {
             account_id: auth.get_account_id(),
             is_fedramp_account: auth.is_fedramp_account(),
         }),
+        CodexAuth::GitHubCopilot(auth) => {
+            Arc::new(BearerAuthProvider::new(auth.access_token().to_string()))
+        }
     }
 }
 

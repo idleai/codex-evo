@@ -52,6 +52,7 @@ pub enum ToolDecisionSource {
 pub enum TelemetryAuthMode {
     ApiKey,
     Chatgpt,
+    GitHubCopilot,
 }
 
 impl From<AuthMode> for TelemetryAuthMode {
@@ -65,6 +66,7 @@ impl From<AuthMode> for TelemetryAuthMode {
             | AuthMode::Headers
             | AuthMode::AgentIdentity
             | AuthMode::PersonalAccessToken => Self::Chatgpt,
+            AuthMode::GitHubCopilot => Self::GitHubCopilot,
         }
     }
 }

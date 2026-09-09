@@ -39,6 +39,7 @@ use codex_guardian_context::PlannedActionKind;
 use codex_history::RolloutItem;
 use codex_login::AgentIdentityAuthPolicy;
 use codex_login::AuthManager;
+use codex_login::CodexAuth;
 use codex_model_provider::create_model_provider;
 use codex_protocol::ThreadId;
 use codex_protocol::config_types::ApprovalsReviewer;
@@ -141,6 +142,16 @@ impl ThreadLifecycleContributor<Config> for GuardianV2Extension {
             } else {
                 None
             };
+            if self
+                .auth_manager
+                .auth()
+                .await
+                .as_ref()
+                .is_some_and(CodexAuth::is_github_copilot_auth)
+            {
+                input.thread_store.remove::<LunaSampler>();
+                return;
+            }
             let sampler_config = LunaSamplerConfig {
                 provider: create_model_provider(
                     input.config.model_provider.clone(),
@@ -622,16 +633,16 @@ impl GuardianV2Extension {
             let mut classification_finished_at = None;
             let result: Result<ClassificationOutcome, String> = async {
                 let review_model_messages = if config.guardian_policy_config.is_none() {
-                    let review_model_id = review_model_override.as_deref().unwrap_or_else(|| {
-                        create_model_provider(
+                    let review_model_id = review_model_override.clone().unwrap_or_else(|| {
+                        let provider = create_model_provider(
                             config.model_provider.clone(),
                             Some(manager.auth_manager()),
-                        )
-                        .approval_review_preferred_model()
+                        );
+                        provider.approval_review_preferred_model().to_string()
                     });
                     let review_model = manager
                         .get_models_manager()
-                        .get_model_info(review_model_id, &config.to_models_manager_config())
+                        .get_model_info(&review_model_id, &config.to_models_manager_config())
                         .await;
                     if review_model.used_fallback_model_metadata && review_model_override.is_none()
                     {

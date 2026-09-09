@@ -9,6 +9,7 @@ use super::X_CODEX_PARENT_THREAD_ID_HEADER;
 use super::X_CODEX_TURN_METADATA_HEADER;
 use super::X_CODEX_WINDOW_ID_HEADER;
 use super::X_OPENAI_SUBAGENT_HEADER;
+use super::add_github_copilot_input_headers;
 use crate::AttestationContext;
 use crate::AttestationProvider;
 use crate::GenerateAttestationFuture;
@@ -47,6 +48,7 @@ use codex_protocol::error::CodexErr;
 use codex_protocol::error::CodexErrorDetails;
 use codex_protocol::models::BaseInstructions;
 use codex_protocol::models::ContentItem;
+use codex_protocol::models::ImageDetail;
 use codex_protocol::models::ResponseItem;
 use codex_protocol::openai_models::ModelInfo;
 use codex_protocol::openai_models::ModelsResponse;
@@ -121,6 +123,71 @@ fn test_model_client_with_thread_id(
         /*attestation_provider*/ None,
         HttpClientFactory::new(OutboundProxyPolicy::ReqwestDefault),
     )
+}
+
+#[test]
+fn github_copilot_headers_mark_user_text_requests() {
+    let input = vec![ResponseItem::Message {
+        id: None,
+        role: "user".to_string(),
+        content: vec![ContentItem::InputText {
+            text: "hello".to_string(),
+        }],
+        phase: None,
+        internal_chat_message_metadata_passthrough: None,
+    }];
+    let mut headers = http::HeaderMap::new();
+
+    add_github_copilot_input_headers(&mut headers, &input);
+
+    assert_eq!(
+        headers
+            .get("X-Initiator")
+            .and_then(|value| value.to_str().ok()),
+        Some("user")
+    );
+    assert_eq!(headers.get("Copilot-Vision-Request"), None);
+}
+
+#[test]
+fn github_copilot_headers_mark_agent_vision_requests() {
+    let input = vec![
+        ResponseItem::Message {
+            id: None,
+            role: "assistant".to_string(),
+            content: vec![ContentItem::OutputText {
+                text: "I need to inspect that image.".to_string(),
+            }],
+            phase: None,
+            internal_chat_message_metadata_passthrough: None,
+        },
+        ResponseItem::Message {
+            id: None,
+            role: "user".to_string(),
+            content: vec![ContentItem::InputImage {
+                image_url: "data:image/png;base64,AA==".to_string(),
+                detail: Some(ImageDetail::High),
+            }],
+            phase: None,
+            internal_chat_message_metadata_passthrough: None,
+        },
+    ];
+    let mut headers = http::HeaderMap::new();
+
+    add_github_copilot_input_headers(&mut headers, &input);
+
+    assert_eq!(
+        headers
+            .get("X-Initiator")
+            .and_then(|value| value.to_str().ok()),
+        Some("agent")
+    );
+    assert_eq!(
+        headers
+            .get("Copilot-Vision-Request")
+            .and_then(|value| value.to_str().ok()),
+        Some("true")
+    );
 }
 
 #[tokio::test]

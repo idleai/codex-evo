@@ -155,6 +155,50 @@ fn test_header_auth_uses_chatgpt_codex_base_url() {
 }
 
 #[test]
+fn github_copilot_provider_builds_direct_responses_transport() {
+    let provider = ModelProviderInfo::create_github_copilot_provider(Some(
+        "https://api.individual.githubcopilot.com/".to_string(),
+    ));
+    let api_provider = provider
+        .to_api_provider(Some(AuthMode::GitHubCopilot))
+        .expect("GitHub Copilot provider should build");
+
+    assert_eq!(provider.wire_api, WireApi::Responses);
+    assert!(!provider.supports_websockets);
+    assert!(!provider.supports_standalone_web_search);
+    assert_eq!(
+        api_provider.base_url,
+        "https://api.individual.githubcopilot.com/"
+    );
+    assert_eq!(
+        api_provider
+            .headers
+            .get("OpenAI-Intent")
+            .and_then(|value| value.to_str().ok()),
+        Some("conversation")
+    );
+    assert_eq!(
+        api_provider
+            .headers
+            .get("X-GitHub-Api-Version")
+            .and_then(|value| value.to_str().ok()),
+        Some(GITHUB_COPILOT_API_VERSION)
+    );
+}
+
+#[test]
+fn github_copilot_auth_never_defaults_to_openai_base_url() {
+    let mut provider = ModelProviderInfo::create_github_copilot_provider(/*base_url*/ None);
+    provider.base_url = None;
+
+    let api_provider = provider
+        .to_api_provider(Some(AuthMode::GitHubCopilot))
+        .expect("GitHub Copilot provider should build");
+
+    assert_eq!(api_provider.base_url, GITHUB_COPILOT_DEFAULT_BASE_URL);
+}
+
+#[test]
 fn codex_backend_routes_require_codex_base_url() {
     for (base_url, expected) in [
         (None, true),

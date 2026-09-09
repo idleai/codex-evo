@@ -1238,6 +1238,12 @@ async fn prepare_realtime_start(
         .auth_manager()
         .unwrap_or_else(|| Arc::clone(&sess.services.auth_manager));
     let auth = auth_manager.auth().await;
+    if auth.as_ref().is_some_and(CodexAuth::is_github_copilot_auth) {
+        return Err(CodexErr::UnsupportedOperation(
+            "realtime inference is not supported by the GitHub Copilot Responses endpoint"
+                .to_string(),
+        ));
+    }
     let config = sess.get_config().await;
     let transport = params
         .transport

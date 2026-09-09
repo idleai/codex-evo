@@ -4,16 +4,12 @@ use std::time::Duration;
 use anyhow::Context;
 use anyhow::Result;
 use anyhow::anyhow;
-use codex_http_client::ClientRouteClass;
 use codex_http_client::HttpClientFactory;
-use codex_http_client::RouteAwareClientPool;
 use codex_protocol::protocol::SessionSource;
-use http::StatusCode;
 use sentry::protocol::Attachment;
 use sentry::protocol::Envelope;
 use sentry::protocol::EnvelopeHeaders;
 use sentry::protocol::EnvelopeItem;
-use sentry::types::Dsn;
 use sentry::types::Uuid;
 
 use crate::FeedbackAttachment;
@@ -21,12 +17,7 @@ use crate::FeedbackSnapshot;
 use crate::MAX_DECODED_UPLOAD_BYTES;
 use crate::MAX_EVENT_BYTES;
 use crate::MAX_UPLOAD_BYTES;
-use crate::SENTRY_DSN;
 use crate::upload;
-
-// Background parts must tolerate slow links without inheriting the interactive
-// upload's ten-second budget. The report API can cancel the request at any time.
-const REPORT_PART_UPLOAD_TIMEOUT: Duration = Duration::from_secs(/*secs*/ 300);
 
 /// The upstream HTTP result, not proof of durable storage in Sentry.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -43,62 +34,18 @@ pub enum FeedbackDelivery {
 }
 
 /// Sends persisted report parts without retries or request diagnostics.
-pub struct FeedbackTransport {
-    client_pool: RouteAwareClientPool,
-    dsn: Dsn,
-}
+pub struct FeedbackTransport;
 
 impl FeedbackTransport {
-    pub fn new(http_client_factory: HttpClientFactory) -> Result<Self> {
-        Ok(Self {
-            client_pool: RouteAwareClientPool::new_without_redirects_or_request_logging(
-                http_client_factory,
-                ClientRouteClass::Other,
-            ),
-            dsn: SENTRY_DSN
-                .parse()
-                .map_err(|_| anyhow!("invalid feedback DSN"))?,
-        })
+    pub fn new(_http_client_factory: HttpClientFactory) -> Result<Self> {
+        Err(anyhow!(
+            "remote OpenAI feedback delivery is disabled in this build"
+        ))
     }
 
-    /// Make one attempt. Callers own retry decisions and must retain the same bytes.
-    pub async fn send(&self, envelope: Vec<u8>) -> FeedbackDelivery {
-        let response = upload::gzip_envelope_request(
-            &self.client_pool,
-            &self.dsn,
-            envelope.into(),
-            REPORT_PART_UPLOAD_TIMEOUT,
-        )
-        .send()
-        .await;
-        let Ok(response) = response else {
-            return FeedbackDelivery::Unconfirmed;
-        };
-        let status = response.status();
-        let headers = response.headers();
-        let mut retry_after = headers
-            .get_all("Retry-After")
-            .iter()
-            .map(|value| {
-                upload::parse_retry_after(value.to_str().unwrap_or_default())
-                    .unwrap_or(upload::DEFAULT_RATE_LIMIT)
-            })
-            .max();
-        // Report events and attachments share one conservative cooldown. Honor quotas on
-        // successful responses too; ignore quotas for unrelated Sentry categories.
-        // https://develop.sentry.dev/sdk/foundations/transport/rate-limiting/
-        retry_after = retry_after.max(upload::sentry_rate_limit_delay(headers));
-        if status == StatusCode::TOO_MANY_REQUESTS && retry_after.is_none() {
-            retry_after = Some(upload::DEFAULT_RATE_LIMIT);
-        }
-        if status.is_success() {
-            FeedbackDelivery::Accepted { retry_after }
-        } else {
-            FeedbackDelivery::Rejected {
-                status: status.as_u16(),
-                retry_after,
-            }
-        }
+    /// This cannot be reached through [`Self::new`]; retained for API compatibility.
+    pub async fn send(&self, _envelope: Vec<u8>) -> FeedbackDelivery {
+        FeedbackDelivery::Unconfirmed
     }
 }
 

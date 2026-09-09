@@ -24,6 +24,21 @@ pub enum Account {
     #[ts(rename = "apiKey", rename_all = "camelCase")]
     ApiKey {},
 
+    #[serde(rename = "githubCopilot", rename_all = "camelCase")]
+    #[ts(rename = "githubCopilot", rename_all = "camelCase")]
+    GitHubCopilot {
+        #[schemars(
+            required,
+            schema_with = "crate::protocol::serde_helpers::nullable_string_schema"
+        )]
+        login: Option<String>,
+        #[schemars(
+            required,
+            schema_with = "crate::protocol::serde_helpers::nullable_string_schema"
+        )]
+        copilot_sku: Option<String>,
+    },
+
     #[serde(rename = "chatgpt", rename_all = "camelCase")]
     #[ts(rename = "chatgpt", rename_all = "camelCase")]
     Chatgpt {
@@ -47,6 +62,9 @@ impl From<ProviderAccount> for Account {
     fn from(account: ProviderAccount) -> Self {
         match account {
             ProviderAccount::ApiKey => Self::ApiKey {},
+            ProviderAccount::GitHubCopilot { login, copilot_sku } => {
+                Self::GitHubCopilot { login, copilot_sku }
+            }
             ProviderAccount::Chatgpt { email, plan_type } => Self::Chatgpt { email, plan_type },
             ProviderAccount::AmazonBedrock {
                 uses_codex_managed_credentials,
@@ -68,6 +86,14 @@ pub enum LoginAccountParams {
         #[serde(rename = "apiKey")]
         #[ts(rename = "apiKey")]
         api_key: String,
+    },
+    #[serde(rename = "githubCopilot", rename_all = "camelCase")]
+    #[ts(rename = "githubCopilot", rename_all = "camelCase")]
+    GitHubCopilot {
+        /// Optional GitHub OAuth app client ID override. When omitted, the app-server reads
+        /// `GITHUB_COPILOT_CLIENT_ID`, then falls back to its bundled public client ID.
+        #[ts(optional = nullable)]
+        client_id: Option<String>,
     },
     #[serde(rename = "chatgpt", rename_all = "camelCase")]
     #[ts(rename = "chatgpt", rename_all = "camelCase")]
@@ -137,6 +163,13 @@ pub enum LoginAccountResponse {
     #[serde(rename = "apiKey", rename_all = "camelCase")]
     #[ts(rename = "apiKey", rename_all = "camelCase")]
     ApiKey {},
+    #[serde(rename = "githubCopilot", rename_all = "camelCase")]
+    #[ts(rename = "githubCopilot", rename_all = "camelCase")]
+    GitHubCopilot {
+        login_id: String,
+        verification_url: String,
+        user_code: String,
+    },
     #[serde(rename = "chatgpt", rename_all = "camelCase")]
     #[ts(rename = "chatgpt", rename_all = "camelCase")]
     Chatgpt {
