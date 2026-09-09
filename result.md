@@ -524,6 +524,24 @@ flow, and the experimental app-server schema was regenerated from source.
 | Protocol and sample | 343 protocol tests passed; the thread-manager sample compiled successfully. |
 | Lint and formatting | Scoped Clippy completed for all affected crates; `just fmt` and `git diff --check` passed. |
 
-No new standalone binary package was built for this source-only port. The restart helper remains
-pinned to the existing, verified `0.151.0-codex-evo-idle.1-20260903` package rather than naming a
-nonexistent alpha.11 package.
+### Prepared alpha.11 standalone package
+
+```text
+/mnt/hot/ambientlight/.codex/packages/standalone/releases/0.154.0-alpha.11-codex-evo-idle.1-20260909-x86_64-unknown-linux-gnu
+```
+
+| Artifact | SHA-256 |
+| --- | --- |
+| `bin/codex` | `8ce34c8c533a914f46c1a7b605e4c5f9745ea315e9e97a93064960180adeb3f3` |
+| `bin/codex-code-mode-host` | `239e74aacd9ffb28d8164900762d9a739f59c09836a048f7d75f21d712acd830` |
+| `codex-resources/bwrap` | `c102c5f893faed17ed053ce6ceb9fe0bb03069b991a6f0390e54d82c85f1bca0` |
+
+The canonical package assembler built a GNU/Linux release with a temporary upstream-style
+`0.154.0-alpha.11` Cargo workspace stamp. The CLI and a fresh app-server handshake both report
+`0.154.0-alpha.11`; the package manifest records the same version. The host lacked the `libcap`
+development metadata needed to rebuild Bubblewrap, so the package reused the verified helper from
+the preceding package through the builder's supported prebuilt override. Its source is unchanged
+between the two release branches.
+
+The package is selected through `standalone/current`, and the restart helper is pinned to it. The
+already-running 0.151.0 daemon was deliberately left untouched so it can be restarted separately.
