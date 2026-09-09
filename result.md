@@ -2,7 +2,7 @@
 
 Initial implementation: 2026-08-23
 
-Last updated: 2026-09-03
+Last updated: 2026-09-09
 
 Status: complete, packaged, activated, and prepared on branch `dsv4-sglang-handoff`
 
@@ -411,7 +411,7 @@ core run passed 3,564 of 3,567 tests, with the remaining failures caused by chec
 passed, and there are no pending TUI snapshots; the broader TUI suite encountered unrelated
 environment-dependent IDE socket and global `AGENTS.md` tests.
 
-## Idle rebase and 0.151.0 release handoff
+## Previous idle rebase and 0.151.0 release handoff
 
 On 2026-09-03, the complete custom patch stack was replayed onto the fork's `idle` branch. The
 branch now has a linear history above this exact upstream-main baseline:
@@ -438,7 +438,7 @@ The replay retained all ten original custom commits, followed by two integration
 | Remote pairing | The longer pairing-response timeout remains in the app-server daemon client. |
 | Upstream adaptation | Current thread settings, task tools, MCP hydration, Windows proxy settings, originators, and newer rollout variants were integrated during the replay. |
 
-The final custom source is tagged with the annotated tag `codex-evo-v0.151.0-idle.1`. The old
+That custom source was tagged with the annotated tag `codex-evo-v0.151.0-idle.1`. The old
 `dsv4-sglang-handoff` branch remains untouched as a historical reference.
 
 ### Prepared standalone package
@@ -488,3 +488,42 @@ ordinary SSH or local shell:
 cd /mnt/hot/ambientlight/repos/codex
 ./restart-custom-codex-daemon.sh
 ```
+
+## Latest idle port: 0.154.0-alpha.11
+
+On 2026-09-09, the complete 0.151.0 custom stack was replayed onto the latest local `idle`
+branch. The new source branch is `feature/dsv4-subagent-profiles-v0.154.0-alpha.11`, based on
+this exact idle commit:
+
+```text
+ccf470c060d1c86c9c7f8d42dc3dabf507b56c9a
+```
+
+The baseline is marked by `codex-evo-upstream-main-20260909`, and the final source is marked by
+`codex-evo-v0.154.0-alpha.11-idle.1`. The official annotated `rust-v0.154.0-alpha.11` tag peels
+to release commit `4236f50b7cef42a74bf69e4b8f8fd18fd3ad97c6`. That release-only commit and `idle` share source
+parent `9e868bd9dc007c05e84a98e0b1f4e31dc98c5e6a`; `idle` then includes later upstream changes.
+Consequently, this port uses the exact newer idle source while carrying the latest applicable
+upstream alpha release identity in its branch and tag names.
+
+The replay retained the original 13 commits and added one compatibility fix for the newer thread
+manager constructor. Rebase conflicts were integrated with current upstream behavior: portable
+profile forks use the latest fork/start options, `/handoff` coexists with the newer `/worktree`
+flow, and the experimental app-server schema was regenerated from source.
+
+### Latest port validation
+
+| Check | Result |
+| --- | --- |
+| Experimental schema | `just write-app-server-schema --experimental` passed. |
+| App-server protocol | 303 passed, 1 skipped. |
+| DSV4 subagent profiles | Both explicit-profile and configured-default core integration tests passed. |
+| Portable handoff | 3 app-server unit tests and the cross-provider integration test passed. |
+| TUI handoff | All 3 matching slash-command tests passed. |
+| Provider, config, daemon | 458 tests passed, including the delayed pairing-response regression. |
+| Protocol and sample | 343 protocol tests passed; the thread-manager sample compiled successfully. |
+| Lint and formatting | Scoped Clippy completed for all affected crates; `just fmt` and `git diff --check` passed. |
+
+No new standalone binary package was built for this source-only port. The restart helper remains
+pinned to the existing, verified `0.151.0-codex-evo-idle.1-20260903` package rather than naming a
+nonexistent alpha.11 package.
