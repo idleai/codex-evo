@@ -2741,6 +2741,7 @@ async fn thread_with_different_provider_uses_its_own_model_catalog() {
         empty_extension_registry(),
         Arc::new(crate::test_support::EmptyUserInstructionsProvider),
         /*analytics_events_client*/ None,
+        passthrough_image_store(),
         thread_store_from_config(&config, /*state_db*/ None),
         /*agent_graph_store*/ None,
         TEST_INSTALLATION_ID.to_string(),
