@@ -22,6 +22,8 @@ use codex_protocol::error::CodexErr;
 use codex_protocol::openai_models::ModelInfo;
 use codex_protocol::openai_models::ModelVisibility;
 use codex_protocol::openai_models::ModelsResponse;
+use codex_protocol::openai_models::ReasoningEffort;
+use codex_protocol::openai_models::ReasoningEffortPreset;
 use tokio::sync::TryLockError;
 
 use crate::auth::resolve_provider_auth;
@@ -349,8 +351,90 @@ pub(crate) fn model_catalog(auth: &GitHubCopilotAuth) -> ModelsResponse {
             model.availability_nux = None;
             model.upgrade = None;
             model.use_responses_lite = false;
+            let copilot_reasoning_efforts = auth.reasoning_efforts_for_model(slug);
+            if !copilot_reasoning_efforts.is_empty() {
+                let bundled_reasoning_levels =
+                    std::mem::take(&mut model.supported_reasoning_levels);
+                model.supported_reasoning_levels = copilot_reasoning_efforts
+                    .iter()
+                    .cloned()
+                    .map(|effort| {
+                        let description = bundled_reasoning_levels
+                            .iter()
+                            .find(|preset| preset.effort == effort)
+                            .map(|preset| preset.description.clone())
+                            .unwrap_or_else(|| match &effort {
+                                ReasoningEffort::None => {
+                                    "Faster responses without reasoning".to_string()
+                                }
+                                ReasoningEffort::Minimal => {
+                                    "Minimal reasoning for simple tasks".to_string()
+                                }
+                                ReasoningEffort::Low => {
+                                    "Fast responses with lighter reasoning".to_string()
+                                }
+                                ReasoningEffort::Medium => {
+                                    "Balances speed and reasoning depth for everyday tasks"
+                                        .to_string()
+                                }
+                                ReasoningEffort::High => {
+                                    "Greater reasoning depth for complex problems".to_string()
+                                }
+                                ReasoningEffort::XHigh => {
+                                    "Extra high reasoning depth for complex problems".to_string()
+                                }
+                                ReasoningEffort::Max => {
+                                    "Maximum reasoning depth for the hardest problems".to_string()
+                                }
+                                ReasoningEffort::Ultra => {
+                                    "Maximum reasoning with automatic task delegation".to_string()
+                                }
+                                ReasoningEffort::Persistent => {
+                                    "Persistent reasoning across turns".to_string()
+                                }
+                                ReasoningEffort::Custom(effort) => {
+                                    format!("{effort} reasoning effort")
+                                }
+                            });
+                        ReasoningEffortPreset {
+                            effort,
+                            description,
+                        }
+                    })
+                    .collect();
+                if let Some(ultra) = bundled_reasoning_levels
+                    .into_iter()
+                    .find(|preset| preset.effort == ReasoningEffort::Ultra)
+                    && !model
+                        .supported_reasoning_levels
+                        .iter()
+                        .any(|preset| preset.effort == ReasoningEffort::Ultra)
+                {
+                    model.supported_reasoning_levels.push(ultra);
+                }
+                if !model
+                    .default_reasoning_level
+                    .as_ref()
+                    .is_some_and(|effort| {
+                        model
+                            .supported_reasoning_levels
+                            .iter()
+                            .any(|preset| &preset.effort == effort)
+                    })
+                {
+                    model.default_reasoning_level = copilot_reasoning_efforts
+                        .iter()
+                        .find(|effort| **effort == ReasoningEffort::Medium)
+                        .or_else(|| copilot_reasoning_efforts.first())
+                        .cloned();
+                }
+            }
             model
         })
         .collect::<Vec<ModelInfo>>();
     ModelsResponse { models }
 }
+
+#[cfg(test)]
+#[path = "github_copilot_tests.rs"]
+mod tests;

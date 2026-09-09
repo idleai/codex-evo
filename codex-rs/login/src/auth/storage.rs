@@ -4,6 +4,7 @@ use serde::Deserialize;
 use serde::Serialize;
 use sha2::Digest;
 use sha2::Sha256;
+use std::collections::BTreeMap;
 use std::collections::HashMap;
 use std::fmt::Debug;
 use std::fs::File;
@@ -30,6 +31,7 @@ use codex_keyring_store::DefaultKeyringStore;
 use codex_keyring_store::KeyringStore;
 use codex_protocol::account::PlanType as AccountPlanType;
 use codex_protocol::auth::AuthMode;
+use codex_protocol::openai_models::ReasoningEffort;
 use codex_secrets::LocalSecretsNamespace;
 use codex_secrets::SecretName;
 use codex_secrets::SecretScope;
@@ -76,6 +78,8 @@ pub struct GitHubCopilotAuth {
     login: Option<String>,
     copilot_sku: Option<String>,
     models: Vec<String>,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    model_reasoning_efforts: BTreeMap<String, Vec<ReasoningEffort>>,
 }
 
 impl GitHubCopilotAuth {
@@ -124,6 +128,7 @@ impl GitHubCopilotAuth {
                 .map(|sku| sku.trim().to_string())
                 .filter(|sku| !sku.is_empty()),
             models,
+            model_reasoning_efforts: BTreeMap::new(),
         };
         auth.validate()?;
         Ok(auth)
@@ -147,6 +152,35 @@ impl GitHubCopilotAuth {
 
     pub fn models(&self) -> &[String] {
         &self.models
+    }
+
+    pub fn reasoning_efforts_for_model(&self, model: &str) -> &[ReasoningEffort] {
+        self.model_reasoning_efforts
+            .get(model)
+            .map(Vec::as_slice)
+            .unwrap_or_default()
+    }
+
+    pub(crate) fn with_model_reasoning_efforts(
+        mut self,
+        model_reasoning_efforts: BTreeMap<String, Vec<ReasoningEffort>>,
+    ) -> Self {
+        self.model_reasoning_efforts = model_reasoning_efforts
+            .into_iter()
+            .filter_map(|(model, efforts)| {
+                self.models.contains(&model).then(|| {
+                    let mut normalized_efforts = Vec::new();
+                    for effort in efforts {
+                        if !normalized_efforts.contains(&effort) {
+                            normalized_efforts.push(effort);
+                        }
+                    }
+                    (model, normalized_efforts)
+                })
+            })
+            .filter(|(_, efforts)| !efforts.is_empty())
+            .collect();
+        self
     }
 
     pub fn default_model(&self) -> &str {
@@ -202,6 +236,7 @@ impl Debug for GitHubCopilotAuth {
             .field("login", &self.login)
             .field("copilot_sku", &self.copilot_sku)
             .field("models", &self.models)
+            .field("model_reasoning_efforts", &self.model_reasoning_efforts)
             .finish()
     }
 }

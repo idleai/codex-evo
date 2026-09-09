@@ -1,7 +1,9 @@
+use std::collections::BTreeMap;
 use std::time::Duration;
 use std::time::Instant;
 
 use codex_http_client::HttpClient;
+use codex_protocol::openai_models::ReasoningEffort;
 use http::StatusCode;
 use serde::Deserialize;
 
@@ -129,11 +131,22 @@ struct CopilotModel {
 #[derive(Debug, Deserialize)]
 struct CopilotModelCapabilities {
     supported_endpoints: Option<Vec<String>>,
+    supports: Option<CopilotModelSupports>,
+}
+
+#[derive(Debug, Deserialize)]
+struct CopilotModelSupports {
+    reasoning_effort: Option<Vec<String>>,
 }
 
 #[derive(Debug, Deserialize)]
 struct CopilotModelPolicy {
     state: Option<String>,
+}
+
+struct CopilotOpenAiModels {
+    ids: Vec<String>,
+    reasoning_efforts: BTreeMap<String, Vec<ReasoningEffort>>,
 }
 
 fn default_poll_interval_secs() -> u64 {
@@ -200,8 +213,9 @@ pub async fn complete_github_copilot_device_code_login(
         entitlement.endpoints.api,
         entitlement.login,
         entitlement.access_type_sku,
-        models,
+        models.ids,
     )
+    .map(|auth| auth.with_model_reasoning_efforts(models.reasoning_efforts))
 }
 
 async fn poll_for_access_token(
@@ -325,7 +339,7 @@ async fn fetch_openai_responses_models(
     options: &GitHubCopilotLoginOptions,
     access_token: &str,
     api_endpoint: &str,
-) -> std::io::Result<Vec<String>> {
+) -> std::io::Result<CopilotOpenAiModels> {
     let models_url = options
         .models_url_override
         .clone()
@@ -349,8 +363,8 @@ async fn fetch_openai_responses_models(
         .json::<CopilotModelsResponse>()
         .await
         .map_err(|err| invalid_response("GitHub Copilot model catalog", err))?;
-    let models = openai_responses_model_ids(catalog.data);
-    if models.is_empty() {
+    let models = openai_responses_models(catalog.data);
+    if models.ids.is_empty() {
         return Err(std::io::Error::new(
             std::io::ErrorKind::Unsupported,
             "GitHub Copilot did not advertise an enabled OpenAI model with Responses API support",
@@ -359,7 +373,7 @@ async fn fetch_openai_responses_models(
     Ok(models)
 }
 
-fn openai_responses_model_ids(models: Vec<CopilotModel>) -> Vec<String> {
+fn openai_responses_models(models: Vec<CopilotModel>) -> CopilotOpenAiModels {
     let mut models = models
         .into_iter()
         .filter(|model| {
@@ -377,7 +391,19 @@ fn openai_responses_model_ids(models: Vec<CopilotModel>) -> Vec<String> {
         })
         .collect::<Vec<_>>();
     models.sort_by_key(|model| !model.is_chat_default.unwrap_or(false));
-    models.into_iter().map(|model| model.id).collect()
+    let mut ids = Vec::with_capacity(models.len());
+    let mut reasoning_efforts = BTreeMap::new();
+    for model in models {
+        let efforts = model.reasoning_efforts();
+        if !efforts.is_empty() {
+            reasoning_efforts.insert(model.id.clone(), efforts);
+        }
+        ids.push(model.id);
+    }
+    CopilotOpenAiModels {
+        ids,
+        reasoning_efforts,
+    }
 }
 
 impl CopilotModel {
@@ -397,6 +423,25 @@ impl CopilotModel {
                     )
                 })
             })
+    }
+
+    fn reasoning_efforts(&self) -> Vec<ReasoningEffort> {
+        let mut efforts = Vec::new();
+        for effort in self
+            .capabilities
+            .as_ref()
+            .and_then(|capabilities| capabilities.supports.as_ref())
+            .and_then(|supports| supports.reasoning_effort.as_ref())
+            .into_iter()
+            .flatten()
+        {
+            if let Ok(effort) = effort.parse()
+                && !efforts.contains(&effort)
+            {
+                efforts.push(effort);
+            }
+        }
+        efforts
     }
 }
 

@@ -93,7 +93,20 @@ async fn device_flow_discovers_direct_responses_models() {
                     "id": "gpt-5-mini",
                     "vendor": "openai",
                     "is_chat_default": true,
-                    "capabilities": {"supported_endpoints": ["/v1/responses"]}
+                    "capabilities": {
+                        "supported_endpoints": ["/v1/responses"],
+                        "supports": {"reasoning_effort": ["low", "medium", "high"]}
+                    }
+                },
+                {
+                    "id": "gpt-6-astra",
+                    "vendor": "OpenAI",
+                    "supported_endpoints": ["/responses"],
+                    "capabilities": {
+                        "supports": {
+                            "reasoning_effort": ["low", "medium", "high", "xhigh", "max"]
+                        }
+                    }
                 }
             ]
         })))
@@ -137,8 +150,45 @@ async fn device_flow_discovers_direct_responses_models() {
     assert_eq!(auth.copilot_sku(), Some("copilot_enterprise"));
     assert_eq!(
         auth.models(),
-        ["gpt-5-mini".to_string(), "gpt-5.1-codex".to_string()]
+        [
+            "gpt-5-mini".to_string(),
+            "gpt-5.1-codex".to_string(),
+            "gpt-6-astra".to_string(),
+        ]
     );
+    assert_eq!(
+        auth.reasoning_efforts_for_model("gpt-5-mini"),
+        [
+            ReasoningEffort::Low,
+            ReasoningEffort::Medium,
+            ReasoningEffort::High,
+        ]
+    );
+    assert_eq!(
+        auth.reasoning_efforts_for_model("gpt-6-astra"),
+        [
+            ReasoningEffort::Low,
+            ReasoningEffort::Medium,
+            ReasoningEffort::High,
+            ReasoningEffort::XHigh,
+            ReasoningEffort::Max,
+        ]
+    );
+}
+
+#[test]
+fn legacy_github_auth_without_reasoning_metadata_still_deserializes() {
+    let auth = serde_json::from_value::<GitHubCopilotAuth>(json!({
+        "access_token": "github-token",
+        "api_endpoint": "https://api.individual.githubcopilot.com",
+        "login": "octocat",
+        "copilot_sku": "copilot_individual",
+        "models": ["gpt-6-astra"]
+    }))
+    .expect("legacy GitHub Copilot auth should deserialize");
+
+    assert_eq!(auth.models(), ["gpt-6-astra".to_string()]);
+    assert!(auth.reasoning_efforts_for_model("gpt-6-astra").is_empty());
 }
 
 #[test]
