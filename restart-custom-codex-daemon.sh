@@ -1,14 +1,14 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-custom_release="/mnt/hot/ambientlight/.codex/packages/standalone/releases/0.151.0-codex-evo-idle.1-20260903-x86_64-unknown-linux-gnu"
+custom_release="/mnt/hot/ambientlight/.codex/packages/standalone/releases/0.154.0-alpha.11-codex-evo-idle.1-20260909-x86_64-unknown-linux-gnu"
 standalone_dir="/mnt/hot/ambientlight/.codex/packages/standalone"
 current_link="$standalone_dir/current"
 updater_pid_file="/mnt/hot/ambientlight/.codex/app-server-daemon/app-server-updater.pid"
 package_codex="$custom_release/bin/codex"
 managed_codex="$custom_release/codex"
 installed_codex="/mnt/hot/ambientlight/.local/bin/codex"
-expected_cli_version="codex-cli 0.151.0"
+expected_cli_version="codex-cli 0.154.0-alpha.11"
 
 if [[ ! -x "$package_codex" ]]; then
     echo "Custom Codex binary is missing or not executable: $package_codex" >&2
