@@ -2,6 +2,7 @@ use crate::events::AppServerRpcTransport;
 use crate::events::GuardianReviewAnalyticsResult;
 use crate::events::GuardianReviewTrackContext;
 use crate::events::TrackEventRequest;
+#[cfg(debug_assertions)]
 use crate::events::TrackEventsRequest;
 use crate::events::current_runtime_metadata;
 use crate::facts::AnalyticsFact;
@@ -71,7 +72,6 @@ use codex_protocol::protocol::Event;
 use codex_protocol::protocol::EventMsg;
 use codex_protocol::request_permissions::RequestPermissionsResponse;
 use std::collections::HashSet;
-#[cfg(debug_assertions)]
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::Mutex;
@@ -133,6 +133,9 @@ impl AnalyticsEventsDestination {
                 ),
             };
         }
+
+        #[cfg(not(debug_assertions))]
+        let _ = base_url;
 
         Self::Disabled
     }
@@ -908,6 +911,10 @@ async fn send_track_events_request(
         return;
     }
 
+    #[cfg(not(debug_assertions))]
+    let _ = destination;
+
+    #[cfg(debug_assertions)]
     let payload = TrackEventsRequest { events };
 
     #[cfg(debug_assertions)]

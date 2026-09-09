@@ -58,6 +58,7 @@ pub enum AppServerRpcTransport {
     InProcess,
 }
 
+#[cfg(any(debug_assertions, test))]
 #[derive(Serialize)]
 pub(crate) struct TrackEventsRequest {
     pub(crate) events: Vec<TrackEventRequest>,
