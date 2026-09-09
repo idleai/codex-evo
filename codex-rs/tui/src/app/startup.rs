@@ -324,6 +324,9 @@ impl App {
         );
         let feedback_audience = bootstrap.feedback_audience;
         let auth_mode = bootstrap.auth_mode;
+        if !matches!(auth_mode, Some(TelemetryAuthMode::GitHubCopilot)) {
+            crate::tooltips::announcement::prewarm(config.http_client_factory());
+        }
         let has_chatgpt_account = bootstrap.has_chatgpt_account;
         let has_codex_backend_auth = matches!(auth_mode, Some(TelemetryAuthMode::Chatgpt));
         let requires_openai_auth = bootstrap.requires_openai_auth;

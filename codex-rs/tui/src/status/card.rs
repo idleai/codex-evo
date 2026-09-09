@@ -744,9 +744,17 @@ fn status_approval_label(
 impl StatusHistoryCell {
     fn content_lines(&self, width: u16) -> Vec<Line<'static>> {
         let mut lines: Vec<Line<'static>> = Vec::new();
+        let product_name = if matches!(
+            self.account.as_ref(),
+            Some(StatusAccountDisplay::GitHubCopilot { .. })
+        ) {
+            "Idle Codex"
+        } else {
+            "OpenAI Codex"
+        };
         lines.push(Line::from(vec![
             Span::from(format!("{}>_ ", FieldFormatter::INDENT)).dim(),
-            Span::from("OpenAI Codex").bold(),
+            Span::from(product_name).bold(),
             Span::from(" ").dim(),
             Span::from(format!("(v{CODEX_CLI_VERSION})")).dim(),
         ]));

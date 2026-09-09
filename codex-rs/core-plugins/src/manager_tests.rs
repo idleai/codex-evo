@@ -165,10 +165,10 @@ async fn plugins_manager_reads_auth_mode_from_auth_manager() {
 }
 
 #[test]
-fn curated_repo_sync_stays_deferred_for_remote_chatgpt_catalog() {
+fn curated_repo_sync_stays_deferred_for_remote_chatgpt_catalog_and_github_copilot() {
     CURATED_REPO_SYNC_STARTED.store(false, std::sync::atomic::Ordering::SeqCst);
     let tmp = TempDir::new().unwrap();
-    let config = PluginsConfigInput::new(
+    let remote_chatgpt_config = PluginsConfigInput::new(
         unrestricted_config_layer_stack(),
         "openai".to_string(),
         /*plugins_enabled*/ true,
@@ -183,7 +183,29 @@ fn curated_repo_sync_stays_deferred_for_remote_chatgpt_catalog() {
     ));
 
     manager.maybe_start_curated_repo_sync_for_config(
-        &config, /*on_effective_plugins_changed*/ None,
+        &remote_chatgpt_config,
+        /*on_effective_plugins_changed*/ None,
+    );
+
+    assert!(!CURATED_REPO_SYNC_STARTED.load(std::sync::atomic::Ordering::SeqCst));
+
+    let github_copilot_config = PluginsConfigInput::new(
+        unrestricted_config_layer_stack(),
+        "openai".to_string(),
+        /*plugins_enabled*/ true,
+        /*remote_plugin_enabled*/ false,
+        "https://chatgpt.com".to_string(),
+        test_http_client_factory(),
+    );
+    let manager = Arc::new(test_plugins_manager_with_options(
+        tmp.path().join("github-copilot"),
+        Some(Product::Codex),
+        Some(AuthMode::GitHubCopilot),
+    ));
+
+    manager.maybe_start_curated_repo_sync_for_config(
+        &github_copilot_config,
+        /*on_effective_plugins_changed*/ None,
     );
 
     assert!(!CURATED_REPO_SYNC_STARTED.load(std::sync::atomic::Ordering::SeqCst));
@@ -5794,6 +5816,71 @@ plugins = true
         .unwrap();
 
     assert_eq!(featured_plugin_ids, vec!["codex-plugin".to_string()]);
+}
+
+#[tokio::test]
+async fn featured_plugin_ids_for_config_skips_openai_request_for_github_copilot() {
+    let tmp = tempfile::tempdir().unwrap();
+    write_file(
+        &tmp.path().join(CONFIG_TOML_FILE),
+        r#"[features]
+plugins = true
+"#,
+    );
+
+    let server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/backend-api/plugins/featured"))
+        .respond_with(ResponseTemplate::new(500))
+        .mount(&server)
+        .await;
+
+    let mut config = load_config(tmp.path(), tmp.path()).await;
+    config.chatgpt_base_url = format!("{}/backend-api/", server.uri());
+    let manager = Arc::new(test_plugins_manager_with_options(
+        tmp.path().to_path_buf(),
+        Some(Product::Codex),
+        Some(AuthMode::GitHubCopilot),
+    ));
+
+    let featured_plugin_ids = manager
+        .featured_plugin_ids_for_config(&config, /*auth*/ None)
+        .await
+        .unwrap();
+
+    assert_eq!(featured_plugin_ids, Vec::<String>::new());
+
+    let auth_manager = test_auth_manager(Some(AuthMode::GitHubCopilot));
+    let auth = auth_manager.auth().await.expect("GitHub Copilot auth");
+    let featured_plugin_ids = crate::remote_legacy::fetch_remote_featured_plugin_ids(
+        &config.remote_plugin_service_config(),
+        Some(&auth),
+        Some(Product::Codex),
+    )
+    .await
+    .unwrap();
+
+    assert_eq!(featured_plugin_ids, Vec::<String>::new());
+
+    manager.maybe_start_remote_plugin_caches_refresh(
+        &config,
+        Some(auth.clone()),
+        /*on_effective_plugins_changed*/ None,
+    );
+    manager.maybe_start_remote_installed_plugin_bundle_sync(
+        &config,
+        Some(auth.clone()),
+        /*on_effective_plugins_changed*/ None,
+    );
+    manager.maybe_start_remote_catalog_cache_refresh(
+        &config,
+        Some(auth),
+        BTreeSet::from([RemotePluginScope::Global]),
+        RemoteCatalogCacheRefreshMode::Force,
+    );
+    tokio::time::sleep(Duration::from_millis(50)).await;
+
+    assert!(server.received_requests().await.unwrap().is_empty());
 }
 
 #[tokio::test]

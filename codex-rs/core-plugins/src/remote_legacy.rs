@@ -125,6 +125,10 @@ pub async fn fetch_remote_featured_plugin_ids(
     auth: Option<&CodexAuth>,
     product: Option<Product>,
 ) -> Result<Vec<String>, RemotePluginFetchError> {
+    if auth.is_some_and(CodexAuth::is_github_copilot_auth) {
+        return Ok(Vec::new());
+    }
+
     let base_url = config.chatgpt_base_url.trim_end_matches('/');
     let mut url = Url::parse(&format!("{base_url}/plugins/featured"))
         .map_err(RemotePluginFetchError::InvalidBaseUrl)?;
