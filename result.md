@@ -2,7 +2,32 @@
 
 Last updated: 2026-09-25
 
-## Current release: 0.158.0-alpha.14
+## Picker update: 0.158.0-alpha.14 / idle.2
+
+Branch `feature/dsv41-remote-model-picker` adds opt-in app-server model discovery
+and profile routing for new chats. The custom release tag is
+`codex-evo-v0.158.0-alpha.14-idle.2`; the restart helper selects its dedicated package.
+
+Register the existing local profile in the host's user config:
+
+```toml
+[model_picker_profiles]
+deepseek-v4-flash = "dsv4"
+```
+
+The profile's catalog entry is appended to live native model discovery. Starting
+a thread with that model loads the full profile, including the provider and model
+instructions. Cold resume restores the profile, and the default history list includes
+both providers. Existing conversations reject a cross-provider model change;
+portable profile handoff remains available separately.
+
+Validation: all four new integration cases, all 345 configuration tests, and all
+five restart-helper tests passed. The broader app-server check passed 313 of 314
+tests; the managed-network sandbox case also failed on the previous release and
+reports unavailable Linux user namespaces on this host. Actual ChatGPT client menu
+rendering still requires a client check; host discovery alone does not establish it.
+
+## Upstream refresh: 0.158.0-alpha.14 / idle.1
 
 The 16-commit DSV4/subagent-profile stack was rebased onto OpenAI main
 `60713126ee0dbc483fba83fc032dfaa5998521ec`, matching the fork's updated `main`.
