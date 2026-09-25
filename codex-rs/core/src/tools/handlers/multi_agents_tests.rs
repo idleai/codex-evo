@@ -534,8 +534,8 @@ async fn spawn_agent_service_tier_uses_root_preference_when_root_model_cannot_su
         root_service_tier.as_deref(),
         /*requested_service_tier*/ None,
     )
-        .await
-        .expect("root preference should be resolved against the child model");
+    .await
+    .expect("root preference should be resolved against the child model");
 
     assert_eq!(
         config.service_tier,

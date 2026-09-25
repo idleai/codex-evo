@@ -165,7 +165,8 @@ async fn handle_spawn_agent(
         if is_full_history_fork && turn.multi_agent_version == MultiAgentVersion::V2 {
             let child_model_info = match config.model.as_deref() {
                 Some(model) if model != turn.model_info().slug => Some(
-                    prepared.models_manager
+                    prepared
+                        .models_manager
                         .get_model_info(model, &config.to_models_manager_config())
                         .await,
                 ),
