@@ -1,5 +1,90 @@
 # Native OpenAI + Direct SGLang DSV4 Handoff: Result
 
+Last updated: 2026-09-25
+
+## Current release: 0.158.0-alpha.14
+
+The 16-commit DSV4/subagent-profile stack was rebased onto OpenAI main
+`60713126ee0dbc483fba83fc032dfaa5998521ec`, matching the fork's updated `main`.
+The official `rust-v0.158.0-alpha.14` release commit
+`65757fb7dbaafe15a902433cf1a4413d766f316d` is its direct child and changes only the
+workspace version. This package therefore uses that release identity for this main snapshot.
+
+- Source branch: `feature/dsv4-subagent-profiles-v0.158.0-alpha.14` and `idle`.
+- Upstream baseline tag: `codex-evo-upstream-main-20260925`.
+- Final custom source tag: `codex-evo-v0.158.0-alpha.14-idle.1`.
+- Compiled source commit: `5cb675967579c1735b74eee1f9f9bb1a52dc038a`; subsequent release-record changes do not alter Rust code.
+
+The port preserves named/default subagent profiles, provider-specific model catalogs,
+service-tier precedence, portable `/handoff`, Responses compatibility controls, and the
+longer Remote pairing timeout. It integrates upstream's shared child-configuration path
+and model discovery. Custom protobuf fields moved away from upstream's newly allocated
+model-catalog field. Reserved OpenAI spawn schemas retain their upstream field set.
+
+Portable handoffs now preserve both legacy and paginated history formats. TUI handoff
+assertions account for upstream's transcript-follow event; the handoff operation lives
+in a separate module. Both its dispatch and the shared fork-request future are boxed;
+the latter fixes a stack overflow in the existing daemon reconnect test that did not
+occur on untouched upstream main.
+
+### Validation
+
+- Config and experimental app-server schemas regenerated successfully.
+- Initial broad run across 11 affected crates: 13,239 passed, 136 failed, 3 timed out,
+  19 skipped. This was not a green run. Many failures reported denied sandbox UID-map
+  setup on this host; host-skill snapshot contamination and an external-agent import
+  fixture also failed. No sandbox guards or host security settings were weakened.
+- All six subagent-profile integration cases passed, covering explicit/default selection,
+  fresh children, and rejection of explicit cross-provider history inheritance.
+- Both legacy and paginated portable-handoff integrations passed after the history fix;
+  focused TUI handoff/model-picker checks passed after the event-order fix.
+- All 14 cursor, IDE-socket, and startup-default checks passed with terminal colors
+  enabled, a private test umask, and temporary paths outside the user's home. The
+  reconnect and handoff checks passed after bounding the shared fork-request future.
+- All 67 daemon tests passed, including delayed Remote pairing; the provider, catalog,
+  configuration, protocol, and app-server-protocol crate tests passed.
+- Scoped `just fix`, `just fmt`, and `git diff --check` completed. The five restart-helper
+  tests passed. The full workspace suite was not run.
+- The packaged app-server initialized successfully in an isolated Codex home. A running
+  0.154.0-alpha.11 daemon in that home migrated to 0.158.0-alpha.14, with the complete
+  custom package pinned in the new dedicated daemon installation.
+- The packaged V8 code-mode host executed its bundled ripgrep through the local mock
+  Responses API in an isolated full-access thread.
+
+### Prepared standalone package
+
+```text
+/mnt/hot/ambientlight/.codex/packages/standalone/releases/0.158.0-alpha.14-codex-evo-idle.1-20260925-x86_64-unknown-linux-gnu
+```
+
+| Artifact | SHA-256 |
+| --- | --- |
+| `bin/codex` | `b44902cc4997321e3fce23961c9c5a28415ca6e3878bd4d5180d7fc52831db25` |
+| `bin/codex-code-mode-host` | `0d4e2a07d88bae6111f1343532f5f7f6dfacc37862d1b850bc097583a144e731` |
+| `codex-resources/bwrap` | `c102c5f893faed17ed053ce6ceb9fe0bb03069b991a6f0390e54d82c85f1bca0` |
+
+The canonical assembler built the CLI and V8 code-mode host with a temporary
+`0.158.0-alpha.14` workspace version and an explicit `STABLE_GIT_COMMIT` stamp.
+`Cargo.toml` and `Cargo.lock` were then restored byte-for-byte. The verified Bubblewrap
+helper was reused; its source is unchanged across these upstream baselines. The package
+manifest, CLI, and app-server handshake all report the intended version.
+
+The live Remote daemon and selected CLI remain on 0.154.0-alpha.11. Activate from SSH
+or a local shell because replacing the daemon disconnects Remote:
+
+```bash
+/mnt/hot/ambientlight/repos/codex-latest/restart-custom-codex-daemon.sh --check
+/mnt/hot/ambientlight/repos/codex-latest/restart-custom-codex-daemon.sh
+```
+
+The helper validates the package, runs `app-server daemon update --from-cli --yes`, starts
+the daemon, enables Remote, verifies its version and pinned binary, and only then switches
+`standalone/current`. Upstream now manages the daemon under `packages/app-server-daemon`;
+changing only the standalone CLI symlink is insufficient. The existing dirty worktree on
+`solmax/github-copilot-auth` was preserved.
+
+## Historical implementation and earlier releases
+
 Initial implementation: 2026-08-23
 
 Last updated: 2026-09-09
@@ -489,7 +574,7 @@ cd /mnt/hot/ambientlight/repos/codex
 ./restart-custom-codex-daemon.sh
 ```
 
-## Latest idle port: 0.154.0-alpha.11
+## Previous idle port: 0.154.0-alpha.11
 
 On 2026-09-09, the complete 0.151.0 custom stack was replayed onto the latest local `idle`
 branch. The new source branch is `feature/dsv4-subagent-profiles-v0.154.0-alpha.11`, based on
@@ -511,7 +596,7 @@ manager constructor. Rebase conflicts were integrated with current upstream beha
 profile forks use the latest fork/start options, `/handoff` coexists with the newer `/worktree`
 flow, and the experimental app-server schema was regenerated from source.
 
-### Latest port validation
+### Alpha.11 port validation
 
 | Check | Result |
 | --- | --- |
