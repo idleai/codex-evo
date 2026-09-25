@@ -21,8 +21,17 @@ instructions. Cold resume restores the profile, and the default history list inc
 both providers. Existing conversations reject a cross-provider model change;
 portable profile handoff remains available separately.
 
+The restart helper discovers the Codex directory from `CODEX_HOME`, falling back
+to `$HOME/.codex`, and works from any current directory. Profile asset paths are
+relative to the profile file: use `dsv4-models.json` for the catalog and
+`prompts/dsv4-instructions.md` for the model instructions. The local instructions
+were copied without changing their contents, removing the profile's dependency
+on a particular source checkout. A fresh live DeepSeek thread also successfully
+ran `cd -- "$HOME" && pwd` from a working directory containing spaces.
+
 Validation: all four new integration cases, all 345 configuration tests, and all
-five restart-helper tests passed. The broader app-server check passed 313 of 314
+six restart-helper tests passed, including discovery in a user home containing
+spaces with `CODEX_HOME` unset. The broader app-server check passed 313 of 314
 tests; the managed-network sandbox case also failed on the previous release and
 reports unavailable Linux user namespaces on this host. Actual ChatGPT client menu
 rendering still requires a client check; host discovery alone does not establish it.

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-codex_home="${CODEX_HOME:-/mnt/hot/ambientlight/.codex}"
+codex_home="${CODEX_HOME:-${HOME:?HOME must be set when CODEX_HOME is unset}/.codex}"
 export CODEX_HOME="$codex_home"
 release_name="0.158.0-alpha.14-codex-evo-idle.2-20260925-x86_64-unknown-linux-gnu"
 standalone_dir="$codex_home/packages/standalone"
