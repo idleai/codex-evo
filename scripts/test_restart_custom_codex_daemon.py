@@ -3,6 +3,7 @@
 import json
 import os
 from pathlib import Path
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -11,6 +12,7 @@ import unittest
 
 HELPER = Path(__file__).resolve().parents[1] / "restart-custom-codex-daemon.sh"
 VERSION = "0.158.0-alpha.14"
+RELEASE_NAME = f"{VERSION}-codex-evo-idle.2-20260925-x86_64-unknown-linux-gnu"
 MOCK_CODEX = r"""#!/usr/bin/env python3
 import json
 import os
@@ -103,6 +105,29 @@ class RestartCustomCodexTests(unittest.TestCase):
         self.assertEqual(self.commands(), [["--version"]])
         self.assertEqual(self.current.resolve(), self.previous)
         self.assertFalse((self.home / "packages/app-server-daemon").exists())
+
+    def test_check_discovers_package_from_user_home_with_spaces(self):
+        user_home = self.home / "user home with spaces"
+        codex_home = user_home / ".codex"
+        package = codex_home / "packages/standalone/releases" / RELEASE_NAME
+        shutil.copytree(self.package, package)
+        environment = {**self.environment, "HOME": str(user_home)}
+        environment.pop("CODEX_HOME")
+        environment.pop("CODEX_CUSTOM_RELEASE")
+
+        result = subprocess.run(
+            ["bash", str(HELPER), "--check"],
+            cwd=self.home,
+            env=environment,
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn(str(package), result.stdout)
+        self.assertEqual((codex_home / "commands.jsonl").read_text(), '["--version"]\n')
+        self.assertFalse((codex_home / "packages/app-server-daemon").exists())
 
     def test_activation_pins_then_starts_and_enables_remote_before_selecting_cli(self):
         result = self.run_helper()
