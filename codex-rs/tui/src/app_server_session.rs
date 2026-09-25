@@ -919,7 +919,7 @@ impl AppServerSession {
             thread_source: Some(ThreadSource::User),
             ..ThreadForkParams::default()
         };
-        self.request_fork_thread(
+        Box::pin(self.request_fork_thread(
             local_settings,
             config,
             thread_id,
@@ -927,7 +927,7 @@ impl AppServerSession {
             params,
             ForkPresentation::Regular,
             ThreadParamsMode::Remote,
-        )
+        ))
         .await
     }
 
@@ -1001,7 +1001,8 @@ impl AppServerSession {
         }
         self.thread_tool_transport()
             .configure_mcp(&mut params.config);
-        self.request_fork_thread(
+        // Keep the nested fork future off the central event dispatcher's stack.
+        Box::pin(self.request_fork_thread(
             local_settings,
             config,
             thread_id,
@@ -1009,7 +1010,7 @@ impl AppServerSession {
             params,
             presentation,
             self.thread_params_mode(),
-        )
+        ))
         .await
     }
 
