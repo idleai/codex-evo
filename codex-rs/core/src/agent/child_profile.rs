@@ -2,7 +2,6 @@ use crate::config::Config;
 use crate::config::ConfigOverrides;
 use crate::config::deserialize_config_toml_with_base;
 use crate::config::resolve_profile_v2_config_path;
-use crate::function_tool::FunctionCallError;
 use codex_config::ConfigLayerEntry;
 use codex_config::ConfigLayerSource;
 use codex_config::ConfigLayerStack;
@@ -19,29 +18,25 @@ use toml::Value as TomlValue;
 pub(crate) async fn apply_spawn_agent_profile(
     config: &mut Config,
     profile: &str,
-) -> Result<(), FunctionCallError> {
+) -> Result<(), String> {
     let selected = load_spawn_agent_profile(config, profile)
         .await
-        .map_err(|err| {
-            FunctionCallError::RespondToModel(format!(
-                "spawn_agent could not load profile `{profile}`: {err}"
-            ))
-        })?;
+        .map_err(|err| format!("spawn_agent could not load profile `{profile}`: {err}"))?;
 
     let configured_provider = config
         .model_providers
         .get(&selected.model_provider_id)
         .ok_or_else(|| {
-            FunctionCallError::RespondToModel(format!(
+            format!(
                 "spawn_agent profile `{profile}` selects model provider `{}`, which must be declared in the base user configuration",
                 selected.model_provider_id
-            ))
+            )
         })?;
     if configured_provider != &selected.model_provider {
-        return Err(FunctionCallError::RespondToModel(format!(
+        return Err(format!(
             "spawn_agent profile `{profile}` overrides model provider `{}`; provider definitions must live in the base user configuration",
             selected.model_provider_id
-        )));
+        ));
     }
 
     config.model = selected.model;

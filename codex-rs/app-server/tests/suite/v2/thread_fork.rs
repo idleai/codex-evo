@@ -297,9 +297,12 @@ async fn thread_fork_creates_new_thread_and_emits_started() -> Result<()> {
     Ok(())
 }
 
+#[test_case::test_case(ThreadHistoryMode::Legacy; "legacy")]
+#[test_case::test_case(ThreadHistoryMode::Paginated; "paginated")]
 #[tokio::test]
-async fn thread_fork_portable_profile_handoff_switches_provider_and_broadcasts_thread() -> Result<()>
-{
+async fn thread_fork_portable_profile_handoff_switches_provider_and_broadcasts_thread(
+    history_mode: ThreadHistoryMode,
+) -> Result<()> {
     let source_server = create_mock_responses_server_repeating_assistant("source").await;
     let target_server = create_mock_responses_server_repeating_assistant("target").await;
     let codex_home = TempDir::new()?;
@@ -318,7 +321,7 @@ async fn thread_fork_portable_profile_handoff_switches_provider_and_broadcasts_t
             r#"
 model = "deepseek-v4-flash"
 model_provider = "sglang_dsv4"
-model_catalog_json = "{}"
+model_catalog_json = {}
 model_reasoning_effort = "medium"
 
 [model_providers.sglang_dsv4]
@@ -329,12 +332,16 @@ requires_openai_auth = false
 request_max_retries = 0
 stream_max_retries = 0
 "#,
-            catalog_path.display(),
+            serde_json::to_string(&catalog_path)?,
             target_server.uri(),
         ),
     )?;
 
-    let source_thread_id = create_fake_rollout(
+    let create_rollout = match history_mode {
+        ThreadHistoryMode::Legacy => create_fake_rollout,
+        ThreadHistoryMode::Paginated => create_fake_paginated_rollout,
+    };
+    let source_thread_id = create_rollout(
         codex_home.path(),
         "2025-01-05T12-00-00",
         "2025-01-05T12:00:00Z",
@@ -408,6 +415,7 @@ stream_max_retries = 0
 
     assert_eq!(response.model, "deepseek-v4-flash");
     assert_eq!(response.model_provider, "sglang_dsv4");
+    assert_eq!(response.thread.history_mode, history_mode);
     assert_eq!(
         response.thread.forked_from_id.as_deref(),
         Some(source_thread_id.as_str())
@@ -478,6 +486,7 @@ stream_max_retries = 0
         timeout(DEFAULT_READ_TIMEOUT, mcp.read_response(back_fork_id)).await??;
     assert_eq!(back_response.model, "mock-model");
     assert_eq!(back_response.model_provider, "mock_provider");
+    assert_eq!(back_response.thread.history_mode, history_mode);
     assert_eq!(
         back_response.thread.forked_from_id.as_deref(),
         Some(response.thread.id.as_str())

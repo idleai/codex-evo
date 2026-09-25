@@ -81,6 +81,7 @@ pub fn create_spawn_agent_tool_v1(options: SpawnAgentToolOptions) -> ToolSpec {
     }
     if !options.expose_spawn_agent_profile_override {
         properties.remove("profile");
+        properties.remove("service_tier");
     }
     if options.hide_agent_type_model_reasoning {
         hide_spawn_agent_metadata_options(&mut properties);
@@ -124,6 +125,7 @@ pub fn create_spawn_agent_tool_v2(
     }
     if !options.expose_spawn_agent_profile_override {
         properties.remove("profile");
+        properties.remove("service_tier");
     }
     if !options.expose_spawn_agent_model_overrides {
         properties.remove("model");

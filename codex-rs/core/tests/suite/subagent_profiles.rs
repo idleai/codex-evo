@@ -42,15 +42,29 @@ enum ProfileSelection {
     ConfiguredDefault,
 }
 
-#[test_case(ProfileSelection::Explicit; "explicit profile")]
-#[test_case(ProfileSelection::ConfiguredDefault; "configured default profile")]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum HistoryFork {
+    Default,
+    Full,
+    Fresh,
+}
+
+#[test_case(ProfileSelection::Explicit, HistoryFork::Default; "explicit profile")]
+#[test_case(ProfileSelection::ConfiguredDefault, HistoryFork::Default; "configured default profile")]
+#[test_case(ProfileSelection::Explicit, HistoryFork::Fresh; "explicit profile without history")]
+#[test_case(ProfileSelection::ConfiguredDefault, HistoryFork::Fresh; "default profile without history")]
+#[test_case(ProfileSelection::Explicit, HistoryFork::Full; "reject explicit profile with history")]
+#[test_case(ProfileSelection::ConfiguredDefault, HistoryFork::Full; "reject default profile with history")]
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn openai_parent_spawns_direct_sglang_child(selection: ProfileSelection) -> Result<()> {
+async fn openai_parent_spawns_direct_sglang_child(
+    selection: ProfileSelection,
+    history: HistoryFork,
+) -> Result<()> {
     skip_if_no_network!(Ok(()));
 
     let parent_server = start_mock_server().await;
     let child_server = start_mock_server().await;
-    let (spawn_namespace, spawn_args) = match selection {
+    let (spawn_namespace, mut spawn_args) = match selection {
         ProfileSelection::Explicit => (
             "collaboration",
             json!({
@@ -66,6 +80,20 @@ async fn openai_parent_spawns_direct_sglang_child(selection: ProfileSelection) -
             }),
         ),
     };
+    if history != HistoryFork::Default {
+        match selection {
+            ProfileSelection::Explicit => {
+                spawn_args["fork_turns"] = json!(if history == HistoryFork::Full {
+                    "all"
+                } else {
+                    "none"
+                });
+            }
+            ProfileSelection::ConfiguredDefault => {
+                spawn_args["fork_context"] = json!(history == HistoryFork::Full);
+            }
+        }
+    }
     let spawn_args = serde_json::to_string(&spawn_args)?;
 
     let parent_initial = mount_sse_once_match(
@@ -132,6 +160,19 @@ async fn openai_parent_spawns_direct_sglang_child(selection: ProfileSelection) -
         test.codex.multi_agent_version(),
         Some(expected_parent_multi_agent_version)
     );
+
+    if history == HistoryFork::Full {
+        let output = parent_followup
+            .function_call_output_text(SPAWN_CALL_ID)
+            .expect("parent should receive the rejected spawn result");
+        assert!(output.contains("cross-provider spawn_agent profiles cannot fork parent context"));
+        assert_eq!(child_request_log.requests().len(), 0);
+        assert_eq!(
+            test.thread_manager.list_thread_ids().await,
+            vec![test.session_configured.thread_id]
+        );
+        return Ok(());
+    }
 
     let child_request = match wait_for_request(&child_request_log).await {
         Ok(request) => request,

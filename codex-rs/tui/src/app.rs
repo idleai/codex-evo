@@ -241,6 +241,7 @@ mod permission_shortcuts;
 mod pets;
 mod platform_actions;
 mod plugin_mentions;
+mod profile_handoff;
 mod prompt_suggestions;
 mod rate_limit_refresh;
 mod realtime_delivery;

@@ -3,6 +3,7 @@
 //! Spawn and reload share live runtime policy; role and model precedence, full-history
 //! inheritance, and validation messages remain the same for each multi-agent version.
 
+use crate::agent::child_profile::apply_spawn_agent_profile;
 use crate::agent::role::DEFAULT_ROLE_NAME;
 use crate::agent::role::apply_role_to_config;
 use crate::agent::types::SpawnAgentForkMode;
@@ -11,16 +12,15 @@ use crate::session::session::Session;
 use crate::session::step_context::StepContext;
 use crate::session::turn_context::TurnContext;
 use crate::thread_manager::build_models_manager;
-use crate::tools::handlers::multi_agents_profile::apply_spawn_agent_profile;
 use codex_models_manager::manager::RefreshStrategy;
 use codex_models_manager::manager::SharedModelsManager;
-use std::sync::Arc;
 use codex_protocol::config_types::SERVICE_TIER_DEFAULT_REQUEST_VALUE;
 use codex_protocol::models::BaseInstructions;
 use codex_protocol::openai_models::ModelPreset;
 use codex_protocol::openai_models::ReasoningEffort;
 use codex_protocol::openai_models::ReasoningEffortPreset;
 use codex_protocol::protocol::MultiAgentVersion;
+use std::sync::Arc;
 
 pub(crate) const MAX_SPAWN_AGENT_MODEL_OVERRIDES: usize = 5;
 
@@ -66,9 +66,11 @@ pub(crate) async fn prepare_agent_spawn_config(
     let turn = step_context.turn.as_ref();
     let mut config =
         build_agent_spawn_config(&session.get_base_instructions().await, step_context)?;
-    let profile = options.profile.or(turn.config.agent_default_subagent_profile.as_deref());
+    let profile = options
+        .profile
+        .or(turn.config.agent_default_subagent_profile.as_deref());
     if let Some(profile) = profile {
-        apply_spawn_agent_profile(&mut config, profile).await.map_err(|err| err.to_string())?;
+        apply_spawn_agent_profile(&mut config, profile).await?;
     }
     let mut fork_mode = options.fork_mode;
     if config.model_provider_id != turn.config.model_provider_id && fork_mode.is_some() {
@@ -83,9 +85,10 @@ pub(crate) async fn prepare_agent_spawn_config(
     } else {
         Arc::clone(&session.services.models_manager)
     };
-    let child_service_tier = options.service_tier.map(str::to_owned).or_else(|| {
-        profile.and(config.service_tier.clone())
-    });
+    let child_service_tier = options
+        .service_tier
+        .map(str::to_owned)
+        .or_else(|| profile.and(config.service_tier.clone()));
     let default_model = if profile.is_some() {
         config.model.clone()
     } else {
@@ -127,7 +130,8 @@ pub(crate) async fn prepare_agent_spawn_config(
         &mut config,
         parent_service_tier.as_deref(),
         options.service_tier,
-    ).await?;
+    )
+    .await?;
     apply_spawn_agent_runtime_overrides(&mut config, turn)?;
 
     // Remember an applied configured default so cold reload reapplies its restrictions.
@@ -143,7 +147,12 @@ pub(crate) async fn prepare_agent_spawn_config(
             .then_some(DEFAULT_ROLE_NAME)
         })
         .map(str::to_owned);
-    Ok(PreparedSpawnConfig { config, role_name, fork_mode, models_manager })
+    Ok(PreparedSpawnConfig {
+        config,
+        role_name,
+        fork_mode,
+        models_manager,
+    })
 }
 
 /// Builds the base config snapshot for a newly spawned sub-agent.
@@ -301,7 +310,8 @@ pub(crate) async fn apply_spawn_agent_service_tier(
     let Some(service_tier) = requested_service_tier
         .or(config.service_tier.as_deref())
         .or(parent_service_tier)
-        .map(str::to_owned) else {
+        .map(str::to_owned)
+    else {
         config.service_tier = None;
         return Ok(());
     };
@@ -317,8 +327,11 @@ pub(crate) async fn apply_spawn_agent_service_tier(
         .get_model_info(model.as_str(), &config.to_models_manager_config())
         .await;
 
-    if requested_service_tier.is_some() && !model_info.supports_service_tier(service_tier.as_str()) {
-        return Err(format!("Service tier `{service_tier}` is not supported for model `{model}`"));
+    if requested_service_tier.is_some() && !model_info.supports_service_tier(service_tier.as_str())
+    {
+        return Err(format!(
+            "Service tier `{service_tier}` is not supported for model `{model}`"
+        ));
     }
     config.service_tier = model_info
         .supports_service_tier(service_tier.as_str())

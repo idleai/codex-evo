@@ -3076,6 +3076,8 @@ async fn slash_handoff_requests_named_profile() {
 
     chat.handle_key_event(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
 
+    assert_matches!(rx.try_recv(), Ok(AppEvent::FollowTranscript));
+
     assert_matches!(
         rx.try_recv(),
         Ok(AppEvent::HandoffCurrentSession {
@@ -3091,6 +3093,8 @@ async fn slash_handoff_base_requests_base_config() {
         .set_composer_text("/handoff --base".to_string(), Vec::new(), Vec::new());
 
     chat.handle_key_event(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+
+    assert_matches!(rx.try_recv(), Ok(AppEvent::FollowTranscript));
 
     assert_matches!(
         rx.try_recv(),

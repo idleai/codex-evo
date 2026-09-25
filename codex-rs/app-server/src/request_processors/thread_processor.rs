@@ -5155,6 +5155,8 @@ impl ThreadRequestProcessor {
 
         let fork_options = StartThreadOptions {
             thread_source,
+            // Portable history omits session metadata, so retain its storage format explicitly.
+            history_mode: portable_history.then_some(source_thread.history_mode),
             parent_trace,
             client_mcp_extensions,
             reserved_thread_id,
