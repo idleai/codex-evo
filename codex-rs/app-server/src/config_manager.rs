@@ -35,6 +35,10 @@ use tracing::warn;
 #[path = "application_network.rs"]
 pub(crate) mod application_network;
 
+#[path = "model_picker_profiles.rs"]
+mod model_picker_profiles;
+pub(crate) use model_picker_profiles::configured_picker_profiles;
+
 #[derive(Debug, thiserror::Error)]
 #[error(
     "Your organization's required model provider settings changed. Restart Codex to apply them; this request was not sent"

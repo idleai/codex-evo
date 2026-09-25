@@ -3,7 +3,7 @@ set -euo pipefail
 
 codex_home="${CODEX_HOME:-/mnt/hot/ambientlight/.codex}"
 export CODEX_HOME="$codex_home"
-release_name="0.158.0-alpha.14-codex-evo-idle.1-20260925-x86_64-unknown-linux-gnu"
+release_name="0.158.0-alpha.14-codex-evo-idle.2-20260925-x86_64-unknown-linux-gnu"
 standalone_dir="$codex_home/packages/standalone"
 custom_release="${CODEX_CUSTOM_RELEASE:-$standalone_dir/releases/$release_name}"
 package_codex="$custom_release/bin/codex"

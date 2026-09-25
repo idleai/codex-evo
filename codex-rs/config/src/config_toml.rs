@@ -171,6 +171,11 @@ pub struct ConfigToml {
     /// Provider to use from the model_providers map.
     pub model_provider: Option<String>,
 
+    /// Additional app-server picker models mapped to named user profiles.
+    /// Selecting one when starting a thread loads that profile's complete model route.
+    #[serde(default)]
+    pub model_picker_profiles: BTreeMap<String, String>,
+
     /// Size of the context window for the model, in tokens.
     pub model_context_window: Option<i64>,
 

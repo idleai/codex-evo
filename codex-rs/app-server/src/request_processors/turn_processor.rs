@@ -806,6 +806,16 @@ impl TurnRequestProcessor {
 
         let collaboration_mode =
             collaboration_mode.map(|mode| self.normalize_collaboration_mode(mode));
+        if let Some(selected_model) = collaboration_mode
+            .as_ref()
+            .map(|mode| mode.settings.model.as_str())
+            .or(model.as_deref())
+        {
+            self.config_manager
+                .check_picker_model_selection(thread.config().await.as_ref(), selected_model)
+                .await
+                .map_err(|err| invalid_request(err.to_string()))?;
+        }
         let has_environment_override = environments.is_some();
         // `thread/settings/update` only acknowledges that the update was queued.
         // Clients that send dependent partial updates should wait for

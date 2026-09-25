@@ -38,9 +38,31 @@ impl ModelCatalog {
         self.config_manager
             .check_thread_model_provider(&self.config)
             .await?;
-        Ok(self
+        let mut models = self
             .models_manager
             .list_models(refresh_strategy, self.config.http_client_factory())
-            .await)
+            .await;
+        if crate::config_manager::configured_picker_profiles(&self.config)?.is_empty() {
+            return Ok(models);
+        }
+        let picker_config = self.config_manager.load_non_project_config().await?;
+        for (model, profile) in crate::config_manager::configured_picker_profiles(&picker_config)? {
+            let model = self
+                .config_manager
+                .load_picker_profile(&model, &profile)
+                .await?
+                .model;
+            if models.iter().any(|existing| existing.model == model.model) {
+                return Err(std::io::Error::new(
+                    std::io::ErrorKind::InvalidInput,
+                    format!(
+                        "picker profile model `{}` conflicts with the startup catalog",
+                        model.model
+                    ),
+                ));
+            }
+            models.push(model);
+        }
+        Ok(models)
     }
 }

@@ -92,6 +92,7 @@ const PROJECT_LOCAL_CONFIG_DENYLIST: &[&str] = &[
     "responses_api_metadata",
     "model_provider",
     "model_providers",
+    "model_picker_profiles",
     "notify",
     "profile",
     "profiles",

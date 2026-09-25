@@ -79,6 +79,8 @@ mod misalignment_policy;
 mod model_auto_review;
 mod model_list;
 mod model_list_requirements_tests;
+#[path = "model_picker_profiles_tests.rs"]
+mod model_picker_profiles;
 mod model_provider_capabilities_read;
 #[path = "model_provider_enforcement_tests.rs"]
 mod model_provider_enforcement;

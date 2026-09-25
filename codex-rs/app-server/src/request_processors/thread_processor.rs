@@ -1318,8 +1318,8 @@ impl ThreadRequestProcessor {
         app_server_client_name: Option<String>,
         app_server_client_version: Option<String>,
         client_mcp_extensions: ClientMcpExtensions,
-        config_overrides: Option<HashMap<String, serde_json::Value>>,
-        typesafe_overrides: ConfigOverrides,
+        mut config_overrides: Option<HashMap<String, serde_json::Value>>,
+        mut typesafe_overrides: ConfigOverrides,
         dynamic_tools: Option<Vec<DynamicToolSpec>>,
         selected_capability_roots: Vec<SelectedCapabilityRoot>,
         history_mode: Option<ThreadHistoryMode>,
@@ -1336,6 +1336,14 @@ impl ThreadRequestProcessor {
     ) -> Result<(), JSONRPCErrorError> {
         let thread_start_started_at = std::time::Instant::now();
         let requested_cwd = typesafe_overrides.cwd.clone();
+        let config_manager = match config_manager
+            .picker_profile_for_request(config_overrides.as_ref(), &typesafe_overrides)
+            .await
+            .map_err(|err| config_load_error(&err))?
+        {
+            Some(profile) => profile.apply(&mut config_overrides, &mut typesafe_overrides),
+            None => config_manager,
+        };
         let mut config = config_manager
             .load_with_overrides(config_overrides.clone(), typesafe_overrides.clone())
             .await
@@ -3922,11 +3930,43 @@ impl ThreadRequestProcessor {
             _ => {
                 // Config loading can call back into Desktop; release the permit during host work.
                 drop(_thread_list_state_permit);
-                let config = self
+                let config_manager = match self
                     .config_manager
+                    .picker_profile_for_request(request_overrides.as_ref(), &typesafe_overrides)
+                    .await
+                    .map_err(|err| config_load_error(&err))?
+                {
+                    Some(profile) => {
+                        if config_state
+                            .persisted_metadata
+                            .as_ref()
+                            .is_some_and(|metadata| {
+                                metadata.model_provider != profile.config.model_provider_id
+                            })
+                        {
+                            return Err(invalid_request(
+                                "Start a new chat to select a different provider, or use a portable profile handoff.",
+                            ));
+                        }
+                        profile.apply(&mut request_overrides, &mut typesafe_overrides)
+                    }
+                    None => self.config_manager.clone(),
+                };
+                let config = config_manager
                     .load_for_cwd(request_overrides, typesafe_overrides, history_cwd)
                     .await
                     .map_err(|err| config_load_error(&err))?;
+                if let Some(metadata) = config_state.persisted_metadata.as_ref()
+                    && metadata.model_provider != config.model_provider_id
+                    && metadata.model.as_ref().is_some_and(|model| {
+                        crate::config_manager::configured_picker_profiles(&config)
+                            .is_ok_and(|profiles| profiles.contains_key(model))
+                    })
+                {
+                    return Err(invalid_request(
+                        "Start a new chat to select a different provider, or use a portable profile handoff.",
+                    ));
+                }
                 *prepared_config = Some(PreparedResumeConfig {
                     state: config_state,
                     config,
@@ -5480,6 +5520,12 @@ impl ThreadRequestProcessor {
                 }
             }
             None if relation_filter.is_some() => None,
+            None if !crate::config_manager::configured_picker_profiles(&self.config)
+                .map_err(|err| config_load_error(&err))?
+                .is_empty() =>
+            {
+                None
+            }
             None => Some(vec![self.config.model_provider_id.clone()]),
         };
         let (allowed_sources_vec, source_kind_filter) =
