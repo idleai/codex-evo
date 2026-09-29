@@ -23,8 +23,8 @@ impl App {
         };
         self.chat_widget
             .add_plain_history_lines(vec![command.magenta().into()]);
-        let summary = session_summary(
-            self.chat_widget.token_usage(),
+        let previous_usage = self.chat_widget.token_usage();
+        let previous_thread = resumable_thread(
             self.chat_widget.thread_id(),
             self.chat_widget.thread_name(),
             self.chat_widget.rollout_path().as_deref(),
@@ -68,20 +68,25 @@ impl App {
                                         .to_string()
                                 }),
                             );
-                            if let Some(summary) = summary {
-                                let mut lines: Vec<Line<'static>> = Vec::new();
-                                if let Some(usage_line) = summary.usage_line {
-                                    lines.push(usage_line.into());
-                                }
-                                if let Some(command) = summary.resume_hint {
-                                    lines.push(
-                                        vec![
-                                            "To continue the previous provider thread, run ".into(),
-                                            command.cyan(),
-                                        ]
-                                        .into(),
-                                    );
-                                }
+                            let mut lines: Vec<Line<'static>> = Vec::new();
+                            if !previous_usage.is_zero() {
+                                lines.push(previous_usage.to_string().into());
+                            }
+                            if let Some(command) = previous_thread.and_then(|thread| {
+                                codex_utils_cli::resume_hint(
+                                    thread.thread_name.as_deref(),
+                                    Some(thread.thread_id),
+                                )
+                            }) {
+                                lines.push(
+                                    vec![
+                                        "To continue the previous provider thread, run ".into(),
+                                        command.cyan(),
+                                    ]
+                                    .into(),
+                                );
+                            }
+                            if !lines.is_empty() {
                                 self.chat_widget.add_plain_history_lines(lines);
                             }
                         }

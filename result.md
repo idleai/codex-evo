@@ -1,6 +1,81 @@
 # Native OpenAI + Direct SGLang DSV4 Handoff: Result
 
-Last updated: 2026-09-25
+Last updated: 2026-09-29
+
+## Upstream refresh: 0.161.0-alpha.1 / idle.1
+
+The 22-commit fork stack is rebased on `idleai/codex-evo` main
+`c248f6d48b97eb4a2aa56147a0b11b7d763278b9`, which includes 157 commits since the
+September 25 baseline. The official `rust-v0.161.0-alpha.1` release commit
+`8c0a03fe20e5cc3e025cd0628dd11a3f72824c39` is its direct child and changes only
+the workspace version, so the custom package uses that release identity.
+
+- Local branch: `idle`, in the `codex-latest` worktree.
+- Previous tip retained at `backup/idle-pre-20260929` (`0e5255534640`).
+- Baseline tag: `codex-evo-upstream-main-20260929`.
+- Custom release tag: `codex-evo-v0.161.0-alpha.1-idle.1`.
+- Package: `${CODEX_HOME:-$HOME/.codex}/packages/standalone/releases/0.161.0-alpha.1-codex-evo-idle.1-20260929-x86_64-unknown-linux-gnu`.
+
+The rebase preserves DeepSeek discovery and new-chat profile routing, named/default
+subagent profiles, provider-specific catalogs, portable handoff, Responses
+compatibility controls, service-tier precedence, and the Remote pairing timeout.
+Upstream's internal-metadata provider flag is preserved alongside our capability
+flags. The handoff summary uses upstream's current resumable-thread API. Resume
+future boxing now covers the new permission-aware callers as well as ordinary
+resume. Review and thread-revert setup use separate boxed polling frames so their
+temporaries do not inflate the shared dispatch stack during resume requests.
+
+### Validation and activation
+
+All four model-picker integrations, six subagent-profile integrations, both portable
+handoff integrations, three TUI handoff cases, and the provider-specific catalog
+regression passed. All 67 daemon tests passed, including slow Remote pairing.
+Provider, catalog, configuration, protocol, and app-server-protocol crate tests
+passed. Config and app-server schemas were regenerated; the experimental schema
+retains the custom handoff fields. All six restart-helper tests passed.
+
+The initial broad check across 11 affected crates ran 13,576 tests: 12,980 passed,
+594 failed, two timed out, and 19 were skipped. This was not a green run. The host
+denies Linux user-namespace UID-map setup; sandbox-dependent cases fail. Two
+scenario snapshots picked up the host's installed skill, and the existing Cursor
+import fixture still failed. Plugin-access tests used a stale August MCP test
+server that did not expose the new tools; the final run rebuilt that fixture. The
+root filesystem filled during TUI tests, producing SQLite failures. Test scratch
+data was moved to the larger volume for the TUI rerun; no sandbox guards or host
+security settings were changed. The full workspace suite was not run.
+
+The TUI rerun passed 5,598 of 5,601 tests. Its three remaining failures identified
+the shared dispatch stack overflow, a stale September 24 CLI used by a new
+provider-default integration, and a pet fixture's substring assertion matching
+the encoded temporary pathname. Final focused checks include freshly built CLI
+and code-mode host binaries and use a scratch path that avoids that accidental
+base64 match. Fresh binaries resolved the provider-default integration and the
+pending-input/code-mode cases. The final dispatcher change is checked against
+resume, review, and revert coverage. All 194 final focused checks passed, including
+all three previously overflowing resume cases, provider-default history lookup,
+reconnect, profile routing, portable handoff, subagent profiles, and plugin access.
+Scoped `just fix -p codex-app-server -p codex-tui`, `just fmt`, and
+`git diff --check` completed successfully. No snapshots were changed to accommodate
+host-specific test data.
+
+The release tag identifies the exact committed source compiled into the package;
+its annotation records package hashes and isolated smoke-check results. The package
+assembler temporarily stamps the release version and restores the Cargo files.
+The selected live Remote package remains `0.158.0-alpha.14 / idle.2` until activation.
+All branch and tag changes remain local for the user to publish.
+
+Check package readiness and activate from SSH or a local terminal:
+
+```bash
+"$HOME/repos/codex-latest/restart-custom-codex-daemon.sh" --check
+"$HOME/repos/codex-latest/restart-custom-codex-daemon.sh"
+```
+
+The helper discovers `CODEX_HOME` at runtime, installs and pins the complete daemon
+package, enables Remote, verifies the running version, then selects the standalone
+CLI. Restarting the daemon disconnects the current Remote session.
+
+## Previous releases
 
 ## Picker update: 0.158.0-alpha.14 / idle.2
 

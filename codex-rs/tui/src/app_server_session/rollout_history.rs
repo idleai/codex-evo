@@ -138,17 +138,36 @@ impl AppServerSession {
         thread_id: ThreadId,
         model_settings: ResumeModelSettings,
     ) -> Result<AppServerStartedThread> {
-        Box::pin(self.resume_thread_with_permission_overrides(
+        self.resume_thread_with_permission_overrides(
             local_settings,
             config,
             thread_id,
             model_settings,
             crate::resume_permissions::ResumePermissions::default(),
-        ))
+        )
         .await
     }
 
     pub(crate) async fn resume_thread_with_permission_overrides(
+        &mut self,
+        local_settings: &crate::local_settings::LocalSettings,
+        config: Config,
+        thread_id: ThreadId,
+        model_settings: ResumeModelSettings,
+        permission_overrides: crate::resume_permissions::ResumePermissions,
+    ) -> Result<AppServerStartedThread> {
+        // Keep the resume future off callers' stacks even when they supply permissions.
+        Box::pin(self.request_resume_thread(
+            local_settings,
+            config,
+            thread_id,
+            model_settings,
+            permission_overrides,
+        ))
+        .await
+    }
+
+    async fn request_resume_thread(
         &mut self,
         local_settings: &crate::local_settings::LocalSettings,
         config: Config,
