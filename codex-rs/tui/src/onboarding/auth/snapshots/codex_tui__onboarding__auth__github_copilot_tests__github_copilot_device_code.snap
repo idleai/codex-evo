@@ -1,0 +1,18 @@
+---
+source: tui/src/onboarding/auth/github_copilot_tests.rs
+expression: "render(&widget, 80)"
+---
+  Finish signing in with GitHub Copilot
+
+  1. Open this link in your browser and sign in
+
+  https://github.com/login/device
+
+  2. Enter this one-time code and authorize GitHub Copilot
+
+  ABCD-EFGH
+
+  Continue only if you started this login in Codex. If a website or another
+person gave you this code, cancel.
+
+  Press esc to cancel
