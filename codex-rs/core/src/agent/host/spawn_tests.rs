@@ -191,6 +191,9 @@ async fn same_manager_creation_retains_step_executor_and_shares_exec_policy() ->
             ThreadCreateRequest {
                 task_name: "worker".into(),
                 fork_mode: None,
+                explicit_fork: true,
+                profile: None,
+                service_tier: None,
                 agent_type: None,
                 model: None,
                 reasoning_effort: None,

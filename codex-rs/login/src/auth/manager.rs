@@ -71,6 +71,7 @@ pub use crate::auth::storage::AgentIdentityStorage;
 pub use crate::auth::storage::AuthDotJson;
 pub use crate::auth::storage::AuthKeyringBackendKind;
 use crate::auth::storage::AuthStorageBackend;
+pub use crate::auth::storage::GitHubCopilotAuth;
 use crate::auth::storage::auth_storage_commit_guard;
 use crate::auth::storage::create_auth_storage;
 use crate::default_client::create_client;
@@ -116,6 +117,7 @@ pub enum CodexAuth {
     PersonalAccessToken(PersonalAccessTokenAuth),
     BedrockApiKey(BedrockApiKeyAuth),
     BedrockAccessKeys(BedrockAccessKeysAuth),
+    GitHubCopilot(GitHubCopilotAuth),
 }
 
 /// Policy for resolving Agent Identity auth from a broader Codex auth snapshot.
@@ -191,6 +193,7 @@ impl PartialEq for CodexAuth {
             (Self::PersonalAccessToken(a), Self::PersonalAccessToken(b)) => a == b,
             (Self::BedrockApiKey(a), Self::BedrockApiKey(b)) => a == b,
             (Self::BedrockAccessKeys(a), Self::BedrockAccessKeys(b)) => a == b,
+            (Self::GitHubCopilot(a), Self::GitHubCopilot(b)) => a == b,
             _ => self.api_auth_mode() == other.api_auth_mode(),
         }
     }
@@ -355,6 +358,15 @@ impl CodexAuth {
         cached_auth: Option<&CodexAuth>,
     ) -> std::io::Result<Self> {
         let auth_mode = auth_dot_json.resolved_mode();
+        if auth_mode == AuthMode::GitHubCopilot {
+            let Some(auth) = auth_dot_json.github_copilot else {
+                return Err(std::io::Error::other(
+                    "GitHub Copilot auth is missing its credential record.",
+                ));
+            };
+            auth.validate()?;
+            return Ok(Self::GitHubCopilot(auth));
+        }
         if auth_mode == AuthMode::ApiKey {
             let Some(api_key) = auth_dot_json.openai_api_key.as_deref() else {
                 return Err(std::io::Error::other("API key auth is missing a key."));
@@ -479,6 +491,9 @@ impl CodexAuth {
             AuthMode::BedrockAccessKeys => {
                 unreachable!("bedrock access keys mode is handled above")
             }
+            AuthMode::GitHubCopilot => {
+                unreachable!("GitHub Copilot mode is handled above")
+            }
         }
     }
 
@@ -564,6 +579,7 @@ impl CodexAuth {
             Self::PersonalAccessToken(_) => AuthMode::PersonalAccessToken,
             Self::BedrockApiKey(_) => AuthMode::BedrockApiKey,
             Self::BedrockAccessKeys(_) => AuthMode::BedrockAccessKeys,
+            Self::GitHubCopilot(_) => AuthMode::GitHubCopilot,
         }
     }
 
@@ -578,6 +594,7 @@ impl CodexAuth {
             Self::PersonalAccessToken(_) => AuthMode::PersonalAccessToken,
             Self::BedrockApiKey(_) => AuthMode::BedrockApiKey,
             Self::BedrockAccessKeys(_) => AuthMode::BedrockAccessKeys,
+            Self::GitHubCopilot(_) => AuthMode::GitHubCopilot,
         }
     }
 
@@ -591,6 +608,10 @@ impl CodexAuth {
 
     pub fn is_chatgpt_auth(&self) -> bool {
         self.api_auth_mode().has_chatgpt_account()
+    }
+
+    pub fn is_github_copilot_auth(&self) -> bool {
+        matches!(self, Self::GitHubCopilot(_))
     }
 
     pub fn uses_codex_backend(&self) -> bool {
@@ -618,7 +639,8 @@ impl CodexAuth {
             | Self::AgentIdentity(_)
             | Self::PersonalAccessToken(_)
             | Self::BedrockApiKey(_)
-            | Self::BedrockAccessKeys(_) => None,
+            | Self::BedrockAccessKeys(_)
+            | Self::GitHubCopilot(_) => None,
         }
     }
 
@@ -635,7 +657,7 @@ impl CodexAuth {
         }
     }
 
-    /// Returns the token string used for bearer authentication.
+    /// Returns a token that is safe for generic bearer-authentication call sites.
     pub fn get_token(&self) -> Result<String, std::io::Error> {
         match self {
             Self::ApiKey(auth) => Ok(auth.api_key.clone()),
@@ -650,6 +672,9 @@ impl CodexAuth {
                 "header auth does not expose a bearer token",
             )),
             Self::PersonalAccessToken(auth) => Ok(auth.access_token().to_string()),
+            Self::GitHubCopilot(_) => Err(std::io::Error::other(
+                "GitHub OAuth token is scoped to the GitHub Copilot provider",
+            )),
             Self::BedrockApiKey(_) | Self::BedrockAccessKeys(_) => Err(std::io::Error::other(
                 "Bedrock API key auth does not expose a Codex bearer token",
             )),
@@ -667,6 +692,7 @@ impl CodexAuth {
                 .map(ToOwned::to_owned),
             Self::AgentIdentity(auth) => Some(auth.account_id().to_string()),
             Self::PersonalAccessToken(auth) => Some(auth.account_id().to_string()),
+            Self::GitHubCopilot(_) => None,
             _ => self.get_current_token_data().and_then(|t| t.account_id),
         }
     }
@@ -678,6 +704,7 @@ impl CodexAuth {
             Self::Headers(_) => false,
             Self::AgentIdentity(auth) => auth.is_fedramp_account(),
             Self::PersonalAccessToken(auth) => auth.is_fedramp_account(),
+            Self::GitHubCopilot(_) => false,
             _ => self
                 .get_current_token_data()
                 .is_some_and(|t| t.id_token.is_fedramp_account()),
@@ -690,6 +717,7 @@ impl CodexAuth {
             Self::Headers(_) => None,
             Self::AgentIdentity(auth) => auth.email().map(str::to_string),
             Self::PersonalAccessToken(auth) => auth.email().map(str::to_string),
+            Self::GitHubCopilot(_) => None,
             _ => self.get_current_token_data().and_then(|t| t.id_token.email),
         }
     }
@@ -700,6 +728,7 @@ impl CodexAuth {
             Self::Headers(_) => None,
             Self::AgentIdentity(auth) => Some(auth.chatgpt_user_id().to_string()),
             Self::PersonalAccessToken(auth) => Some(auth.chatgpt_user_id().to_string()),
+            Self::GitHubCopilot(_) => None,
             _ => self
                 .get_current_token_data()
                 .and_then(|t| t.id_token.chatgpt_user_id),
@@ -723,7 +752,7 @@ impl CodexAuth {
     /// Returns a high-level `AccountPlanType` (e.g., Free/Plus/Pro/Team/…)
     /// for UI or product decisions based on the user's subscription.
     pub fn account_plan_type(&self) -> Option<AccountPlanType> {
-        if matches!(self, Self::Headers(_)) {
+        if matches!(self, Self::Headers(_) | Self::GitHubCopilot(_)) {
             return None;
         }
         if let Self::AgentIdentity(auth) = self {
@@ -756,7 +785,8 @@ impl CodexAuth {
             | Self::AgentIdentity(_)
             | Self::PersonalAccessToken(_)
             | Self::BedrockApiKey(_)
-            | Self::BedrockAccessKeys(_) => return None,
+            | Self::BedrockAccessKeys(_)
+            | Self::GitHubCopilot(_) => return None,
         };
         #[expect(clippy::unwrap_used)]
         state.auth_dot_json.lock().unwrap().clone()
@@ -804,7 +834,8 @@ impl CodexAuth {
             | Self::Headers(_)
             | Self::PersonalAccessToken(_)
             | Self::BedrockApiKey(_)
-            | Self::BedrockAccessKeys(_) => Ok(None),
+            | Self::BedrockAccessKeys(_)
+            | Self::GitHubCopilot(_) => Ok(None),
             Self::Chatgpt(_) => {
                 if policy == AgentIdentityAuthPolicy::JwtOnly {
                     return Ok(None);
@@ -878,6 +909,7 @@ impl CodexAuth {
             last_refresh: Some(Utc::now()),
             agent_identity: None,
             personal_access_token: None,
+            github_copilot: None,
             bedrock_api_key: None,
             bedrock_access_keys: None,
         };
@@ -917,6 +949,10 @@ impl CodexAuth {
         Self::ApiKey(ApiKeyAuth {
             api_key: api_key.to_owned(),
         })
+    }
+
+    pub fn from_github_copilot(auth: GitHubCopilotAuth) -> Self {
+        Self::GitHubCopilot(auth)
     }
 }
 
@@ -1100,6 +1136,34 @@ pub fn login_with_api_key(
         last_refresh: None,
         agent_identity: None,
         personal_access_token: None,
+        github_copilot: None,
+        bedrock_api_key: None,
+        bedrock_access_keys: None,
+    };
+    save_auth(
+        codex_home,
+        &auth_dot_json,
+        auth_credentials_store_mode,
+        keyring_backend_kind,
+    )
+}
+
+/// Writes an `auth.json` that contains only a validated GitHub Copilot credential.
+pub fn login_with_github_copilot(
+    codex_home: &Path,
+    auth: GitHubCopilotAuth,
+    auth_credentials_store_mode: AuthCredentialsStoreMode,
+    keyring_backend_kind: AuthKeyringBackendKind,
+) -> std::io::Result<()> {
+    auth.validate()?;
+    let auth_dot_json = AuthDotJson {
+        auth_mode: Some(AuthMode::GitHubCopilot),
+        openai_api_key: None,
+        tokens: None,
+        last_refresh: None,
+        agent_identity: None,
+        personal_access_token: None,
+        github_copilot: Some(auth),
         bedrock_api_key: None,
         bedrock_access_keys: None,
     };
@@ -1135,6 +1199,7 @@ pub async fn login_with_access_token(
                 last_refresh: None,
                 agent_identity: None,
                 personal_access_token: Some(access_token.to_string()),
+                github_copilot: None,
                 bedrock_api_key: None,
                 bedrock_access_keys: None,
             }
@@ -1154,6 +1219,7 @@ pub async fn login_with_access_token(
                 last_refresh: None,
                 agent_identity: Some(AgentIdentityStorage::Jwt(jwt.to_string())),
                 personal_access_token: None,
+                github_copilot: None,
                 bedrock_api_key: None,
                 bedrock_access_keys: None,
             }
@@ -1369,7 +1435,10 @@ fn validate_auth_restrictions(
     };
     if matches!(
         auth,
-        CodexAuth::ApiKey(_) | CodexAuth::BedrockApiKey(_) | CodexAuth::BedrockAccessKeys(_)
+        CodexAuth::ApiKey(_)
+            | CodexAuth::BedrockApiKey(_)
+            | CodexAuth::BedrockAccessKeys(_)
+            | CodexAuth::GitHubCopilot(_)
     ) {
         return Ok(());
     }
@@ -1435,7 +1504,8 @@ async fn enforce_login_restrictions_with_agent_identity_authapi_base_url(
         let method_violation = match (required_method, auth.auth_mode()) {
             (ForcedLoginMethod::Api, AuthMode::ApiKey)
             | (ForcedLoginMethod::Api, AuthMode::BedrockApiKey)
-            | (ForcedLoginMethod::Api, AuthMode::BedrockAccessKeys) => None,
+            | (ForcedLoginMethod::Api, AuthMode::BedrockAccessKeys)
+            | (ForcedLoginMethod::Api, AuthMode::GitHubCopilot) => None,
             (ForcedLoginMethod::Chatgpt, AuthMode::Chatgpt)
             | (ForcedLoginMethod::Chatgpt, AuthMode::ChatgptAuthTokens)
             | (ForcedLoginMethod::Chatgpt, AuthMode::Headers)
@@ -1451,7 +1521,8 @@ async fn enforce_login_restrictions_with_agent_identity_authapi_base_url(
             ),
             (ForcedLoginMethod::Chatgpt, AuthMode::ApiKey)
             | (ForcedLoginMethod::Chatgpt, AuthMode::BedrockApiKey)
-            | (ForcedLoginMethod::Chatgpt, AuthMode::BedrockAccessKeys) => Some(
+            | (ForcedLoginMethod::Chatgpt, AuthMode::BedrockAccessKeys)
+            | (ForcedLoginMethod::Chatgpt, AuthMode::GitHubCopilot) => Some(
                 "ChatGPT login is required, but an API key is currently being used. Logging out."
                     .to_string(),
             ),
@@ -1471,7 +1542,8 @@ async fn enforce_login_restrictions_with_agent_identity_authapi_base_url(
         let chatgpt_account_id = match &auth {
             CodexAuth::ApiKey(_)
             | CodexAuth::BedrockApiKey(_)
-            | CodexAuth::BedrockAccessKeys(_) => {
+            | CodexAuth::BedrockAccessKeys(_)
+            | CodexAuth::GitHubCopilot(_) => {
                 return Ok(());
             }
             CodexAuth::Headers(_)
@@ -1583,6 +1655,34 @@ async fn load_auth(
     allowed_auth_modes: Option<&[AuthMode]>,
 ) -> std::io::Result<Option<CodexAuth>> {
     let mode_allowed = |mode| allowed_auth_modes.is_none_or(|modes| modes.contains(&mode));
+    let configured_storage = create_auth_storage(
+        codex_home.to_path_buf(),
+        auth_credentials_store_mode,
+        keyring_backend_kind,
+    );
+    let configured_auth_dot_json = load_stored_auth(configured_storage).await?;
+    if let Some(auth_dot_json) = configured_auth_dot_json.as_ref()
+        && auth_dot_json.resolved_mode() == AuthMode::GitHubCopilot
+    {
+        if !auth_mode_is_allowed(allowed_login_methods, AuthMode::GitHubCopilot)
+            || !mode_allowed(AuthMode::GitHubCopilot)
+        {
+            return Ok(None);
+        }
+        return CodexAuth::from_auth_dot_json(
+            codex_home,
+            auth_dot_json.clone(),
+            auth_credentials_store_mode,
+            chatgpt_base_url,
+            keyring_backend_kind,
+            agent_identity_authapi_base_url,
+            auth_route_config,
+            cached_auth,
+        )
+        .await
+        .map(Some);
+    }
+
     // API key via env var takes precedence over any other auth method.
     if enable_codex_api_key_env
         && mode_allowed(AuthMode::ApiKey)
@@ -1594,12 +1694,18 @@ async fn load_auth(
 
     // External ChatGPT auth tokens live in the in-memory (ephemeral) store. Always check this
     // first so external auth takes precedence over any persisted credentials.
-    let ephemeral_storage = create_auth_storage(
-        codex_home.to_path_buf(),
-        AuthCredentialsStoreMode::Ephemeral,
-        AuthKeyringBackendKind::default(),
-    );
-    if let Some(auth_dot_json) = load_stored_auth(ephemeral_storage).await?
+    let ephemeral_auth_dot_json =
+        if auth_credentials_store_mode == AuthCredentialsStoreMode::Ephemeral {
+            configured_auth_dot_json.clone()
+        } else {
+            load_stored_auth(create_auth_storage(
+                codex_home.to_path_buf(),
+                AuthCredentialsStoreMode::Ephemeral,
+                AuthKeyringBackendKind::default(),
+            ))
+            .await?
+        };
+    if let Some(auth_dot_json) = ephemeral_auth_dot_json
         && auth_mode_is_allowed(allowed_login_methods, auth_dot_json.resolved_mode())
     {
         if !mode_allowed(auth_dot_json.resolved_mode()) {
@@ -1666,12 +1772,7 @@ async fn load_auth(
     }
 
     // Fall back to the configured persistent store (file/keyring/auto) for managed auth.
-    let storage = create_auth_storage(
-        codex_home.to_path_buf(),
-        auth_credentials_store_mode,
-        keyring_backend_kind,
-    );
-    let auth_dot_json = match load_stored_auth(storage).await? {
+    let auth_dot_json = match configured_auth_dot_json {
         Some(auth) => auth,
         None => return Ok(None),
     };
@@ -1906,6 +2007,7 @@ impl AuthDotJson {
             last_refresh: Some(Utc::now()),
             agent_identity: None,
             personal_access_token: None,
+            github_copilot: None,
             bedrock_api_key: None,
             bedrock_access_keys: None,
         })
@@ -1914,6 +2016,9 @@ impl AuthDotJson {
     pub(super) fn resolved_mode(&self) -> AuthMode {
         if let Some(mode) = self.auth_mode {
             return mode;
+        }
+        if self.github_copilot.is_some() {
+            return AuthMode::GitHubCopilot;
         }
         if self.personal_access_token.is_some() {
             return AuthMode::PersonalAccessToken;
@@ -2925,6 +3030,7 @@ impl AuthManager {
                 (AuthMode::PersonalAccessToken, AuthMode::PersonalAccessToken) => a == b,
                 (AuthMode::BedrockApiKey, AuthMode::BedrockApiKey) => a == b,
                 (AuthMode::BedrockAccessKeys, AuthMode::BedrockAccessKeys) => a == b,
+                (AuthMode::GitHubCopilot, AuthMode::GitHubCopilot) => a == b,
                 _ => false,
             },
             _ => false,
@@ -3453,7 +3559,8 @@ impl AuthManager {
                     | CodexAuth::AgentIdentity(_)
                     | CodexAuth::PersonalAccessToken(_)
                     | CodexAuth::BedrockApiKey(_)
-                    | CodexAuth::BedrockAccessKeys(_),
+                    | CodexAuth::BedrockAccessKeys(_)
+                    | CodexAuth::GitHubCopilot(_),
                 )
                 | None => Ok(()),
             }

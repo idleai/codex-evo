@@ -137,6 +137,7 @@ async fn auth_refresh_read_failure_is_transient_and_preserves_network_permit() {
         last_refresh: Some(chrono::Utc::now()),
         agent_identity: None,
         personal_access_token: None,
+        github_copilot: None,
         bedrock_api_key: None,
         bedrock_access_keys: None,
     };

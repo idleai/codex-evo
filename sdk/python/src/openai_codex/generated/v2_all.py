@@ -29,6 +29,15 @@ class ApiKeyAccount(BaseModel):
     type: Annotated[Literal["apiKey"], Field(title="ApiKeyAccountType")]
 
 
+class GithubCopilotAccount(BaseModel):
+    model_config = ConfigDict(
+        populate_by_name=True,
+    )
+    copilot_sku: Annotated[str | None, Field(alias="copilotSku")]
+    login: str | None
+    type: Annotated[Literal["githubCopilot"], Field(title="GithubCopilotAccountType")]
+
+
 class AmazonBedrockAccount(BaseModel):
     model_config = ConfigDict(
         populate_by_name=True,
@@ -385,6 +394,7 @@ class AsyncUserInputQuestion(BaseModel):
 
 class AuthMode(Enum):
     apikey = "apikey"
+    github_copilot = "githubCopilot"
     chatgpt = "chatgpt"
     chatgpt_auth_tokens = "chatgptAuthTokens"
     headers = "headers"
@@ -2224,6 +2234,22 @@ class ApiKeyLoginAccountParams(BaseModel):
     type: Annotated[Literal["apiKey"], Field(title="ApiKeyv2::LoginAccountParamsType")]
 
 
+class GithubCopilotLoginAccountParams(BaseModel):
+    model_config = ConfigDict(
+        populate_by_name=True,
+    )
+    client_id: Annotated[
+        str | None,
+        Field(
+            alias="clientId",
+            description="Optional GitHub OAuth app client ID override. When omitted, the app-server reads `GITHUB_COPILOT_CLIENT_ID`, then falls back to its bundled public client ID.",
+        ),
+    ] = None
+    type: Annotated[
+        Literal["githubCopilot"], Field(title="GithubCopilotv2::LoginAccountParamsType")
+    ]
+
+
 class ChatgptDeviceCodeLoginAccountParams(BaseModel):
     model_config = ConfigDict(
         populate_by_name=True,
@@ -2295,6 +2321,18 @@ class ApiKeyLoginAccountResponse(BaseModel):
     type: Annotated[Literal["apiKey"], Field(title="ApiKeyv2::LoginAccountResponseType")]
 
 
+class GithubCopilotLoginAccountResponse(BaseModel):
+    model_config = ConfigDict(
+        populate_by_name=True,
+    )
+    login_id: Annotated[str, Field(alias="loginId")]
+    type: Annotated[
+        Literal["githubCopilot"], Field(title="GithubCopilotv2::LoginAccountResponseType")
+    ]
+    user_code: Annotated[str, Field(alias="userCode")]
+    verification_url: Annotated[str, Field(alias="verificationUrl")]
+
+
 class ChatgptLoginAccountResponse(BaseModel):
     model_config = ConfigDict(
         populate_by_name=True,
@@ -2352,6 +2390,7 @@ class AmazonBedrockLoginAccountResponse(BaseModel):
 class LoginAccountResponse(
     RootModel[
         ApiKeyLoginAccountResponse
+        | GithubCopilotLoginAccountResponse
         | ChatgptLoginAccountResponse
         | ChatgptDeviceCodeLoginAccountResponse
         | ChatgptAuthTokensLoginAccountResponse
@@ -2360,6 +2399,7 @@ class LoginAccountResponse(
 ):
     root: Annotated[
         ApiKeyLoginAccountResponse
+        | GithubCopilotLoginAccountResponse
         | ChatgptLoginAccountResponse
         | ChatgptDeviceCodeLoginAccountResponse
         | ChatgptAuthTokensLoginAccountResponse
@@ -7019,8 +7059,12 @@ class ChatgptAccount(BaseModel):
     ] = None
 
 
-class Account(RootModel[ApiKeyAccount | ChatgptAccount | AmazonBedrockAccount | GcpAccount]):
-    root: ApiKeyAccount | ChatgptAccount | AmazonBedrockAccount | GcpAccount
+class Account(
+    RootModel[
+        ApiKeyAccount | GithubCopilotAccount | ChatgptAccount | AmazonBedrockAccount | GcpAccount
+    ]
+):
+    root: ApiKeyAccount | GithubCopilotAccount | ChatgptAccount | AmazonBedrockAccount | GcpAccount
 
 
 class AccountLoginCompletedNotification(BaseModel):
@@ -9003,6 +9047,7 @@ class ChatgptLoginAccountParams(BaseModel):
 class LoginAccountParams(
     RootModel[
         ApiKeyLoginAccountParams
+        | GithubCopilotLoginAccountParams
         | ChatgptLoginAccountParams
         | ChatgptDeviceCodeLoginAccountParams
         | ChatgptAuthTokensLoginAccountParams
@@ -9012,6 +9057,7 @@ class LoginAccountParams(
 ):
     root: Annotated[
         ApiKeyLoginAccountParams
+        | GithubCopilotLoginAccountParams
         | ChatgptLoginAccountParams
         | ChatgptDeviceCodeLoginAccountParams
         | ChatgptAuthTokensLoginAccountParams

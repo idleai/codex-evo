@@ -60,6 +60,10 @@ pub enum ProviderAccount {
         uses_codex_managed_credentials: bool,
     },
     Gcp,
+    GitHubCopilot {
+        login: Option<String>,
+        copilot_sku: Option<String>,
+    },
 }
 
 impl PlanType {

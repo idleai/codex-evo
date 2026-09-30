@@ -6,4 +6,8 @@ pub(crate) enum StatusAccountDisplay {
         workspace: Option<String>,
     },
     ApiKey,
+    GitHubCopilot {
+        login: Option<String>,
+        copilot_sku: Option<String>,
+    },
 }

@@ -26,7 +26,6 @@ use codex_protocol::openai_models::ModelsResponse;
 use codex_runtime_agent_instance::RuntimeAuthManager;
 
 use crate::ProviderCapabilities;
-#[cfg(test)]
 use crate::RemoteCompactionSupport;
 use crate::ResolvedResponsesProvider;
 use crate::amazon_bedrock::AmazonBedrockModelProvider;
@@ -38,6 +37,8 @@ use crate::auth::resolve_provider_auth_for_scope;
 use crate::auth::uses_fedramp_api_key;
 use crate::combined_auth::compose_auth;
 use crate::gcp::GcpModelProvider;
+use crate::github_copilot::GitHubCopilotModelProvider;
+use crate::github_copilot::github_copilot_aware_models_manager;
 use crate::models_endpoint::OpenAiModelsEndpoint;
 use crate::workspace_routing::WorkspaceRoutingContext;
 
@@ -143,21 +144,21 @@ pub trait ModelProvider: fmt::Debug + Send + Sync {
     /// Returns the preferred model used for automatic approval review.
     ///
     /// Providers that require backend-specific model IDs should override this.
-    fn approval_review_preferred_model(&self) -> &'static str {
+    fn approval_review_preferred_model(&self) -> &str {
         DEFAULT_APPROVAL_REVIEW_PREFERRED_MODEL
     }
 
     /// Returns the preferred model used for memory extraction.
     ///
     /// Providers that require backend-specific model IDs should override this.
-    fn memory_extraction_preferred_model(&self) -> &'static str {
+    fn memory_extraction_preferred_model(&self) -> &str {
         DEFAULT_MEMORY_EXTRACTION_PREFERRED_MODEL
     }
 
     /// Returns the preferred model used for memory consolidation.
     ///
     /// Providers that require backend-specific model IDs should override this.
-    fn memory_consolidation_preferred_model(&self) -> &'static str {
+    fn memory_consolidation_preferred_model(&self) -> &str {
         DEFAULT_MEMORY_CONSOLIDATION_PREFERRED_MODEL
     }
 
@@ -213,6 +214,11 @@ pub trait ModelProvider: fmt::Debug + Send + Sync {
 
     /// Returns the current app-visible account state for this provider.
     fn account_state(&self) -> ProviderAccountResult;
+
+    /// Rejects a model identifier before any inference request is sent.
+    fn validate_model(&self, _model: &str) -> codex_protocol::error::Result<()> {
+        Ok(())
+    }
 
     /// Maps an API client error into the provider's user-facing error representation.
     fn map_api_error(&self, error: ApiError) -> CodexErr {
@@ -440,6 +446,31 @@ pub(crate) fn create_model_provider_with_runtime(
     auth_manager: Option<Arc<AuthManager>>,
     runtime_auth: Option<(Arc<RuntimeAuthManager>, RuntimeAuthMode)>,
 ) -> SharedModelProvider {
+    let github_copilot_auth = auth_manager
+        .as_ref()
+        .and_then(|auth_manager| auth_manager.auth_cached())
+        .and_then(|auth| match auth {
+            CodexAuth::GitHubCopilot(auth) => Some(auth),
+            _ => None,
+        });
+    let fallback_provider =
+        create_non_copilot_model_provider(provider_info, auth_manager.clone(), runtime_auth);
+    if let (Some(auth), Some(auth_manager)) = (github_copilot_auth, auth_manager) {
+        Arc::new(GitHubCopilotModelProvider::new(
+            auth_manager,
+            auth,
+            fallback_provider,
+        ))
+    } else {
+        fallback_provider
+    }
+}
+
+fn create_non_copilot_model_provider(
+    provider_info: ModelProviderInfo,
+    auth_manager: Option<Arc<AuthManager>>,
+    runtime_auth: Option<(Arc<RuntimeAuthManager>, RuntimeAuthMode)>,
+) -> SharedModelProvider {
     if provider_info.is_amazon_bedrock() {
         return Arc::new(AmazonBedrockModelProvider::new(provider_info, auth_manager));
     }
@@ -458,6 +489,7 @@ pub(crate) fn create_model_provider_with_runtime(
 struct ConfiguredModelProvider {
     info: ModelProviderInfo,
     auth_manager: Option<Arc<AuthManager>>,
+    global_auth_manager: Option<Arc<AuthManager>>,
     // Construct eagerly; report setup failures when auth is requested because the factory is infallible.
     gateway_auth_manager: Option<Result<Arc<GatewayAuthManager>, String>>,
     runtime_auth: Option<(Arc<RuntimeAuthManager>, RuntimeAuthMode)>,
@@ -485,7 +517,8 @@ impl ConfiguredModelProvider {
                 .gateway_auth(config, &manager.runtime_config())
                 .map_err(|_| "failed to create provider OAuth HTTP client".to_string())
         });
-        let auth_manager = auth_manager_for_provider(auth_manager, &info);
+        let global_auth_manager = auth_manager;
+        let auth_manager = auth_manager_for_provider(global_auth_manager.clone(), &info);
         let runtime_for_destination = |destination: Option<&str>| {
             runtime_auth.clone().filter(|_| {
                 destination.is_none_or(|url| {
@@ -505,6 +538,7 @@ impl ConfiguredModelProvider {
         Self {
             info,
             auth_manager,
+            global_auth_manager,
             gateway_auth_manager,
             runtime_auth: inference_runtime_auth,
             catalog_runtime_auth,
@@ -515,6 +549,7 @@ impl ConfiguredModelProvider {
         &self,
         scope: Option<ProviderAuthScope>,
     ) -> codex_protocol::error::Result<ResolvedProviderAuth> {
+        self.ensure_auth_boundary_unchanged()?;
         let resolved = if let Some((runtime, mode)) = &self.runtime_auth {
             crate::validate_runtime_destination(self.info.base_url.as_deref())?;
             crate::validate_runtime_provider(&self.info, self.auth_manager.as_ref(), runtime)?;
@@ -583,6 +618,21 @@ impl ConfiguredModelProvider {
             None => Arc::new(manager),
         }
     }
+
+    fn ensure_auth_boundary_unchanged(&self) -> codex_protocol::error::Result<()> {
+        if self
+            .global_auth_manager
+            .as_ref()
+            .and_then(|manager| manager.auth_cached())
+            .is_some_and(|auth| auth.is_github_copilot_auth())
+        {
+            return Err(CodexErr::UnsupportedOperation(
+                "GitHub Copilot was signed in after this session started; start a new session to use its direct Responses endpoint"
+                    .to_string(),
+            ));
+        }
+        Ok(())
+    }
 }
 
 impl ModelProvider for ConfiguredModelProvider {
@@ -591,10 +641,21 @@ impl ModelProvider for ConfiguredModelProvider {
     }
 
     fn capabilities(&self) -> ProviderCapabilities {
+        if self.ensure_auth_boundary_unchanged().is_err() {
+            return ProviderCapabilities {
+                namespace_tools: false,
+                codex_agent_messages: false,
+                reasoning_summaries: false,
+                image_generation: false,
+                web_search: false,
+                external_web_access: false,
+                remote_compaction: RemoteCompactionSupport::Unsupported,
+            };
+        }
         ProviderCapabilities::from_config(&self.info)
     }
 
-    fn approval_review_preferred_model(&self) -> &'static str {
+    fn approval_review_preferred_model(&self) -> &str {
         if self
             .auth_manager
             .as_ref()
@@ -632,6 +693,18 @@ impl ModelProvider for ConfiguredModelProvider {
                 None => None,
             }
         })
+    }
+
+    fn validate_model(&self, _model: &str) -> codex_protocol::error::Result<()> {
+        self.ensure_auth_boundary_unchanged()
+    }
+
+    fn api_provider_for_auth(
+        &self,
+        auth: Option<&CodexAuth>,
+    ) -> codex_protocol::error::Result<Provider> {
+        self.ensure_auth_boundary_unchanged()?;
+        resolve_api_provider(&self.info, auth)
     }
 
     fn runtime_auth(&self) -> Option<&(Arc<RuntimeAuthManager>, RuntimeAuthMode)> {
@@ -703,6 +776,10 @@ impl ModelProvider for ConfiguredModelProvider {
                 })
                 .map(|auth| match &auth {
                     CodexAuth::ApiKey(_) => Ok(ProviderAccount::ApiKey),
+                    CodexAuth::GitHubCopilot(auth) => Ok(ProviderAccount::GitHubCopilot {
+                        login: auth.login().map(str::to_string),
+                        copilot_sku: auth.copilot_sku().map(str::to_string),
+                    }),
                     CodexAuth::BedrockApiKey(_) | CodexAuth::BedrockAccessKeys(_) => {
                         Err(ProviderAccountError::UnsupportedBedrockApiKeyAuth)
                     }
@@ -735,14 +812,23 @@ impl ModelProvider for ConfiguredModelProvider {
         codex_home: PathBuf,
         config_model_catalog: Option<ModelsResponse>,
     ) -> SharedModelsManager {
-        self.create_models_manager(config_model_catalog, ModelsCacheConfig::Disk { codex_home })
+        github_copilot_aware_models_manager(
+            self.create_models_manager(
+                config_model_catalog,
+                ModelsCacheConfig::Disk { codex_home },
+            ),
+            self.global_auth_manager.clone(),
+        )
     }
 
     fn models_manager_without_cache(
         &self,
         config_model_catalog: Option<ModelsResponse>,
     ) -> SharedModelsManager {
-        self.create_models_manager(config_model_catalog, ModelsCacheConfig::Disabled)
+        github_copilot_aware_models_manager(
+            self.create_models_manager(config_model_catalog, ModelsCacheConfig::Disabled),
+            self.global_auth_manager.clone(),
+        )
     }
 
     fn models_manager_with_cache(
@@ -750,7 +836,10 @@ impl ModelProvider for ConfiguredModelProvider {
         config_model_catalog: Option<ModelsResponse>,
         cache: Arc<dyn ModelsCache>,
     ) -> SharedModelsManager {
-        self.create_models_manager(config_model_catalog, ModelsCacheConfig::Custom(cache))
+        github_copilot_aware_models_manager(
+            self.create_models_manager(config_model_catalog, ModelsCacheConfig::Custom(cache)),
+            self.global_auth_manager.clone(),
+        )
     }
 }
 
@@ -765,10 +854,14 @@ mod tests {
 
     use codex_http_client::HttpClientFactory;
     use codex_http_client::OutboundProxyPolicy;
+    use codex_login::AuthCredentialsStoreMode;
+    use codex_login::AuthKeyringBackendKind;
+    use codex_login::GitHubCopilotAuth;
     use codex_login::auth::AgentIdentityAuthPolicy;
     use codex_login::auth::BedrockApiKeyAuth;
     use codex_model_provider_info::AwsAuthRefreshConfig;
     use codex_model_provider_info::AwsCredentialExportConfig;
+    use codex_model_provider_info::GITHUB_COPILOT_API_VERSION;
     use codex_model_provider_info::ModelProviderAwsAuthInfo;
     use codex_model_provider_info::WireApi;
     use codex_model_provider_info::create_oss_provider_with_base_url;
@@ -875,6 +968,17 @@ mod tests {
             api_key: "bedrock-api-key-test".to_string(),
             region: "us-east-1".to_string(),
         })
+    }
+
+    fn github_copilot_auth() -> GitHubCopilotAuth {
+        GitHubCopilotAuth::new(
+            "github-token".to_string(),
+            "https://api.individual.githubcopilot.com".to_string(),
+            Some("octocat".to_string()),
+            Some("copilot_individual".to_string()),
+            vec!["gpt-5.6-sol".to_string(), "gpt-5.5".to_string()],
+        )
+        .expect("GitHub Copilot auth fixture should be valid")
     }
 
     #[tokio::test]
@@ -1708,6 +1812,278 @@ printf '%s\n' '{"AccessKeyId":"exported","SecretAccessKey":"secret"}'
                 );
             }
         }
+    }
+
+    #[tokio::test]
+    async fn github_copilot_auth_hard_overrides_configured_provider() {
+        let mut configured_provider = provider_for("https://attacker.invalid/v1".to_string());
+        configured_provider.experimental_bearer_token = Some("wrong-token".into());
+        let auth = github_copilot_auth();
+        let provider = create_model_provider(
+            configured_provider,
+            Some(AuthManager::from_auth_for_testing(
+                CodexAuth::from_github_copilot(auth.clone()),
+            )),
+        );
+
+        assert!(provider.info().is_github_copilot());
+        assert_eq!(
+            provider.runtime_base_url().await.expect("base URL"),
+            Some(auth.api_endpoint().to_string())
+        );
+        assert_eq!(
+            provider.capabilities(),
+            ProviderCapabilities {
+                reasoning_summaries: false,
+                namespace_tools: true,
+                codex_agent_messages: false,
+                image_generation: false,
+                web_search: false,
+                external_web_access: false,
+                remote_compaction: RemoteCompactionSupport::Unsupported,
+            }
+        );
+        assert_eq!(provider.approval_review_preferred_model(), "gpt-5.6-sol");
+        assert_eq!(provider.memory_extraction_preferred_model(), "gpt-5.6-sol");
+        assert_eq!(
+            provider.memory_consolidation_preferred_model(),
+            "gpt-5.6-sol"
+        );
+        assert_eq!(
+            provider.account_state(),
+            Ok(ProviderAccountState {
+                account: Some(ProviderAccount::GitHubCopilot {
+                    login: Some("octocat".to_string()),
+                    copilot_sku: Some("copilot_individual".to_string()),
+                }),
+                requires_openai_auth: true,
+            })
+        );
+
+        let api_provider = provider.api_provider().await.expect("API provider");
+        assert_eq!(api_provider.base_url, auth.api_endpoint());
+        assert_eq!(
+            api_provider
+                .headers
+                .get("OpenAI-Intent")
+                .and_then(|value| value.to_str().ok()),
+            Some("conversation")
+        );
+        assert_eq!(
+            api_provider
+                .headers
+                .get("X-GitHub-Api-Version")
+                .and_then(|value| value.to_str().ok()),
+            Some(GITHUB_COPILOT_API_VERSION)
+        );
+        let auth_headers = provider
+            .api_auth()
+            .await
+            .expect("API auth")
+            .to_auth_headers()
+            .expect("valid API auth headers");
+        assert_eq!(
+            auth_headers
+                .get(http::header::AUTHORIZATION)
+                .and_then(|value| value.to_str().ok()),
+            Some("Bearer github-token")
+        );
+
+        provider
+            .validate_model("gpt-5.5")
+            .expect("advertised model should be accepted");
+        assert!(provider.validate_model("gpt-4o").is_err());
+
+        let catalog = provider
+            .models_manager_without_cache(/*config_model_catalog*/ None)
+            .raw_model_catalog(
+                RefreshStrategy::Online,
+                HttpClientFactory::new(OutboundProxyPolicy::ReqwestDefault),
+            )
+            .await;
+        assert_eq!(
+            catalog
+                .models
+                .iter()
+                .map(|model| model.slug.as_str())
+                .collect::<Vec<_>>(),
+            vec!["gpt-5.6-sol", "gpt-5.5"]
+        );
+        assert!(catalog.models.iter().all(|model| {
+            model.additional_speed_tiers.is_empty()
+                && model.service_tiers.is_empty()
+                && model.default_service_tier.is_none()
+        }));
+    }
+
+    #[tokio::test]
+    async fn existing_provider_fails_closed_after_github_copilot_login() {
+        let codex_home = std::env::temp_dir().join(format!(
+            "codex-model-provider-auth-boundary-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("system time should be after Unix epoch")
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(&codex_home).expect("temporary Codex home");
+        let auth_manager = AuthManager::from_auth_for_testing_with_home(
+            CodexAuth::from_api_key("openai-key"),
+            codex_home.clone(),
+        );
+        let mut provider_info = ModelProviderInfo::create_openai_provider(/*base_url*/ None);
+        provider_info.name = "GitHub Copilot".to_string();
+        let provider = create_model_provider(provider_info, Some(Arc::clone(&auth_manager)));
+        let models_manager = provider.models_manager_without_cache(Some(ModelsResponse {
+            models: vec![remote_model("configured-model")],
+        }));
+        provider
+            .api_provider()
+            .await
+            .expect("provider should work before auth changes");
+
+        codex_login::login_with_github_copilot(
+            &codex_home,
+            github_copilot_auth(),
+            AuthCredentialsStoreMode::File,
+            AuthKeyringBackendKind::default(),
+        )
+        .expect("GitHub Copilot auth should persist");
+        assert!(auth_manager.reload().await);
+
+        assert!(provider.validate_model("gpt-5.5").is_err());
+        assert!(provider.api_provider().await.is_err());
+        assert!(provider.api_auth().await.is_err());
+        let catalog = models_manager
+            .raw_model_catalog(
+                RefreshStrategy::Online,
+                HttpClientFactory::new(OutboundProxyPolicy::ReqwestDefault),
+            )
+            .await;
+        assert_eq!(
+            catalog
+                .models
+                .iter()
+                .map(|model| model.slug.as_str())
+                .collect::<Vec<_>>(),
+            vec!["gpt-5.6-sol", "gpt-5.5"]
+        );
+        assert_eq!(
+            models_manager
+                .get_default_model(
+                    &Some("configured-model".to_string()),
+                    /*allow_provider_model_fallback*/ false,
+                    RefreshStrategy::Online,
+                    HttpClientFactory::new(OutboundProxyPolicy::ReqwestDefault),
+                )
+                .await,
+            "gpt-5.6-sol"
+        );
+        assert_eq!(
+            provider.capabilities(),
+            ProviderCapabilities {
+                reasoning_summaries: false,
+                namespace_tools: false,
+                image_generation: false,
+                codex_agent_messages: false,
+                web_search: false,
+                external_web_access: false,
+                remote_compaction: RemoteCompactionSupport::Unsupported,
+            }
+        );
+
+        codex_login::login_with_api_key(
+            &codex_home,
+            "new-openai-key",
+            AuthCredentialsStoreMode::File,
+            AuthKeyringBackendKind::default(),
+        )
+        .expect("OpenAI auth should persist");
+        assert!(auth_manager.reload().await);
+        let catalog = models_manager
+            .raw_model_catalog(
+                RefreshStrategy::Offline,
+                HttpClientFactory::new(OutboundProxyPolicy::ReqwestDefault),
+            )
+            .await;
+        assert_eq!(
+            catalog
+                .models
+                .iter()
+                .map(|model| model.slug.as_str())
+                .collect::<Vec<_>>(),
+            vec!["configured-model"]
+        );
+        std::fs::remove_dir_all(codex_home).expect("temporary Codex home should be removable");
+    }
+
+    #[tokio::test]
+    async fn existing_bedrock_provider_fails_closed_after_github_copilot_login() {
+        let codex_home = std::env::temp_dir().join(format!(
+            "codex-bedrock-provider-auth-boundary-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("system time should be after Unix epoch")
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(&codex_home).expect("temporary Codex home");
+        let auth_manager = AuthManager::from_auth_for_testing_with_home(
+            CodexAuth::from_api_key("openai-key"),
+            codex_home.clone(),
+        );
+        let mut provider_info =
+            ModelProviderInfo::create_amazon_bedrock_provider(/*aws*/ None);
+        provider_info.base_url = Some("https://bedrock.example.test/v1".to_string());
+        let provider = create_model_provider(provider_info, Some(Arc::clone(&auth_manager)));
+        let models_manager = provider.models_manager_without_cache(Some(ModelsResponse {
+            models: vec![remote_model("bedrock-model")],
+        }));
+        provider
+            .api_provider()
+            .await
+            .expect("provider should work before auth changes");
+
+        codex_login::login_with_github_copilot(
+            &codex_home,
+            github_copilot_auth(),
+            AuthCredentialsStoreMode::File,
+            AuthKeyringBackendKind::default(),
+        )
+        .expect("GitHub Copilot auth should persist");
+        assert!(auth_manager.reload().await);
+
+        assert!(provider.validate_model("bedrock-model").is_err());
+        assert!(provider.api_provider().await.is_err());
+        assert!(provider.runtime_base_url().await.is_err());
+        assert!(provider.api_auth().await.is_err());
+        assert_eq!(provider.auth().await, None);
+        assert_eq!(
+            models_manager
+                .raw_model_catalog(
+                    RefreshStrategy::Online,
+                    HttpClientFactory::new(OutboundProxyPolicy::ReqwestDefault),
+                )
+                .await
+                .models
+                .iter()
+                .map(|model| model.slug.as_str())
+                .collect::<Vec<_>>(),
+            vec!["gpt-5.6-sol", "gpt-5.5"]
+        );
+        assert_eq!(
+            provider.capabilities(),
+            ProviderCapabilities {
+                reasoning_summaries: false,
+                namespace_tools: false,
+                image_generation: false,
+                codex_agent_messages: false,
+                web_search: false,
+                external_web_access: false,
+                remote_compaction: RemoteCompactionSupport::Unsupported,
+            }
+        );
+        std::fs::remove_dir_all(codex_home).expect("temporary Codex home should be removable");
     }
 }
 

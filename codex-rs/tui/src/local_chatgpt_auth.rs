@@ -117,6 +117,7 @@ mod tests {
             last_refresh: Some(Utc::now()),
             agent_identity: None,
             personal_access_token: None,
+            github_copilot: None,
             bedrock_api_key: None,
             bedrock_access_keys: None,
         };
@@ -172,6 +173,7 @@ mod tests {
                 last_refresh: None,
                 agent_identity: None,
                 personal_access_token: None,
+                github_copilot: None,
                 bedrock_api_key: None,
                 bedrock_access_keys: None,
             },

@@ -21,6 +21,7 @@ use crate::ProviderCapabilities;
 use crate::RemoteCompactionSupport;
 use crate::auth::auth_manager_for_provider;
 use crate::auth::resolve_provider_auth;
+use crate::github_copilot::github_copilot_aware_models_manager;
 use crate::provider::ModelProvider;
 use crate::provider::ModelProviderFuture;
 use crate::provider::ProviderAccountResult;
@@ -35,6 +36,7 @@ const DEFAULT_GOOGLE_CLOUD_LOCATION: &str = "global";
 pub(crate) struct GcpModelProvider {
     info: ModelProviderInfo,
     auth_manager: Option<Arc<AuthManager>>,
+    global_auth_manager: Option<Arc<AuthManager>>,
 }
 
 impl GcpModelProvider {
@@ -42,11 +44,27 @@ impl GcpModelProvider {
         provider_info: ModelProviderInfo,
         auth_manager: Option<Arc<AuthManager>>,
     ) -> Self {
-        let auth_manager = auth_manager_for_provider(auth_manager, &provider_info);
+        let global_auth_manager = auth_manager;
+        let auth_manager = auth_manager_for_provider(global_auth_manager.clone(), &provider_info);
         Self {
             info: provider_info,
             auth_manager,
+            global_auth_manager,
         }
+    }
+
+    fn ensure_auth_boundary_unchanged(&self) -> Result<()> {
+        if self
+            .global_auth_manager
+            .as_ref()
+            .and_then(|manager| manager.auth_cached())
+            .is_some_and(|auth| auth.is_github_copilot_auth())
+        {
+            return Err(CodexErr::UnsupportedOperation(
+                "GitHub Copilot was signed in after this session started; start a new session to use its direct Responses endpoint".to_string(),
+            ));
+        }
+        Ok(())
     }
 
     async fn auth(&self) -> Option<CodexAuth> {
@@ -63,6 +81,7 @@ impl GcpModelProvider {
     }
 
     async fn runtime_base_url(&self) -> Result<Option<String>> {
+        self.ensure_auth_boundary_unchanged()?;
         if let Some(base_url) = self.info.base_url.clone() {
             return Ok(Some(base_url));
         }
@@ -79,6 +98,17 @@ impl ModelProvider for GcpModelProvider {
     }
 
     fn capabilities(&self) -> ProviderCapabilities {
+        if self.ensure_auth_boundary_unchanged().is_err() {
+            return ProviderCapabilities {
+                namespace_tools: false,
+                codex_agent_messages: false,
+                reasoning_summaries: false,
+                image_generation: false,
+                web_search: false,
+                external_web_access: false,
+                remote_compaction: RemoteCompactionSupport::Unsupported,
+            };
+        }
         ProviderCapabilities {
             namespace_tools: true,
             codex_agent_messages: true,
@@ -124,6 +154,7 @@ impl ModelProvider for GcpModelProvider {
 
     fn api_auth(&self) -> ModelProviderFuture<'_, Result<SharedAuthProvider>> {
         Box::pin(async move {
+            self.ensure_auth_boundary_unchanged()?;
             let auth = self.auth().await.ok_or_else(|| {
                 CodexErr::InvalidRequest(
                     "Google Cloud credentials are unavailable or expired. Run \
@@ -137,6 +168,10 @@ impl ModelProvider for GcpModelProvider {
 
     fn runtime_base_url(&self) -> ModelProviderFuture<'_, Result<Option<String>>> {
         Box::pin(GcpModelProvider::runtime_base_url(self))
+    }
+
+    fn validate_model(&self, _model: &str) -> Result<()> {
+        self.ensure_auth_boundary_unchanged()
     }
 
     fn models_manager(
@@ -172,11 +207,14 @@ impl ModelProvider for GcpModelProvider {
             model.tool_mode = Some(ToolMode::Direct);
             model.apply_patch_tool_type = None;
         }
-        Arc::new(StaticModelsManager::new(
-            self.auth_manager.clone(),
-            model_catalog,
-            origin,
-        ))
+        github_copilot_aware_models_manager(
+            Arc::new(StaticModelsManager::new(
+                self.auth_manager.clone(),
+                model_catalog,
+                origin,
+            )),
+            self.global_auth_manager.clone(),
+        )
     }
 }
 

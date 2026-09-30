@@ -93,6 +93,7 @@ mod fork_thread;
 mod frozen_execution;
 mod gcp;
 mod git_enrichment;
+mod github_copilot;
 mod guardian_authorization;
 mod guardian_authorization_refresh;
 #[path = "guardian_cached_score_tests.rs"]

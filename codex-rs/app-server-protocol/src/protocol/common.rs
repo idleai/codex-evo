@@ -18,12 +18,17 @@ use serde::Deserialize;
 use serde::Serialize;
 use strum_macros::Display;
 
-/// Authentication mode for OpenAI-backed providers.
+/// Authentication mode for model providers managed by Codex.
 #[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq, Display, JsonSchema, TS)]
 #[serde(rename_all = "lowercase")]
 pub enum AuthMode {
     /// OpenAI API key provided by the caller and stored by Codex.
     ApiKey,
+    /// GitHub OAuth credential scoped to direct GitHub Copilot inference.
+    #[serde(rename = "githubCopilot")]
+    #[ts(rename = "githubCopilot")]
+    #[strum(serialize = "githubCopilot")]
+    GitHubCopilot,
     /// ChatGPT OAuth managed by Codex (tokens persisted and refreshed by Codex).
     Chatgpt,
     /// [UNSTABLE] FOR OPENAI INTERNAL USE ONLY - DO NOT USE.
@@ -67,6 +72,7 @@ impl AuthMode {
         match self {
             Self::Chatgpt | Self::ChatgptAuthTokens | Self::PersonalAccessToken => true,
             Self::ApiKey
+            | Self::GitHubCopilot
             | Self::Headers
             | Self::AgentIdentity
             | Self::BedrockApiKey
@@ -82,7 +88,9 @@ impl AuthMode {
             | Self::Headers
             | Self::AgentIdentity
             | Self::PersonalAccessToken => true,
-            Self::ApiKey | Self::BedrockApiKey | Self::BedrockAccessKeys => false,
+            Self::ApiKey | Self::GitHubCopilot | Self::BedrockApiKey | Self::BedrockAccessKeys => {
+                false
+            }
         }
     }
 }

@@ -74,6 +74,11 @@ async fn listener_shutdown_releases_runtime_and_preserves_other_subscribers(
         Arc::new(GoalService::new()),
         config_manager.clone(),
     );
+    let idle_runtime = Arc::new(crate::idle_runtime::IdleRuntime::new(
+        &config.codex_home,
+        "listener-shutdown-test".to_string(),
+        /*turn_start_admission*/ None,
+    ));
     let processor = ThreadRequestProcessor::new(
         auth,
         test.thread_manager.clone(),
@@ -93,6 +98,7 @@ async fn listener_shutdown_releases_runtime_and_preserves_other_subscribers(
         /*turn_cost_worker*/ None,
         Vec::new(),
         Arc::new(SampleResponseRegistry::default()),
+        idle_runtime,
     );
     let connection_id = ConnectionId(1);
     let disconnecting_connection_id = ConnectionId(2);

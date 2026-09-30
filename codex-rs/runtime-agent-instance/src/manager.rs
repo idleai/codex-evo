@@ -245,6 +245,7 @@ fn actor_authorization(
             AuthenticatedActorAuthorization::PersonalAccessToken { credential }
         }
         CodexAuth::Headers(_)
+        | CodexAuth::GitHubCopilot(_)
         | CodexAuth::AgentIdentity(_)
         | CodexAuth::BedrockApiKey(_)
         | CodexAuth::BedrockAccessKeys(_) => return Err(RuntimeAuthError::Unsupported),

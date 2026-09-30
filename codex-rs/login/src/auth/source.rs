@@ -42,6 +42,7 @@ pub(super) fn same_source(previous: Option<&CodexAuth>, current: Option<&CodexAu
                 && previous == current
         }
         CodexAuth::ApiKey(_)
+        | CodexAuth::GitHubCopilot(_)
         | CodexAuth::PersonalAccessToken(_)
         | CodexAuth::Headers(_)
         | CodexAuth::AgentIdentity(_)

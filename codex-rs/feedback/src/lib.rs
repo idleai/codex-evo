@@ -9,14 +9,20 @@ use std::path::Path;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::Mutex;
+#[cfg(test)]
 use std::time::Duration;
+#[cfg(test)]
 use std::time::Instant;
 
+#[cfg(test)]
 use anyhow::Context;
 use anyhow::Result;
+#[cfg(test)]
 use anyhow::anyhow;
+#[cfg(test)]
 use codex_http_client::ClientRouteClass;
 use codex_http_client::HttpClientFactory;
+#[cfg(test)]
 use codex_http_client::RouteAwareClientPool;
 use codex_login::AuthEnvTelemetry;
 use codex_protocol::ThreadId;
@@ -37,6 +43,7 @@ pub use daemon_logs::daemon_log_attachments;
 pub(crate) mod feedback_diagnostics;
 mod guardian;
 mod report_upload;
+#[cfg(test)]
 mod rollout_archive;
 mod upload;
 pub use feedback_diagnostics::FEEDBACK_DIAGNOSTICS_ATTACHMENT_FILENAME;
@@ -59,8 +66,7 @@ pub const CODEX_APP_DIRECTORY_CACHE_ATTACHMENT_FILENAME: &str = "codex-app-direc
 /// Filename used for the Windows sandbox log feedback attachment.
 pub const WINDOWS_SANDBOX_LOG_ATTACHMENT_FILENAME: &str = "windows-sandbox.log";
 const DEFAULT_MAX_BYTES: usize = 4 * 1024 * 1024; // 4 MiB
-const SENTRY_DSN: &str =
-    "https://ae32ed50620d7a7792c1ce5df38b3e3e@o33249.ingest.us.sentry.io/4510195390611458";
+#[cfg(test)]
 const UPLOAD_TIMEOUT: Duration = Duration::from_secs(/*secs*/ 300);
 // Raw collection budgets used by the report API, not the interactive upload.
 pub const MAX_ATTACHMENT_BYTES: usize = 64 * 1024 * 1024;
@@ -631,22 +637,15 @@ impl FeedbackSnapshot {
         self.feedback_diagnostics.attachment_text()
     }
 
-    /// Submit feedback to Sentry with whole attachments within a shared deadline.
-    /// Success means HTTP acceptance, not durable attachment storage. Callers must
-    /// retain their source files; errors can occur after part of a report is accepted.
-    /// https://github.com/getsentry/relay/blob/master/relay-server/src/endpoints/common.rs
+    /// Remote feedback delivery is disabled in this build.
     pub async fn upload_feedback(
         &self,
-        options: FeedbackUploadOptions<'_>,
-        http_client_factory: &HttpClientFactory,
+        _options: FeedbackUploadOptions<'_>,
+        _http_client_factory: &HttpClientFactory,
     ) -> Result<()> {
-        self.upload_feedback_with_dsn(
-            options,
-            http_client_factory,
-            SENTRY_DSN,
-            Instant::now() + UPLOAD_TIMEOUT,
-        )
-        .await
+        Err(anyhow::anyhow!(
+            "remote OpenAI feedback delivery is disabled in this build"
+        ))
     }
 
     /// Atomically saves the consent-selected report and attachments without uploading.
@@ -689,6 +688,7 @@ impl FeedbackSnapshot {
         )
     }
 
+    #[cfg(test)]
     async fn upload_feedback_with_dsn(
         &self,
         options: FeedbackUploadOptions<'_>,
@@ -882,6 +882,7 @@ impl FeedbackSnapshot {
         tags
     }
 
+    #[cfg(test)]
     fn feedback_attachments<'a>(
         &'a self,
         headers: &'a sentry::protocol::EnvelopeHeaders,

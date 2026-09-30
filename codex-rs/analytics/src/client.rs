@@ -2,6 +2,7 @@ use crate::events::AppServerRpcTransport;
 use crate::events::GuardianReviewAnalyticsResult;
 use crate::events::GuardianReviewTrackContext;
 use crate::events::TrackEventRequest;
+#[cfg(debug_assertions)]
 use crate::events::TrackEventsRequest;
 use crate::events::current_runtime_metadata;
 use crate::facts::AnalyticsFact;
@@ -86,6 +87,7 @@ use tokio::sync::mpsc;
 use tokio::sync::oneshot;
 
 const ANALYTICS_EVENTS_QUEUE_SIZE: usize = 256;
+#[cfg(debug_assertions)]
 const ANALYTICS_EVENTS_TIMEOUT: Duration = Duration::from_secs(10);
 // Covers two sequential POSTs plus queue/barrier scheduling; additional queued sends remain best-effort.
 const ANALYTICS_EVENTS_FLUSH_TIMEOUT: Duration = Duration::from_secs(25);
@@ -116,25 +118,44 @@ pub struct AnalyticsEventsClient {
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 enum AnalyticsEventsDestination {
-    Http {
-        base_url: ChatgptBaseUrl,
-    },
     #[cfg(debug_assertions)]
     CaptureFile {
         path: PathBuf,
     },
+    #[cfg(debug_assertions)]
+    LoopbackHttp {
+        url: String,
+    },
+    Disabled,
 }
 
 impl AnalyticsEventsDestination {
     fn from_base_url(base_url: ChatgptBaseUrl) -> Self {
         let capture_file = analytics_capture_file_from_env();
-        Self::from_base_url_and_capture_file(base_url, capture_file)
+        let capture = Self::from_capture_file(capture_file);
+        if capture.is_enabled() {
+            return capture;
+        }
+
+        #[cfg(debug_assertions)]
+        if let ChatgptBaseUrl::Configured(base_url) = &base_url
+            && is_literal_loopback_url(base_url)
+        {
+            return Self::LoopbackHttp {
+                url: format!(
+                    "{}/codex/analytics-events/events",
+                    base_url.trim_end_matches('/')
+                ),
+            };
+        }
+
+        #[cfg(not(debug_assertions))]
+        let _ = base_url;
+
+        Self::Disabled
     }
 
-    fn from_base_url_and_capture_file(
-        base_url: ChatgptBaseUrl,
-        capture_file: Option<PathBuf>,
-    ) -> Self {
+    fn from_capture_file(capture_file: Option<PathBuf>) -> Self {
         #[cfg(debug_assertions)]
         if let Some(path) = capture_file {
             if let Err(err) = crate::analytics_capture::initialize(&path) {
@@ -153,18 +174,11 @@ impl AnalyticsEventsDestination {
         #[cfg(not(debug_assertions))]
         let _ = capture_file;
 
-        Self::Http { base_url }
+        Self::Disabled
     }
 
-    fn url_for_auth(&self, auth: &CodexAuth) -> Option<String> {
-        match self {
-            Self::Http { base_url } => {
-                let base_url = base_url.resolve(auth).trim_end_matches('/');
-                Some(format!("{base_url}/codex/analytics-events/events"))
-            }
-            #[cfg(debug_assertions)]
-            Self::CaptureFile { .. } => None,
-        }
+    fn is_enabled(&self) -> bool {
+        !matches!(self, Self::Disabled)
     }
 }
 
@@ -330,7 +344,7 @@ impl AnalyticsEventsClient {
     ) -> Self {
         let destination = AnalyticsEventsDestination::from_base_url(base_url.into());
         Self {
-            queue: (analytics_enabled != Some(false))
+            queue: (analytics_enabled != Some(false) && destination.is_enabled())
                 .then(|| AnalyticsEventsQueue::new(Arc::clone(&auth_manager), destination)),
         }
     }
@@ -991,7 +1005,7 @@ async fn send_track_events(
     };
     if auth.is_api_key_auth() {
         events.retain(TrackEventRequest::can_send_with_api_key_auth);
-    } else if !auth.uses_codex_backend() {
+    } else if !auth.uses_codex_backend() && !auth.is_github_copilot_auth() {
         return;
     }
     if events.is_empty() {
@@ -1052,7 +1066,7 @@ fn track_event_request_batches(events: Vec<TrackEventRequest>) -> Vec<Vec<TrackE
 }
 
 async fn send_track_events_request(
-    auth: &CodexAuth,
+    _auth: &CodexAuth,
     destination: &AnalyticsEventsDestination,
     events: Vec<TrackEventRequest>,
     http_client_factory: &codex_http_client::HttpClientFactory,
@@ -1062,68 +1076,93 @@ async fn send_track_events_request(
         return;
     }
 
+    #[cfg(not(debug_assertions))]
+    let _ = (destination, http_client_factory, product_sku);
+
+    #[cfg(debug_assertions)]
     let payload = TrackEventsRequest { events };
 
     #[cfg(debug_assertions)]
-    if capture_track_events_request(destination, &payload) {
-        return;
+    match destination {
+        AnalyticsEventsDestination::CaptureFile { .. } => {
+            capture_track_events_request(destination, &payload);
+        }
+        AnalyticsEventsDestination::LoopbackHttp { url } => {
+            let client = match codex_login::default_client::create_client_for_route_async(
+                http_client_factory.clone(),
+                url.clone(),
+                codex_http_client::ClientRouteClass::Api,
+                codex_login::default_client::ClientRedirectPolicy::Reject,
+            )
+            .await
+            {
+                Ok(client) => client,
+                Err(error) => {
+                    tracing::warn!(%error, "failed to build loopback capture client");
+                    return;
+                }
+            };
+            let mut request = client
+                .post(url)
+                .timeout(ANALYTICS_EVENTS_TIMEOUT)
+                .header("Content-Type", "application/json")
+                .json(&payload);
+            if let Some(product_sku) = product_sku {
+                request = request.header("X-OpenAI-Product-Sku", product_sku);
+            }
+            let response = request.send().await;
+            if let Err(err) = response {
+                tracing::warn!("failed to send analytics to the loopback capture: {err}");
+            }
+        }
+        AnalyticsEventsDestination::Disabled => {}
+    }
+}
+
+#[cfg(debug_assertions)]
+fn is_literal_loopback_url(base_url: &str) -> bool {
+    let Some(authority) = base_url
+        .strip_prefix("http://")
+        .or_else(|| base_url.strip_prefix("https://"))
+        .and_then(|rest| rest.split('/').next())
+    else {
+        return false;
+    };
+    if authority.contains('@') {
+        return false;
     }
 
-    let Some(url) = destination.url_for_auth(auth) else {
-        return;
-    };
-    let headers = match codex_model_provider::auth_provider_from_auth(auth).to_auth_headers() {
-        Ok(headers) => headers,
-        Err(error) => {
-            tracing::warn!("failed to authenticate events request: {error}");
-            return;
+    let (host, port) = if let Some(rest) = authority.strip_prefix('[') {
+        let Some((host, suffix)) = rest.split_once(']') else {
+            return false;
+        };
+        let port = match suffix.strip_prefix(':') {
+            Some(port) => Some(port),
+            None if suffix.is_empty() => None,
+            None => return false,
+        };
+        (host, port)
+    } else {
+        match authority.rsplit_once(':') {
+            Some((host, port)) => (host, Some(port)),
+            None => (authority, None),
         }
     };
-    let client = match codex_login::default_client::create_client_for_route_async(
-        http_client_factory.clone(),
-        url.clone(),
-        codex_http_client::ClientRouteClass::Api,
-        codex_login::default_client::ClientRedirectPolicy::Default,
-    )
-    .await
-    {
-        Ok(client) => client,
-        Err(error) => {
-            tracing::warn!(%error, "failed to build events client");
-            return;
-        }
-    };
-    let mut request = client
-        .post(&url)
-        .timeout(ANALYTICS_EVENTS_TIMEOUT)
-        .headers(headers)
-        .header("Content-Type", "application/json")
-        .json(&payload);
-    if let Some(product_sku) = product_sku {
-        request = request.header("X-OpenAI-Product-Sku", product_sku);
+    if port.is_some_and(|port| port.parse::<u16>().is_err()) {
+        return false;
     }
-    let response = request.send().await;
 
-    match response {
-        Ok(response) if response.status().is_success() => {}
-        Ok(response) => {
-            let status = response.status();
-            let body = response.text().await.unwrap_or_default();
-            tracing::warn!("events failed with status {status}: {body}");
-        }
-        Err(err) => {
-            tracing::warn!("failed to send events request: {err}");
-        }
-    }
+    host.parse::<std::net::IpAddr>()
+        .is_ok_and(|address| address.is_loopback())
 }
 
 #[cfg(debug_assertions)]
 fn capture_track_events_request(
     destination: &AnalyticsEventsDestination,
     payload: &TrackEventsRequest,
-) -> bool {
+) {
     let AnalyticsEventsDestination::CaptureFile { path } = destination else {
-        return false;
+        return;
     };
 
     use std::sync::PoisonError;
@@ -1135,7 +1174,6 @@ fn capture_track_events_request(
             "failed to capture analytics events; network delivery remains disabled: {err}"
         );
     }
-    true
 }
 
 #[cfg(test)]

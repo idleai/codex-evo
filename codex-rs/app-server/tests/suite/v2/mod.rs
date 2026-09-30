@@ -71,7 +71,6 @@ mod experimental_feature_list;
 mod external_agent_config;
 mod external_agent_import_sync;
 mod external_agent_memory_concurrency;
-mod feedback;
 mod frozen_cloud_skills;
 mod fs;
 #[path = "gateway_oauth_tests.rs"]
@@ -184,7 +183,6 @@ mod thread_timeline;
 mod thread_unarchive;
 mod thread_unload;
 mod thread_unsubscribe;
-mod turn_cost_otel;
 mod turn_interrupt;
 mod turn_settings_update;
 mod turn_start;

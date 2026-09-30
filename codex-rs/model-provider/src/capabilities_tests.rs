@@ -43,6 +43,7 @@ fn response_compatibility_controls_coexist_with_capability_overrides() {
             capabilities: Some(ModelProviderCapabilities {
                 external_web_access: Some(false),
                 remote_compaction: Some(RemoteCompactionSupport::V2),
+                ..Default::default()
             }),
             ..Default::default()
         },

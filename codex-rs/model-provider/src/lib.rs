@@ -5,6 +5,7 @@ mod capabilities;
 mod chatgpt_base_url;
 mod combined_auth;
 mod gcp;
+mod github_copilot;
 mod models_endpoint;
 mod models_identity;
 mod provider;
