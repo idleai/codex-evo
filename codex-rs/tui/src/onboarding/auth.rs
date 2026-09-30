@@ -1,7 +1,7 @@
 //! Authentication step UI and state transitions used by onboarding.
 //!
-//! This module owns the auth-step state machine (ChatGPT login/device-code/API
-//! key), renders the corresponding UI, and handles auth-scoped keyboard input.
+//! This module owns the auth-step state machine (ChatGPT, GitHub Copilot, API
+//! key, and Bedrock), renders the UI, and handles auth-scoped keyboard input.
 //! It intentionally does not decide onboarding flow completion; the enclosing
 //! onboarding screen coordinates step progression.
 
@@ -77,7 +77,12 @@ pub(crate) fn mark_underlined_hyperlink(buf: &mut Buffer, area: Rect, url: &str)
 
 use super::onboarding_screen::StepState;
 
-mod headless_chatgpt_login;
+mod device_code_login;
+use device_code_login::DeviceCodeProvider;
+
+#[cfg(test)]
+#[path = "auth/github_copilot_tests.rs"]
+mod github_copilot_tests;
 
 #[derive(Clone)]
 pub(crate) enum SignInState {
@@ -87,6 +92,9 @@ pub(crate) enum SignInState {
     ChatGptDeviceCode(ContinueWithDeviceCodeState),
     ChatGptSuccessMessage,
     ChatGptSuccess,
+    GitHubCopilotDeviceCode(ContinueWithDeviceCodeState),
+    GitHubCopilotSuccessMessage,
+    GitHubCopilotSuccess,
     ApiKeyEntry(ApiKeyInputState),
     ApiKeyConfigured,
     Bedrock(BedrockState),
@@ -98,6 +106,7 @@ pub(crate) enum SignInOption {
     ChatGpt,
     DeviceCode,
     ApiKey,
+    GitHubCopilot,
     Bedrock,
 }
 
@@ -110,14 +119,17 @@ pub(super) async fn cancel_login_attempt(
     request_handle: &AppServerRequestHandle,
     login_id: String,
 ) {
-    let _ = request_handle
+    if let Err(err) = request_handle
         .request_typed::<codex_app_server_protocol::CancelLoginAccountResponse>(
             ClientRequest::CancelLoginAccount {
                 request_id: onboarding_request_id(),
                 params: CancelLoginAccountParams { login_id },
             },
         )
-        .await;
+        .await
+    {
+        tracing::warn!("failed to cancel onboarding login: {err}");
+    }
 }
 
 #[derive(Clone, Default)]
@@ -213,6 +225,10 @@ impl KeyboardHandler for AuthModeWidget {
             self.select_option_by_index(/*index*/ 3);
             return;
         }
+        if keys::SELECT_FIFTH.is_pressed(key_event) {
+            self.select_option_by_index(/*index*/ 4);
+            return;
+        }
         if keys::CONFIRM.is_pressed(key_event) {
             let sign_in_state = { (*self.sign_in_state.read().unwrap()).clone() };
             match sign_in_state {
@@ -221,6 +237,9 @@ impl KeyboardHandler for AuthModeWidget {
                 }
                 SignInState::ChatGptSuccessMessage => {
                     *self.sign_in_state.write().unwrap() = SignInState::ChatGptSuccess;
+                }
+                SignInState::GitHubCopilotSuccessMessage => {
+                    *self.sign_in_state.write().unwrap() = SignInState::GitHubCopilotSuccess;
                 }
                 _ => {}
             }
@@ -271,7 +290,9 @@ impl AuthModeWidget {
     pub(crate) fn should_suppress_animations(&self) -> bool {
         matches!(
             &*self.sign_in_state.read().unwrap(),
-            SignInState::ChatGptContinueInBrowser(_) | SignInState::ChatGptDeviceCode(_)
+            SignInState::ChatGptContinueInBrowser(_)
+                | SignInState::ChatGptDeviceCode(_)
+                | SignInState::GitHubCopilotDeviceCode(_)
         )
     }
 
@@ -285,7 +306,7 @@ impl AuthModeWidget {
                     cancel_login_attempt(&request_handle, login_id).await;
                 });
             }
-            SignInState::ChatGptDeviceCode(state) => {
+            SignInState::ChatGptDeviceCode(state) | SignInState::GitHubCopilotDeviceCode(state) => {
                 if let Some(login_id) = state.login_id().map(str::to_owned) {
                     let request_handle = self.app_server_request_handle.clone();
                     tokio::spawn(async move {
@@ -355,6 +376,7 @@ impl AuthModeWidget {
         }
         if self.is_api_login_allowed() {
             options.push(SignInOption::ApiKey);
+            options.push(SignInOption::GitHubCopilot);
             if self.bedrock_setup_enabled {
                 options.push(SignInOption::Bedrock);
             }
@@ -370,6 +392,7 @@ impl AuthModeWidget {
         }
         if self.is_api_login_allowed() {
             options.push(SignInOption::ApiKey);
+            options.push(SignInOption::GitHubCopilot);
             if self.bedrock_setup_enabled {
                 options.push(SignInOption::Bedrock);
             }
@@ -400,6 +423,9 @@ impl AuthModeWidget {
     }
 
     fn handle_sign_in_option(&mut self, option: SignInOption) {
+        if !matches!(&*self.sign_in_state.read().unwrap(), SignInState::PickMode) {
+            return;
+        }
         match option {
             SignInOption::ChatGpt => {
                 if self.is_chatgpt_login_allowed() {
@@ -416,6 +442,21 @@ impl AuthModeWidget {
                     self.start_api_key_entry();
                 } else {
                     self.disallow_api_login();
+                }
+            }
+            SignInOption::GitHubCopilot => {
+                if self.is_api_login_allowed() {
+                    self.highlighted_mode = SignInOption::GitHubCopilot;
+                    self.set_error(/*message*/ None);
+                    if self.login_status == LoginStatus::AuthMode(AuthMode::GitHubCopilot) {
+                        *self.sign_in_state.write().unwrap() = SignInState::GitHubCopilotSuccess;
+                    } else {
+                        device_code_login::start_device_code_login(
+                            self,
+                            DeviceCodeProvider::GitHubCopilot,
+                        );
+                    }
+                    self.request_frame.schedule_frame();
                 }
             }
             SignInOption::Bedrock => {
@@ -442,7 +483,12 @@ impl AuthModeWidget {
             vec![
                 Line::from(vec![
                     "  ".into(),
-                    "Sign in with ChatGPT to use Codex as part of your paid plan".into(),
+                    if self.is_api_login_allowed() {
+                        "Sign in with ChatGPT or GitHub Copilot to use your subscription"
+                    } else {
+                        "Sign in with ChatGPT to use Codex as part of your paid plan"
+                    }
+                    .into(),
                 ]),
                 Line::from(vec![
                     "  ".into(),
@@ -516,6 +562,14 @@ impl AuthModeWidget {
                             "Provide your own API key"
                         },
                         "Pay for what you use",
+                    ));
+                }
+                SignInOption::GitHubCopilot => {
+                    lines.extend(create_mode_item(
+                        idx,
+                        option,
+                        "Sign in with GitHub Copilot",
+                        "Connect your GitHub account with Copilot access",
                     ));
                 }
                 SignInOption::Bedrock => {
@@ -977,7 +1031,7 @@ impl AuthModeWidget {
         }
 
         self.set_error(/*message*/ None);
-        headless_chatgpt_login::start_headless_chatgpt_login(self);
+        device_code_login::start_device_code_login(self, DeviceCodeProvider::ChatGpt);
     }
 
     pub(crate) fn on_account_login_completed(
@@ -993,8 +1047,10 @@ impl AuthModeWidget {
             SignInState::ChatGptContinueInBrowser(state) if state.login_id == login_id
         ) || matches!(
             &*guard,
-            SignInState::ChatGptDeviceCode(state) if state.login_id() == Some(login_id.as_str())
+            SignInState::ChatGptDeviceCode(state) | SignInState::GitHubCopilotDeviceCode(state)
+                if state.login_id() == Some(login_id.as_str())
         );
+        let is_github_copilot = matches!(&*guard, SignInState::GitHubCopilotDeviceCode(_));
         drop(guard);
         if !is_matching_login {
             return;
@@ -1002,9 +1058,17 @@ impl AuthModeWidget {
 
         if notification.success {
             self.set_error(/*message*/ None);
-            *self.sign_in_state.write().unwrap() = SignInState::ChatGptSuccessMessage;
+            *self.sign_in_state.write().unwrap() = if is_github_copilot {
+                SignInState::GitHubCopilotSuccessMessage
+            } else {
+                SignInState::ChatGptSuccessMessage
+            };
         } else {
-            self.set_error(notification.error);
+            self.set_error(Some(
+                notification
+                    .error
+                    .unwrap_or_else(|| "Sign-in failed. Please try again.".to_string()),
+            ));
             *self.sign_in_state.write().unwrap() = SignInState::PickMode;
         }
         self.request_frame.schedule_frame();
@@ -1039,8 +1103,11 @@ impl StepStateProvider for AuthModeWidget {
             | SignInState::ChatGptContinueInBrowser(_)
             | SignInState::ChatGptDeviceCode(_)
             | SignInState::ChatGptSuccessMessage
+            | SignInState::GitHubCopilotDeviceCode(_)
+            | SignInState::GitHubCopilotSuccessMessage
             | SignInState::Bedrock(_) => StepState::InProgress,
             SignInState::ChatGptSuccess
+            | SignInState::GitHubCopilotSuccess
             | SignInState::ApiKeyConfigured
             | SignInState::BedrockConfigured => StepState::Complete,
         }
@@ -1058,7 +1125,30 @@ impl WidgetRef for AuthModeWidget {
                 self.render_continue_in_browser(area, buf);
             }
             SignInState::ChatGptDeviceCode(state) => {
-                headless_chatgpt_login::render_device_code_login(self, area, buf, state);
+                device_code_login::render_device_code_login(
+                    self,
+                    area,
+                    buf,
+                    state,
+                    DeviceCodeProvider::ChatGpt,
+                );
+            }
+            SignInState::GitHubCopilotDeviceCode(state) => {
+                device_code_login::render_device_code_login(
+                    self,
+                    area,
+                    buf,
+                    state,
+                    DeviceCodeProvider::GitHubCopilot,
+                );
+            }
+            SignInState::GitHubCopilotSuccessMessage => {
+                device_code_login::render_github_copilot_success_message(self, area, buf);
+            }
+            SignInState::GitHubCopilotSuccess => {
+                Paragraph::new("✓ Signed in with GitHub Copilot".green())
+                    .wrap(Wrap { trim: false })
+                    .render(area, buf);
             }
             SignInState::ChatGptSuccessMessage => {
                 self.render_chatgpt_success_message(area, buf);
@@ -1123,7 +1213,7 @@ mod tests {
         "originator=codex_cli_rs"
     );
 
-    async fn widget_forced_chatgpt() -> (AuthModeWidget, TempDir) {
+    pub(super) async fn widget_forced_chatgpt() -> (AuthModeWidget, TempDir) {
         let codex_home = TempDir::new().unwrap();
         let codex_home_path = codex_home.path().to_path_buf();
         let config = ConfigBuilder::default()
@@ -1205,6 +1295,7 @@ mod tests {
                 SignInOption::ChatGpt,
                 SignInOption::DeviceCode,
                 SignInOption::ApiKey,
+                SignInOption::GitHubCopilot,
             ]
         );
 
@@ -1215,6 +1306,7 @@ mod tests {
                 SignInOption::ChatGpt,
                 SignInOption::DeviceCode,
                 SignInOption::ApiKey,
+                SignInOption::GitHubCopilot,
                 SignInOption::Bedrock,
             ]
         );
@@ -1246,11 +1338,20 @@ mod tests {
           3. Use an OpenAI API key
              Pay for what you use
 
-          4. Use Amazon Bedrock
+          4. Sign in with GitHub Copilot
+             Connect your GitHub account with Copilot access
+
+          5. Use Amazon Bedrock
              Connect using your AWS credentials
 
           Press enter to continue
         "###);
+
+        widget.handle_key_event(KeyCode::Char('5').into());
+        assert!(matches!(
+            &*widget.sign_in_state.read().unwrap(),
+            SignInState::Bedrock(_)
+        ));
 
         widget.auth_config.forced_login_method = Some(ForcedLoginMethod::Chatgpt);
         assert_eq!(

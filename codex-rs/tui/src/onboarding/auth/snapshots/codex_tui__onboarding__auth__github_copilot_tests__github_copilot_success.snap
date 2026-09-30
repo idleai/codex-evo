@@ -1,0 +1,10 @@
+---
+source: tui/src/onboarding/auth/github_copilot_tests.rs
+expression: "render(&widget, 80)"
+---
+✓ Signed in with GitHub Copilot
+
+  Codex will use your GitHub Copilot access and available models.
+  Review the code it writes and commands it runs.
+
+  Press enter to continue

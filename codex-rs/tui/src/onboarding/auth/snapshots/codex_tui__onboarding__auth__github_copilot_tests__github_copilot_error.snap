@@ -1,0 +1,22 @@
+---
+source: tui/src/onboarding/auth/github_copilot_tests.rs
+expression: "render(&widget, 80)"
+---
+  Sign in with ChatGPT or GitHub Copilot to use your subscription
+  or connect an API key for usage-based billing
+
+> 1. Sign in with ChatGPT
+     Usage included with Plus, Pro, Business, and Enterprise plans
+
+  2. Sign in with Device Code
+     Sign in from another device with a one-time code
+
+  3. Provide your own API key
+     Pay for what you use
+
+  4. Sign in with GitHub Copilot
+     Connect your GitHub account with Copilot access
+
+  Press enter to continue
+
+failed to save GitHub Copilot authentication

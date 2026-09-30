@@ -20,10 +20,26 @@ use super::cancel_login_attempt;
 use super::mark_url_hyperlink;
 use super::onboarding_request_id;
 
-pub(super) fn start_headless_chatgpt_login(widget: &mut AuthModeWidget) {
+/// Device-code providers share attempt tracking, cancellation, and copyable UI.
+#[derive(Clone, Copy)]
+pub(super) enum DeviceCodeProvider {
+    ChatGpt,
+    GitHubCopilot,
+}
+
+impl DeviceCodeProvider {
+    fn sign_in_state(self, state: ContinueWithDeviceCodeState) -> SignInState {
+        match self {
+            Self::ChatGpt => SignInState::ChatGptDeviceCode(state),
+            Self::GitHubCopilot => SignInState::GitHubCopilotDeviceCode(state),
+        }
+    }
+}
+
+pub(super) fn start_device_code_login(widget: &mut AuthModeWidget, provider: DeviceCodeProvider) {
     let request_id = Uuid::new_v4().to_string();
     *widget.sign_in_state.write().unwrap() =
-        SignInState::ChatGptDeviceCode(ContinueWithDeviceCodeState::pending(request_id.clone()));
+        provider.sign_in_state(ContinueWithDeviceCodeState::pending(request_id.clone()));
     widget.request_frame.schedule_frame();
 
     let request_handle = widget.app_server_request_handle.clone();
@@ -31,18 +47,34 @@ pub(super) fn start_headless_chatgpt_login(widget: &mut AuthModeWidget) {
     let request_frame = widget.request_frame.clone();
     let error = widget.error.clone();
     tokio::spawn(async move {
-        match request_handle
+        let response = request_handle
             .request_typed::<LoginAccountResponse>(ClientRequest::LoginAccount {
                 request_id: onboarding_request_id(),
-                params: LoginAccountParams::ChatgptDeviceCode,
+                params: match provider {
+                    DeviceCodeProvider::ChatGpt => LoginAccountParams::ChatgptDeviceCode,
+                    DeviceCodeProvider::GitHubCopilot => {
+                        LoginAccountParams::GitHubCopilot { client_id: None }
+                    }
+                },
             })
-            .await
-        {
-            Ok(LoginAccountResponse::ChatgptDeviceCode {
-                login_id,
-                verification_url,
-                user_code,
-            }) => {
+            .await;
+        match (provider, response) {
+            (
+                DeviceCodeProvider::ChatGpt,
+                Ok(LoginAccountResponse::ChatgptDeviceCode {
+                    login_id,
+                    verification_url,
+                    user_code,
+                }),
+            )
+            | (
+                DeviceCodeProvider::GitHubCopilot,
+                Ok(LoginAccountResponse::GitHubCopilot {
+                    login_id,
+                    verification_url,
+                    user_code,
+                }),
+            ) => {
                 let updated = set_device_code_state_for_active_attempt(
                     &sign_in_state,
                     &request_frame,
@@ -60,7 +92,7 @@ pub(super) fn start_headless_chatgpt_login(widget: &mut AuthModeWidget) {
                     cancel_login_attempt(&request_handle, login_id).await;
                 }
             }
-            Ok(other) => {
+            (_, Ok(other)) => {
                 let _updated = set_device_code_error_for_active_attempt(
                     &sign_in_state,
                     &request_frame,
@@ -69,7 +101,7 @@ pub(super) fn start_headless_chatgpt_login(widget: &mut AuthModeWidget) {
                     format!("Unexpected account/login/start response: {other:?}"),
                 );
             }
-            Err(err) => {
+            (_, Err(err)) => {
                 let _updated = set_device_code_error_for_active_attempt(
                     &sign_in_state,
                     &request_frame,
@@ -87,11 +119,13 @@ pub(super) fn render_device_code_login(
     area: Rect,
     buf: &mut Buffer,
     state: &ContinueWithDeviceCodeState,
+    provider: DeviceCodeProvider,
 ) {
-    let banner = if state.is_showing_copyable_auth() {
-        "Finish signing in via your browser"
-    } else {
-        "Preparing device code login"
+    let banner = match (provider, state.is_showing_copyable_auth()) {
+        (DeviceCodeProvider::ChatGpt, true) => "Finish signing in via your browser",
+        (DeviceCodeProvider::ChatGpt, false) => "Preparing device code login",
+        (DeviceCodeProvider::GitHubCopilot, true) => "Finish signing in with GitHub Copilot",
+        (DeviceCodeProvider::GitHubCopilot, false) => "Preparing GitHub Copilot login",
     };
 
     let mut spans = vec!["  ".into()];
@@ -116,9 +150,15 @@ pub(super) fn render_device_code_login(
             verification_url.as_str().cyan().underlined(),
         ]));
         lines.push("".into());
-        lines.push(
-            "  2. Enter this one-time code after you are signed in (expires in 15 minutes)".into(),
-        );
+        lines.push(match provider {
+            DeviceCodeProvider::ChatGpt => {
+                "  2. Enter this one-time code after you are signed in (expires in 15 minutes)"
+                    .into()
+            }
+            DeviceCodeProvider::GitHubCopilot => {
+                "  2. Enter this one-time code and authorize GitHub Copilot".into()
+            }
+        });
         lines.push("".into());
         lines.push(Line::from(vec![
             "  ".into(),
@@ -155,7 +195,8 @@ pub(super) fn render_device_code_login(
 fn device_code_attempt_matches(state: &SignInState, request_id: &str) -> bool {
     matches!(
         state,
-        SignInState::ChatGptDeviceCode(state) if state.request_id == request_id
+        SignInState::ChatGptDeviceCode(state) | SignInState::GitHubCopilotDeviceCode(state)
+            if state.request_id == request_id
     )
 }
 
@@ -170,10 +211,38 @@ fn set_device_code_state_for_active_attempt(
         return false;
     }
 
-    *guard = SignInState::ChatGptDeviceCode(next_state);
+    *guard = match &*guard {
+        SignInState::GitHubCopilotDeviceCode(_) => DeviceCodeProvider::GitHubCopilot,
+        _ => DeviceCodeProvider::ChatGpt,
+    }
+    .sign_in_state(next_state);
     drop(guard);
     request_frame.schedule_frame();
     true
+}
+
+pub(super) fn render_github_copilot_success_message(
+    widget: &AuthModeWidget,
+    area: Rect,
+    buf: &mut Buffer,
+) {
+    let lines = vec![
+        "✓ Signed in with GitHub Copilot".green().into(),
+        "".into(),
+        "  Codex will use your GitHub Copilot access and available models.".into(),
+        "  Review the code it writes and commands it runs."
+            .dim()
+            .into(),
+        "".into(),
+        Line::from(vec![
+            "  Press ".cyan(),
+            widget.confirm_binding().into(),
+            " to continue".cyan(),
+        ]),
+    ];
+    Paragraph::new(lines)
+        .wrap(Wrap { trim: false })
+        .render(area, buf);
 }
 
 fn set_device_code_error_for_active_attempt(

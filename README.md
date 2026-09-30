@@ -71,6 +71,19 @@ Run `codex` and select **Sign in with ChatGPT**. We recommend signing into your 
 
 You can also use Codex with an API key, but this requires [additional setup](https://developers.openai.com/codex/auth#sign-in-with-an-api-key).
 
+### Using this fork with GitHub Copilot
+
+Run `codex` and select **Sign in with GitHub Copilot** on the sign-in screen.
+Open the displayed GitHub link, enter the one-time code, and authorize access.
+Codex checks your Copilot access and available models, saves credentials using
+the configured credential store, and shows a confirmation. Press Enter to
+continue. Press Esc during sign-in to cancel; if authorization expires or fails,
+select GitHub Copilot again to retry.
+
+Existing users can run `codex logout` to return to the sign-in screen on the next
+launch, or use `codex login github-copilot` directly. GitHub Copilot sign-in is
+unavailable when workspace policy requires ChatGPT authentication.
+
 ## Docs
 
 - [**Codex Documentation**](https://developers.openai.com/codex)
