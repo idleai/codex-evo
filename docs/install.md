@@ -49,6 +49,17 @@ just test
 # time and `target/` disk usage by compiling additional feature combinations.
 ```
 
+On Linux or WSL, build a release package and activate it at
+`~/.local/bin/codex` with:
+
+```bash
+./scripts/build_and_install_codex.sh
+```
+
+The script retains the previous package and refuses to replace an executable
+that is not a symlink into `~/.local/lib/codex-evo`. Set `CODEX_TARGET` to
+override the Rust host target.
+
 ## Tracing / verbose logging
 
 Codex is written in Rust, so it honors the `RUST_LOG` environment variable to configure its logging behavior.
