@@ -32,6 +32,29 @@
     },
     {
       "properties": {
+        "clientId": {
+          "description": "Optional GitHub OAuth app client ID override. When omitted, the app-server reads `GITHUB_COPILOT_CLIENT_ID`, then falls back to its bundled public client ID.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "type": {
+          "enum": [
+            "githubCopilot"
+          ],
+          "title": "GithubCopilotv2::LoginAccountParamsType",
+          "type": "string"
+        }
+      },
+      "required": [
+        "type"
+      ],
+      "title": "GithubCopilotv2::LoginAccountParams",
+      "type": "object"
+    },
+    {
+      "properties": {
         "appBrand": {
           "anyOf": [
             {

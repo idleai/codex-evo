@@ -1028,6 +1028,7 @@ impl AuthModeWidget {
             .map(|auth_mode| {
                 LoginStatus::AuthMode(match auth_mode {
                     ApiAuthMode::ApiKey => AuthMode::ApiKey,
+                    ApiAuthMode::GitHubCopilot => AuthMode::GitHubCopilot,
                     ApiAuthMode::Chatgpt => AuthMode::Chatgpt,
                     ApiAuthMode::ChatgptAuthTokens => AuthMode::ChatgptAuthTokens,
                     ApiAuthMode::Headers => AuthMode::Headers,

@@ -669,6 +669,14 @@ impl AppServerSession {
                 FeedbackAudience::External,
                 false,
             ),
+            Some(Account::GitHubCopilot { login, copilot_sku }) => (
+                None,
+                Some(TelemetryAuthMode::GitHubCopilot),
+                Some(StatusAccountDisplay::GitHubCopilot { login, copilot_sku }),
+                None,
+                FeedbackAudience::External,
+                false,
+            ),
             Some(Account::Chatgpt { email, plan_type }) => {
                 let feedback_audience = if email
                     .as_deref()
@@ -1782,6 +1790,10 @@ pub(crate) fn status_account_display_from_auth_mode(
 ) -> Option<StatusAccountDisplay> {
     match auth_mode {
         Some(AuthMode::ApiKey) => Some(StatusAccountDisplay::ApiKey),
+        Some(AuthMode::GitHubCopilot) => Some(StatusAccountDisplay::GitHubCopilot {
+            login: None,
+            copilot_sku: None,
+        }),
         Some(AuthMode::Chatgpt)
         | Some(AuthMode::ChatgptAuthTokens)
         | Some(AuthMode::AgentIdentity)

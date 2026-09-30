@@ -21,6 +21,36 @@
         },
         {
           "properties": {
+            "copilotSku": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "login": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "type": {
+              "enum": [
+                "githubCopilot"
+              ],
+              "title": "GithubCopilotAccountType",
+              "type": "string"
+            }
+          },
+          "required": [
+            "copilotSku",
+            "login",
+            "type"
+          ],
+          "title": "GithubCopilotAccount",
+          "type": "object"
+        },
+        {
+          "properties": {
             "email": {
               "type": [
                 "string",

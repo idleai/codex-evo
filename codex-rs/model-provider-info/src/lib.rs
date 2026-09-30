@@ -74,6 +74,9 @@ const MAX_REQUEST_MAX_RETRIES: u64 = 100;
 const OPENAI_PROVIDER_NAME: &str = "OpenAI";
 const OPENAI_ACTOR_AUTHORIZATION_HEADER: &str = "x-openai-actor-authorization";
 pub const OPENAI_PROVIDER_ID: &str = "openai";
+const GITHUB_COPILOT_PROVIDER_NAME: &str = "GitHub Copilot";
+pub const GITHUB_COPILOT_DEFAULT_BASE_URL: &str = "https://api.githubcopilot.com";
+pub const GITHUB_COPILOT_API_VERSION: &str = "2026-08-01";
 pub const CHATGPT_CODEX_BASE_URL: &str = "https://chatgpt.com/backend-api/codex";
 const AMAZON_BEDROCK_PROVIDER_NAME: &str = "Amazon Bedrock";
 pub const AMAZON_BEDROCK_PROVIDER_ID: &str = "amazon-bedrock";
@@ -431,19 +434,17 @@ other non-default provider fields are not supported"
 
     /// Builds an API provider with managed residency taking precedence over configured headers.
     pub fn to_api_provider(&self, auth_mode: Option<AuthMode>) -> CodexResult<ApiProvider> {
-        let default_base_url = if matches!(
-            auth_mode,
+        let default_base_url = match auth_mode {
+            Some(AuthMode::GitHubCopilot) => GITHUB_COPILOT_DEFAULT_BASE_URL,
             Some(
                 AuthMode::Chatgpt
-                    | AuthMode::ChatgptAuthTokens
-                    | AuthMode::Headers
-                    | AuthMode::AgentIdentity
-                    | AuthMode::PersonalAccessToken
-            )
-        ) {
-            CHATGPT_CODEX_BASE_URL
-        } else {
-            "https://api.openai.com/v1"
+                | AuthMode::ChatgptAuthTokens
+                | AuthMode::Headers
+                | AuthMode::AgentIdentity
+                | AuthMode::PersonalAccessToken,
+            ) => CHATGPT_CODEX_BASE_URL,
+            Some(AuthMode::ApiKey | AuthMode::BedrockApiKey | AuthMode::BedrockAccessKeys)
+            | None => "https://api.openai.com/v1",
         };
         let base_url = self
             .base_url
@@ -572,6 +573,40 @@ other non-default provider fields are not supported"
         }
     }
 
+    pub fn create_github_copilot_provider(base_url: Option<String>) -> ModelProviderInfo {
+        ModelProviderInfo {
+            name: GITHUB_COPILOT_PROVIDER_NAME.into(),
+            base_url: Some(base_url.unwrap_or_else(|| GITHUB_COPILOT_DEFAULT_BASE_URL.to_string())),
+            model_catalog_url: None,
+            env_key: None,
+            env_key_instructions: None,
+            experimental_bearer_token: None,
+            auth: None,
+            gateway_oauth: None,
+            aws: None,
+            wire_api: WireApi::Responses,
+            query_params: None,
+            http_headers: Some(HashMap::from([
+                ("OpenAI-Intent".to_string(), "conversation".into()),
+                (
+                    "X-GitHub-Api-Version".to_string(),
+                    GITHUB_COPILOT_API_VERSION.into(),
+                ),
+            ])),
+            env_http_headers: None,
+            request_max_retries: None,
+            stream_max_retries: None,
+            stream_idle_timeout_ms: None,
+            websocket_connect_timeout_ms: None,
+            requires_openai_auth: true,
+            supports_websockets: false,
+            supports_standalone_web_search: false,
+            include_internal_metadata: false,
+            supports_namespace_tools: Some(true),
+            supports_codex_agent_messages: Some(false),
+        }
+    }
+
     pub fn create_amazon_bedrock_provider(
         aws: Option<ModelProviderAwsAuthInfo>,
     ) -> ModelProviderInfo {
@@ -623,6 +658,10 @@ other non-default provider fields are not supported"
 
     pub fn is_openai(&self) -> bool {
         self.name == OPENAI_PROVIDER_NAME
+    }
+
+    pub fn is_github_copilot(&self) -> bool {
+        self.name == GITHUB_COPILOT_PROVIDER_NAME
     }
 
     pub fn supports_codex_backend_routes(&self) -> bool {

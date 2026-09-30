@@ -30,6 +30,7 @@ use codex_login::CodexAuth;
 use codex_login::ExternalAuth;
 use codex_login::ExternalAuthFuture;
 use codex_login::ExternalAuthRefreshContext;
+use codex_login::GitHubCopilotAuth;
 use codex_model_provider_info::ModelProviderInfo;
 use codex_prompts::ResolvedModelMessages;
 use codex_protocol::ResponseItemId;
@@ -140,6 +141,53 @@ fn legacy_loader(
 
 fn legacy_policy(scope: Option<&GuardianV2ReviewScopeConfigToml>) -> GuardianModelPolicy {
     legacy_loader(scope).resolve(/*model*/ None)
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn installed_extension_does_not_start_openai_scorer_for_github_copilot() -> Result<()> {
+    let server = responses::start_mock_server().await;
+    let test = test_codex().build_with_auto_env(&server).await?;
+    let auth = GitHubCopilotAuth::new(
+        "github-token".to_string(),
+        "https://api.individual.githubcopilot.com".to_string(),
+        None,
+        None,
+        vec!["gpt-5.6-sol".to_string()],
+    )?;
+    let mut config = test.config.clone();
+    config.features.enable(Feature::GuardianApproval)?;
+    config.features.enable(Feature::GuardianV2)?;
+    let mut builder = ExtensionRegistryBuilder::new();
+    super::install(
+        &mut builder,
+        AuthManager::from_auth_for_testing(CodexAuth::from_github_copilot(auth)),
+        Arc::downgrade(&test.thread_manager),
+    );
+    let registry = builder.build();
+    let session_store = ExtensionData::new("session-1");
+    let thread_store = test.codex.thread_extension_data();
+    registry.thread_lifecycle_contributors()[0]
+        .on_thread_start(ThreadStartInput {
+            config: &config,
+            session_source: &SessionSource::Exec,
+            persistent_thread_state_available: false,
+            environments: &[],
+            mcp_resource_client: None,
+            extension_metrics: None,
+            session_store: &session_store,
+            thread_store,
+        })
+        .await;
+
+    assert!(thread_store.get::<LunaSampler>().is_none());
+    assert!(
+        server
+            .received_requests()
+            .await
+            .unwrap_or_default()
+            .is_empty()
+    );
+    Ok(())
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]

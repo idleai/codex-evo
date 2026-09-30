@@ -88,7 +88,7 @@ async fn capture_requests(
     tokio::sync::oneshot::Sender<()>,
 ) {
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
-    let destination = AnalyticsEventsDestination::Http {
+    let destination = AnalyticsEventsDestination::LoopbackHttp {
         url: format!("http://{}/events", listener.local_addr().unwrap()),
     };
     let (paused_tx, paused_rx) = tokio::sync::oneshot::channel();

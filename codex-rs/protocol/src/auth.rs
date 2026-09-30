@@ -3,7 +3,7 @@ use serde::Serialize;
 use strum_macros::Display;
 use thiserror::Error;
 
-/// Authentication mode for OpenAI-backed providers.
+/// Authentication mode for model providers managed by Codex.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Display, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum AuthMode {
@@ -35,6 +35,10 @@ pub enum AuthMode {
     #[serde(rename = "bedrockAccessKeys")]
     #[strum(serialize = "bedrockAccessKeys")]
     BedrockAccessKeys,
+    /// GitHub OAuth credential authorized for direct GitHub Copilot inference.
+    #[serde(rename = "githubCopilot")]
+    #[strum(serialize = "githubCopilot")]
+    GitHubCopilot,
 }
 
 impl AuthMode {
@@ -46,7 +50,8 @@ impl AuthMode {
             | Self::Headers
             | Self::AgentIdentity
             | Self::BedrockApiKey
-            | Self::BedrockAccessKeys => false,
+            | Self::BedrockAccessKeys
+            | Self::GitHubCopilot => false,
         }
     }
 
@@ -58,7 +63,9 @@ impl AuthMode {
             | Self::Headers
             | Self::AgentIdentity
             | Self::PersonalAccessToken => true,
-            Self::ApiKey | Self::BedrockApiKey | Self::BedrockAccessKeys => false,
+            Self::ApiKey | Self::BedrockApiKey | Self::BedrockAccessKeys | Self::GitHubCopilot => {
+                false
+            }
         }
     }
 }

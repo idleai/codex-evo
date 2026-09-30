@@ -31,6 +31,7 @@ use codex_protocol::openai_models::ModelsResponse;
 
 use crate::auth::auth_manager_for_provider;
 use crate::auth::resolve_provider_auth as resolve_configured_provider_auth;
+use crate::github_copilot::github_copilot_aware_models_manager;
 use crate::provider::ModelProvider;
 use crate::provider::ModelProviderFuture;
 use crate::provider::ProviderAccountResult;
@@ -66,6 +67,7 @@ pub(crate) struct AmazonBedrockModelProvider {
     endpoint: BedrockEndpoint,
     auth_manager: Option<Arc<AuthManager>>,
     credential_export: Option<Arc<AwsCredentialExport>>,
+    global_auth_manager: Option<Arc<AuthManager>>,
     auth_recovery: Option<Arc<AwsAuthRecovery>>,
 }
 
@@ -74,6 +76,7 @@ impl AmazonBedrockModelProvider {
         provider_info: ModelProviderInfo,
         auth_manager: Option<Arc<AuthManager>>,
     ) -> Self {
+        let global_auth_manager = auth_manager;
         let endpoint = if provider_info.is_amazon_bedrock_runtime() {
             BedrockEndpoint::Runtime
         } else {
@@ -88,7 +91,11 @@ impl AmazonBedrockModelProvider {
                 credential_export: None,
                 auth_refresh: None,
             });
-        let auth_source = auth::auth_source(&provider_info, auth_manager.as_deref(), std::env::var);
+        let auth_source = auth::auth_source(
+            &provider_info,
+            global_auth_manager.as_deref(),
+            std::env::var,
+        );
         let credential_export = if auth_source == auth::BedrockAuthSource::CredentialExport {
             process_shared_state().aws_credential_export(&aws)
         } else {
@@ -105,7 +112,7 @@ impl AmazonBedrockModelProvider {
         } else {
             None
         };
-        let http_client_factory = auth_manager
+        let http_client_factory = global_auth_manager
             .as_ref()
             .map(|manager| {
                 manager
@@ -117,7 +124,7 @@ impl AmazonBedrockModelProvider {
                     codex_http_client::OutboundProxyPolicy::ReqwestDefault,
                 )
             });
-        let auth_manager = auth_manager_for_provider(auth_manager, &provider_info);
+        let auth_manager = auth_manager_for_provider(global_auth_manager.clone(), &provider_info);
         Self {
             http_client_factory,
             info: provider_info,
@@ -125,12 +132,28 @@ impl AmazonBedrockModelProvider {
             endpoint,
             auth_manager,
             credential_export,
+            global_auth_manager,
             auth_recovery,
         }
     }
 
     fn auth_source(&self) -> auth::BedrockAuthSource {
         auth::auth_source(&self.info, self.auth_manager.as_deref(), std::env::var)
+    }
+
+    fn ensure_auth_boundary_unchanged(&self) -> Result<()> {
+        if self
+            .global_auth_manager
+            .as_ref()
+            .and_then(|manager| manager.auth_cached())
+            .is_some_and(|auth| auth.is_github_copilot_auth())
+        {
+            return Err(CodexErr::UnsupportedOperation(
+                "GitHub Copilot was signed in after this session started; start a new session to use its direct Responses endpoint"
+                    .to_string(),
+            ));
+        }
+        Ok(())
     }
 
     fn managed_auth(&self) -> Option<CodexAuth> {
@@ -275,6 +298,16 @@ impl ModelProvider for AmazonBedrockModelProvider {
     }
 
     fn capabilities(&self) -> ProviderCapabilities {
+        if self.ensure_auth_boundary_unchanged().is_err() {
+            return ProviderCapabilities {
+                namespace_tools: false,
+                codex_agent_messages: false,
+                image_generation: false,
+                web_search: false,
+                external_web_access: false,
+                remote_compaction: RemoteCompactionSupport::Unsupported,
+            };
+        }
         ProviderCapabilities {
             namespace_tools: true,
             codex_agent_messages: true,
@@ -338,6 +371,7 @@ impl ModelProvider for AmazonBedrockModelProvider {
         &self,
     ) -> ModelProviderFuture<'_, Result<ProviderUnauthorizedRecovery>> {
         Box::pin(async move {
+            self.ensure_auth_boundary_unchanged()?;
             if !self.uses_aws_auth_recovery() {
                 return Ok(ProviderUnauthorizedRecovery::NotConfigured);
             }
@@ -391,7 +425,17 @@ impl ModelProvider for AmazonBedrockModelProvider {
     }
 
     fn auth(&self) -> ModelProviderFuture<'_, Option<CodexAuth>> {
-        Box::pin(AmazonBedrockModelProvider::auth(self))
+        Box::pin(async move {
+            if self.ensure_auth_boundary_unchanged().is_err() {
+                None
+            } else {
+                AmazonBedrockModelProvider::auth(self).await
+            }
+        })
+    }
+
+    fn validate_model(&self, _model: &str) -> Result<()> {
+        self.ensure_auth_boundary_unchanged()
     }
 
     fn account_state(&self) -> ProviderAccountResult {
@@ -412,15 +456,24 @@ impl ModelProvider for AmazonBedrockModelProvider {
     }
 
     fn api_provider(&self) -> ModelProviderFuture<'_, Result<Provider>> {
-        Box::pin(AmazonBedrockModelProvider::api_provider(self))
+        Box::pin(async move {
+            self.ensure_auth_boundary_unchanged()?;
+            AmazonBedrockModelProvider::api_provider(self).await
+        })
     }
 
     fn runtime_base_url(&self) -> ModelProviderFuture<'_, Result<Option<String>>> {
-        Box::pin(AmazonBedrockModelProvider::runtime_base_url(self))
+        Box::pin(async move {
+            self.ensure_auth_boundary_unchanged()?;
+            AmazonBedrockModelProvider::runtime_base_url(self).await
+        })
     }
 
     fn api_auth(&self) -> ModelProviderFuture<'_, Result<SharedAuthProvider>> {
-        Box::pin(AmazonBedrockModelProvider::api_auth(self))
+        Box::pin(async move {
+            self.ensure_auth_boundary_unchanged()?;
+            AmazonBedrockModelProvider::api_auth(self).await
+        })
     }
 
     fn models_manager(
@@ -428,22 +481,24 @@ impl ModelProvider for AmazonBedrockModelProvider {
         _codex_home: PathBuf,
         config_model_catalog: Option<ModelsResponse>,
     ) -> SharedModelsManager {
-        Arc::new(StaticModelsManager::new(
+        let models_manager = Arc::new(StaticModelsManager::new(
             /*auth_manager*/ None,
             config_model_catalog
                 .map_or_else(|| self.default_model_catalog(), normalize_bedrock_catalog),
-        ))
+        ));
+        github_copilot_aware_models_manager(models_manager, self.global_auth_manager.clone())
     }
 
     fn models_manager_without_cache(
         &self,
         config_model_catalog: Option<ModelsResponse>,
     ) -> SharedModelsManager {
-        Arc::new(StaticModelsManager::new(
+        let models_manager = Arc::new(StaticModelsManager::new(
             /*auth_manager*/ None,
             config_model_catalog
                 .map_or_else(|| self.default_model_catalog(), normalize_bedrock_catalog),
-        ))
+        ));
+        github_copilot_aware_models_manager(models_manager, self.global_auth_manager.clone())
     }
 }
 

@@ -22,6 +22,7 @@ use codex_extension_api::ToolLifecycleFuture;
 use codex_extension_api::ToolStartInput;
 use codex_features::Feature;
 use codex_login::AuthManager;
+use codex_login::CodexAuth;
 use codex_protocol::config_types::ApprovalsReviewer;
 use codex_protocol::openai_models::ModelInfo;
 use codex_protocol::protocol::has_full_access;
@@ -45,6 +46,17 @@ impl ThreadLifecycleContributor<Config> for GuardianV2Extension {
     ) -> ExtensionFuture<'a, ()> {
         Box::pin(async move {
             if !input.config.features.enabled(Feature::GuardianApproval) {
+                return;
+            }
+
+            if self
+                .auth_manager
+                .auth()
+                .await
+                .as_ref()
+                .is_some_and(CodexAuth::is_github_copilot_auth)
+            {
+                input.thread_store.remove::<LunaSampler>();
                 return;
             }
 

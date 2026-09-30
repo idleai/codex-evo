@@ -1333,6 +1333,12 @@ async fn prepare_realtime_start(
         Some((auth, _)) => (Some(auth), config.http_client_factory()),
         None => (None, config.http_client_factory()),
     };
+    if auth.as_ref().is_some_and(CodexAuth::is_github_copilot_auth) {
+        return Err(CodexErr::UnsupportedOperation(
+            "realtime inference is not supported by the GitHub Copilot Responses endpoint"
+                .to_string(),
+        ));
+    }
     let transport = params
         .transport
         .clone()

@@ -27,6 +27,7 @@ use codex_login::CodexAuth;
 use codex_login::ExternalAuth;
 use codex_login::ExternalAuthFuture;
 use codex_login::ExternalAuthRefreshContext;
+use codex_login::GitHubCopilotAuth;
 use codex_login::auth::BedrockAccessKeysAuth;
 use codex_login::auth::BedrockApiKeyAuth;
 use codex_login::test_support::auth_manager_from_optional_auth;
@@ -115,6 +116,16 @@ fn test_codex_auth(auth_mode: Option<AuthMode>) -> Option<CodexAuth> {
         )
         .expect("test ChatGPT tokens should parse"),
         AuthMode::Headers => CodexAuth::Headers(AuthHeaders::new(http::HeaderMap::new())),
+        AuthMode::GitHubCopilot => CodexAuth::from_github_copilot(
+            GitHubCopilotAuth::new(
+                "test-token".to_string(),
+                "https://api.githubcopilot.com".to_string(),
+                Some("test-user".to_string()),
+                Some("test-sku".to_string()),
+                vec!["gpt-test".to_string()],
+            )
+            .expect("test GitHub Copilot auth should be valid"),
+        ),
         AuthMode::BedrockApiKey => CodexAuth::BedrockApiKey(BedrockApiKeyAuth {
             api_key: "test-api-key".to_string(),
             region: "us-east-1".to_string(),

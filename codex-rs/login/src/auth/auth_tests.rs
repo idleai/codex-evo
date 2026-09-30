@@ -125,6 +125,97 @@ fn login_with_api_key_overwrites_existing_auth_json() {
     assert!(auth.tokens.is_none(), "tokens should be cleared");
 }
 
+#[test]
+fn login_with_github_copilot_writes_only_github_auth() {
+    let dir = tempdir().unwrap();
+    super::login_with_api_key(
+        dir.path(),
+        "sk-old",
+        AuthCredentialsStoreMode::File,
+        AuthKeyringBackendKind::default(),
+    )
+    .expect("seed API key auth");
+    let github_auth = GitHubCopilotAuth::new(
+        "github-token".to_string(),
+        "https://api.individual.githubcopilot.com".to_string(),
+        Some("octocat".to_string()),
+        Some("copilot_individual".to_string()),
+        vec!["gpt-5.6-sol".to_string()],
+    )
+    .expect("GitHub Copilot auth fixture should be valid");
+
+    super::login_with_github_copilot(
+        dir.path(),
+        github_auth.clone(),
+        AuthCredentialsStoreMode::File,
+        AuthKeyringBackendKind::default(),
+    )
+    .expect("GitHub Copilot auth should persist");
+
+    let auth = FileAuthStorage::new(dir.path().to_path_buf())
+        .try_read_auth_json(&dir.path().join("auth.json"))
+        .expect("auth.json should parse");
+    assert_eq!(
+        auth,
+        AuthDotJson {
+            auth_mode: Some(AuthMode::GitHubCopilot),
+            openai_api_key: None,
+            tokens: None,
+            last_refresh: None,
+            agent_identity: None,
+            personal_access_token: None,
+            github_copilot: Some(github_auth),
+            bedrock_api_key: None,
+            bedrock_access_keys: None,
+        }
+    );
+}
+
+#[tokio::test]
+#[serial(codex_auth_env)]
+async fn persisted_github_copilot_auth_takes_precedence_over_env_api_key() {
+    let _api_key_guard = EnvVarGuard::set(CODEX_API_KEY_ENV_VAR, "sk-env");
+    let dir = tempdir().unwrap();
+    let github_auth = GitHubCopilotAuth::new(
+        "github-token".to_string(),
+        "https://api.individual.githubcopilot.com".to_string(),
+        Some("octocat".to_string()),
+        Some("copilot_individual".to_string()),
+        vec!["gpt-5.6-sol".to_string()],
+    )
+    .expect("GitHub Copilot auth fixture should be valid");
+    super::login_with_github_copilot(
+        dir.path(),
+        github_auth,
+        AuthCredentialsStoreMode::File,
+        AuthKeyringBackendKind::default(),
+    )
+    .expect("GitHub Copilot auth should persist");
+
+    let auth = super::load_auth(
+        dir.path(),
+        /*enable_codex_api_key_env*/ true,
+        AuthCredentialsStoreMode::File,
+        /*allowed_login_methods*/ None,
+        /*forced_chatgpt_workspace_id*/ None,
+        /*chatgpt_base_url*/ None,
+        AuthKeyringBackendKind::Direct,
+        /*agent_identity_authapi_base_url*/ None,
+        &crate::test_support::transport_default_auth_route_config(),
+    )
+    .await
+    .expect("load auth")
+    .expect("auth available");
+
+    assert_eq!(auth.auth_mode(), AuthMode::GitHubCopilot);
+    let CodexAuth::GitHubCopilot(github_auth) = &auth else {
+        unreachable!("GitHub Copilot mode should contain GitHub Copilot auth")
+    };
+    assert_eq!(github_auth.access_token(), "github-token");
+    assert!(auth.get_token().is_err());
+    assert_eq!(auth.get_account_id(), None);
+}
+
 #[tokio::test]
 #[serial(codex_auth_env)]
 async fn login_with_access_token_writes_agent_identity_jwt() {
@@ -369,6 +460,7 @@ async fn stored_agent_identity_jwt_keeps_auth_json_unchanged() -> anyhow::Result
             last_refresh: None,
             agent_identity: Some(AgentIdentityStorage::Jwt(agent_identity.clone())),
             personal_access_token: None,
+            github_copilot: None,
             bedrock_api_key: None,
             bedrock_access_keys: None,
         },
@@ -449,6 +541,7 @@ async fn login_with_access_token_writes_only_personal_access_token() {
             last_refresh: None,
             agent_identity: None,
             personal_access_token: Some("at-login-test".to_string()),
+            github_copilot: None,
             bedrock_api_key: None,
             bedrock_access_keys: None,
         }
@@ -1069,6 +1162,7 @@ async fn pro_account_with_no_api_key_uses_chatgpt_auth() {
             last_refresh: Some(last_refresh),
             agent_identity: None,
             personal_access_token: None,
+            github_copilot: None,
             bedrock_api_key: None,
             bedrock_access_keys: None,
         },
@@ -1118,6 +1212,7 @@ fn logout_removes_auth_file() -> Result<(), std::io::Error> {
         last_refresh: None,
         agent_identity: None,
         personal_access_token: None,
+        github_copilot: None,
         bedrock_api_key: None,
         bedrock_access_keys: None,
     };
@@ -2380,6 +2475,7 @@ async fn workspace_policy_rejects_agent_identity_before_hydration() {
                 last_refresh: None,
                 agent_identity: Some(stored_agent_identity),
                 personal_access_token: None,
+                github_copilot: None,
                 bedrock_api_key: None,
                 bedrock_access_keys: None,
             },
@@ -2622,6 +2718,7 @@ async fn enforce_login_restrictions_logs_out_for_agent_identity_workspace_mismat
             last_refresh: None,
             agent_identity: Some(AgentIdentityStorage::Jwt(agent_identity)),
             personal_access_token: None,
+            github_copilot: None,
             bedrock_api_key: None,
             bedrock_access_keys: None,
         },

@@ -1361,6 +1361,7 @@ fn provider_specific_auth_check(
 fn stored_auth_mode(auth: &codex_login::AuthDotJson) -> &'static str {
     match stored_auth_mode_value(auth) {
         AuthMode::ApiKey => "api_key",
+        AuthMode::GitHubCopilot => "github_copilot",
         AuthMode::Chatgpt => "chatgpt",
         AuthMode::ChatgptAuthTokens => "chatgpt_auth_tokens",
         AuthMode::Headers => "headers",
@@ -1375,7 +1376,9 @@ fn stored_auth_mode_value(auth: &AuthDotJson) -> AuthMode {
     if let Some(mode) = auth.auth_mode {
         return mode;
     }
-    if auth.personal_access_token.is_some() {
+    if auth.github_copilot.is_some() {
+        AuthMode::GitHubCopilot
+    } else if auth.personal_access_token.is_some() {
         AuthMode::PersonalAccessToken
     } else if auth.bedrock_api_key.is_some() {
         AuthMode::BedrockApiKey
@@ -1405,6 +1408,11 @@ fn stored_auth_issues(
                 issues.push("API key auth is missing an API key");
             }
         }
+        AuthMode::GitHubCopilot => match auth.github_copilot.as_ref() {
+            Some(copilot) if copilot.validate().is_ok() => {}
+            Some(_) => issues.push("GitHub Copilot auth has an invalid credential boundary"),
+            None => issues.push("GitHub Copilot auth is missing its credential record"),
+        },
         AuthMode::Chatgpt => {
             match auth.tokens.as_ref() {
                 Some(tokens) => {
@@ -2449,6 +2457,7 @@ fn websocket_error_detail(err: &ApiError) -> String {
 fn auth_mode_name(auth: &CodexAuth) -> &'static str {
     match auth.auth_mode() {
         AuthMode::ApiKey => "api_key",
+        AuthMode::GitHubCopilot => "github_copilot",
         AuthMode::Chatgpt => "chatgpt",
         AuthMode::ChatgptAuthTokens => "chatgpt_auth_tokens",
         AuthMode::Headers => "headers",
@@ -2526,6 +2535,7 @@ enum ProviderAuthReachabilityMode {
     NotRequired,
     ApiKey,
     Chatgpt,
+    GitHubCopilot,
 }
 
 impl ProviderAuthReachabilityMode {
@@ -2534,6 +2544,7 @@ impl ProviderAuthReachabilityMode {
             Self::NotRequired => "provider auth",
             Self::ApiKey => "API key auth",
             Self::Chatgpt => "ChatGPT auth",
+            Self::GitHubCopilot => "GitHub Copilot auth",
         }
     }
 }
@@ -2552,6 +2563,26 @@ fn provider_reachability_plan(config: &Config) -> ReachabilityPlan {
     )
     .ok()
     .flatten();
+    if stored_auth
+        .as_ref()
+        .is_some_and(|auth| stored_auth_mode_value(auth) == AuthMode::GitHubCopilot)
+    {
+        let endpoint = stored_auth
+            .as_ref()
+            .and_then(|auth| auth.github_copilot.as_ref())
+            .map(codex_login::GitHubCopilotAuth::api_endpoint);
+        let mut plan = provider_reachability_plan_from_parts(
+            ProviderAuthReachabilityMode::GitHubCopilot,
+            "github-copilot",
+            "GitHub Copilot",
+            endpoint,
+            /*provider_query_params*/ None,
+            /*is_amazon_bedrock*/ false,
+            &config.chatgpt_base_url,
+        );
+        plan.http_client_factory = config.http_client_factory();
+        return plan;
+    }
     let mode = provider_auth_reachability_mode_from_auth(
         config.model_provider.requires_openai_auth,
         config.model_provider.env_key.as_deref(),
@@ -2608,6 +2639,7 @@ fn provider_auth_reachability_mode_from_auth(
         Some(AuthMode::ApiKey | AuthMode::BedrockApiKey | AuthMode::BedrockAccessKeys) => {
             ProviderAuthReachabilityMode::ApiKey
         }
+        Some(AuthMode::GitHubCopilot) => ProviderAuthReachabilityMode::GitHubCopilot,
         Some(
             AuthMode::Chatgpt
             | AuthMode::ChatgptAuthTokens
@@ -2654,6 +2686,7 @@ fn provider_reachability_plan_from_parts(
             route_probe_url: None,
         }],
         (ProviderAuthReachabilityMode::NotRequired, None) => Vec::new(),
+        (ProviderAuthReachabilityMode::GitHubCopilot, None) => Vec::new(),
     };
     ReachabilityPlan {
         description: mode.description().to_string(),
@@ -3503,6 +3536,7 @@ mod tests {
             last_refresh: None,
             agent_identity: None,
             personal_access_token: None,
+            github_copilot: None,
             bedrock_api_key: None,
             bedrock_access_keys: None,
         };
@@ -3523,6 +3557,7 @@ mod tests {
             last_refresh: None,
             agent_identity: None,
             personal_access_token: None,
+            github_copilot: None,
             bedrock_api_key: None,
             bedrock_access_keys: None,
         };
@@ -3545,6 +3580,7 @@ mod tests {
             last_refresh: None,
             agent_identity: None,
             personal_access_token: Some("at-test".to_string()),
+            github_copilot: None,
             bedrock_api_key: None,
             bedrock_access_keys: None,
         };
@@ -3569,6 +3605,7 @@ mod tests {
             last_refresh: None,
             agent_identity: None,
             personal_access_token: None,
+            github_copilot: None,
             bedrock_api_key: None,
             bedrock_access_keys: None,
         };

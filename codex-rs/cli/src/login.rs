@@ -15,11 +15,18 @@ use codex_login::AuthKeyringBackendKind;
 use codex_login::AuthManager;
 use codex_login::AuthRouteConfig;
 use codex_login::CLIENT_ID;
+use codex_login::CodexAuth;
+use codex_login::GITHUB_COPILOT_CLIENT_ID_ENV_VAR;
+use codex_login::GITHUB_COPILOT_DEFAULT_CLIENT_ID;
+use codex_login::GitHubCopilotLoginOptions;
 use codex_login::ServerOptions;
+use codex_login::complete_github_copilot_device_code_login;
 use codex_login::is_workload_identity_selected;
 use codex_login::login_with_access_token;
 use codex_login::login_with_api_key;
+use codex_login::login_with_github_copilot;
 use codex_login::logout_with_revoke;
+use codex_login::request_github_copilot_device_code;
 use codex_login::run_device_code_login;
 use codex_login::run_login_server;
 use codex_protocol::auth::AuthMode;
@@ -43,6 +50,8 @@ const API_KEY_LOGIN_DISABLED_MESSAGE: &str =
     "API key login is disabled. Use ChatGPT login instead.";
 const ACCESS_TOKEN_LOGIN_DISABLED_MESSAGE: &str =
     "Access token login is disabled. Use API key login instead.";
+const GITHUB_COPILOT_LOGIN_DISABLED_MESSAGE: &str =
+    "GitHub Copilot login is disabled by the configured login requirements.";
 const LOGIN_SUCCESS_MESSAGE: &str = "Successfully logged in";
 
 /// Installs a small file-backed tracing layer for direct `codex login` flows.
@@ -232,6 +241,82 @@ pub async fn run_login_with_api_key(
             std::process::exit(1);
         }
     }
+}
+
+pub async fn run_login_with_github_copilot(
+    cli_config_overrides: CliConfigOverrides,
+    client_id: Option<String>,
+) -> ! {
+    let config = load_config_or_exit(cli_config_overrides).await;
+    let _login_log_guard = init_login_file_logging(&config);
+    tracing::info!("starting GitHub Copilot device login flow");
+
+    if !config
+        .auth_config()
+        .is_login_method_allowed(ForcedLoginMethod::Api)
+    {
+        eprintln!("{GITHUB_COPILOT_LOGIN_DISABLED_MESSAGE}");
+        std::process::exit(1);
+    }
+
+    let client_id = client_id
+        .filter(|client_id| !client_id.trim().is_empty())
+        .or_else(|| std::env::var(GITHUB_COPILOT_CLIENT_ID_ENV_VAR).ok())
+        .filter(|client_id| !client_id.trim().is_empty())
+        .unwrap_or_else(|| GITHUB_COPILOT_DEFAULT_CLIENT_ID.to_string());
+    let auth_route_config = config.auth_route_config();
+    let options = match GitHubCopilotLoginOptions::new(client_id, auth_route_config.clone()) {
+        Ok(options) => options,
+        Err(err) => {
+            eprintln!("Error starting GitHub Copilot login: {err}");
+            std::process::exit(1);
+        }
+    };
+    let device_code = match request_github_copilot_device_code(&options).await {
+        Ok(device_code) => device_code,
+        Err(err) => {
+            eprintln!("Error starting GitHub Copilot login: {err}");
+            std::process::exit(1);
+        }
+    };
+    eprintln!(
+        "Sign in to GitHub Copilot:\n\n1. Open {}\n2. Enter code {}\n\nThe code expires in {} minutes. Continue only if you started this login in Codex.",
+        device_code.verification_url,
+        device_code.user_code,
+        device_code.expires_in.as_secs().div_ceil(60),
+    );
+
+    let auth = match complete_github_copilot_device_code_login(&options, device_code).await {
+        Ok(auth) => auth,
+        Err(err) => {
+            eprintln!("Error logging in to GitHub Copilot: {err}");
+            std::process::exit(1);
+        }
+    };
+
+    clear_existing_auth_before_login(
+        &config.codex_home,
+        config.cli_auth_credentials_store_mode,
+        config.auth_keyring_backend_kind(),
+        &auth_route_config,
+    )
+    .await;
+    let login = auth.login().map(str::to_string);
+    if let Err(err) = login_with_github_copilot(
+        &config.codex_home,
+        auth,
+        config.cli_auth_credentials_store_mode,
+        config.auth_keyring_backend_kind(),
+    ) {
+        eprintln!("Error saving GitHub Copilot login: {err}");
+        std::process::exit(1);
+    }
+
+    match login {
+        Some(login) => eprintln!("Successfully logged in to GitHub Copilot as {login}"),
+        None => eprintln!("Successfully logged in to GitHub Copilot"),
+    }
+    std::process::exit(0);
 }
 
 pub async fn run_login_with_access_token(
@@ -493,6 +578,16 @@ pub async fn run_login_status(cli_config_overrides: CliConfigOverrides) -> ! {
             }
             AuthMode::BedrockAccessKeys => {
                 eprintln!("Logged in using Amazon Bedrock AWS access keys");
+                std::process::exit(0);
+            }
+            AuthMode::GitHubCopilot => {
+                let account = match &auth {
+                    CodexAuth::GitHubCopilot(auth) => auth.login(),
+                    _ => None,
+                }
+                .map(|login| format!(" as {login}"))
+                .unwrap_or_default();
+                eprintln!("Logged in using GitHub Copilot{account}");
                 std::process::exit(0);
             }
         },

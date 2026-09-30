@@ -740,6 +740,11 @@ impl PluginsManager {
         self.auth_manager.get_api_auth_mode()
     }
 
+    fn uses_github_copilot_auth(&self, auth: Option<&CodexAuth>) -> bool {
+        self.auth_mode() == Some(AuthMode::GitHubCopilot)
+            || auth.is_some_and(CodexAuth::is_github_copilot_auth)
+    }
+
     fn remote_global_catalog_active(&self, config: &PluginsConfigInput) -> bool {
         config.remote_plugin_enabled && self.auth_mode().is_some_and(AuthMode::uses_codex_backend)
     }
@@ -751,6 +756,7 @@ impl PluginsManager {
         on_effective_plugins_changed: Option<EffectivePluginsChangedCallback>,
     ) {
         if config.plugins_enabled
+            && self.auth_mode() != Some(AuthMode::GitHubCopilot)
             && !self.remote_global_catalog_active(config)
             && MarketplacePolicy::from_requirements(config.config_layer_stack.requirements())
                 .validate_git_source(OPENAI_PLUGINS_GIT_URL, /*ref_name*/ None)
@@ -1528,6 +1534,10 @@ impl PluginsManager {
         auth: Option<CodexAuth>,
         on_effective_plugins_changed: Option<EffectivePluginsChangedCallback>,
     ) {
+        if self.uses_github_copilot_auth(auth.as_ref()) {
+            return;
+        }
+
         self.maybe_start_remote_installed_plugins_cache_refresh_with_notify(
             config,
             auth.clone(),
@@ -1568,7 +1578,7 @@ impl PluginsManager {
         on_effective_plugins_changed: Option<EffectivePluginsChangedCallback>,
         change: EffectivePluginsChange,
     ) {
-        if !config.plugins_enabled {
+        if !config.plugins_enabled || self.uses_github_copilot_auth(auth.as_ref()) {
             return;
         }
 
@@ -1599,6 +1609,9 @@ impl PluginsManager {
             return;
         }
 
+        if self.uses_github_copilot_auth(auth.as_ref()) {
+            return;
+        }
         let Some(auth) = auth else {
             return;
         };
@@ -1782,7 +1795,10 @@ impl PluginsManager {
         scopes: BTreeSet<RemotePluginScope>,
         mode: RemoteCatalogCacheRefreshMode,
     ) {
-        if !config.plugins_enabled || scopes.is_empty() {
+        if !config.plugins_enabled
+            || scopes.is_empty()
+            || self.uses_github_copilot_auth(auth.as_ref())
+        {
             return;
         }
 
@@ -1873,7 +1889,7 @@ impl PluginsManager {
         config: &PluginsConfigInput,
         auth: Option<&CodexAuth>,
     ) -> Result<Vec<String>, RemotePluginFetchError> {
-        if !config.plugins_enabled {
+        if !config.plugins_enabled || self.uses_github_copilot_auth(auth) {
             return Ok(Vec::new());
         }
 

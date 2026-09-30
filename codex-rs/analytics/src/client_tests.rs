@@ -109,6 +109,7 @@ use std::time::SystemTime;
 use tokio::sync::mpsc;
 use tokio::sync::mpsc::error::TryRecvError;
 
+#[cfg(debug_assertions)]
 #[path = "client_product_tests.rs"]
 mod product_tests;
 
@@ -304,10 +305,7 @@ fn client_with_receiver() -> (
 #[cfg(debug_assertions)]
 fn analytics_destination_uses_explicit_capture_file() {
     let capture_path = unique_capture_path("destination");
-    let destination = AnalyticsEventsDestination::from_base_url_and_capture_file(
-        "https://chatgpt.com/backend-api/".to_string(),
-        Some(capture_path.clone()),
-    );
+    let destination = AnalyticsEventsDestination::from_capture_file(Some(capture_path.clone()));
 
     assert_eq!(
         destination,
@@ -333,33 +331,104 @@ fn analytics_destination_uses_explicit_capture_file() {
 }
 
 #[test]
-fn analytics_destination_uses_http_without_capture_file() {
-    let destination = AnalyticsEventsDestination::from_base_url_and_capture_file(
-        "https://chatgpt.com/backend-api/".to_string(),
-        /*capture_file*/ None,
-    );
+fn analytics_destination_disables_network_without_capture_file() {
+    let destination = AnalyticsEventsDestination::from_capture_file(/*capture_file*/ None);
 
+    assert_eq!(destination, AnalyticsEventsDestination::Disabled);
+}
+
+#[test]
+#[cfg(debug_assertions)]
+fn analytics_destination_only_allows_literal_loopback_capture() {
     assert_eq!(
-        destination,
-        AnalyticsEventsDestination::Http {
-            url: "https://chatgpt.com/backend-api/codex/analytics-events/events".to_string()
+        AnalyticsEventsDestination::from_base_url("http://127.0.0.1:1234".to_string()),
+        AnalyticsEventsDestination::LoopbackHttp {
+            url: "http://127.0.0.1:1234/codex/analytics-events/events".to_string()
         }
+    );
+    assert_eq!(
+        AnalyticsEventsDestination::from_base_url("https://chatgpt.com/backend-api".to_string()),
+        AnalyticsEventsDestination::Disabled
+    );
+    assert_eq!(
+        AnalyticsEventsDestination::from_base_url("http://127.0.0.1.evil.test".to_string()),
+        AnalyticsEventsDestination::Disabled
     );
 }
 
 #[test]
 #[cfg(not(debug_assertions))]
 fn analytics_destination_ignores_capture_file_in_release() {
-    let destination = AnalyticsEventsDestination::from_base_url_and_capture_file(
-        "https://chatgpt.com/backend-api/".to_string(),
-        Some(std::path::PathBuf::from("ignored.jsonl")),
-    );
+    let destination = AnalyticsEventsDestination::from_capture_file(Some(
+        std::path::PathBuf::from("ignored.jsonl"),
+    ));
 
-    assert_eq!(
-        destination,
-        AnalyticsEventsDestination::Http {
-            url: "https://chatgpt.com/backend-api/codex/analytics-events/events".to_string()
+    assert_eq!(destination, AnalyticsEventsDestination::Disabled);
+}
+
+#[tokio::test]
+#[cfg(debug_assertions)]
+async fn loopback_capture_omits_credentials_and_rejects_redirects() {
+    use tokio::io::AsyncReadExt;
+    use tokio::io::AsyncWriteExt;
+
+    let capture = tokio::net::TcpListener::bind("127.0.0.1:0")
+        .await
+        .expect("bind capture server");
+    let redirect = std::net::TcpListener::bind("127.0.0.1:0").expect("bind redirect server");
+    redirect
+        .set_nonblocking(true)
+        .expect("nonblocking listener");
+    let destination = AnalyticsEventsDestination::LoopbackHttp {
+        url: format!(
+            "http://{}/events",
+            capture.local_addr().expect("capture address")
+        ),
+    };
+    let redirect_address = redirect.local_addr().expect("redirect address");
+    let request = tokio::spawn(async move {
+        let (mut connection, _) = capture.accept().await.expect("capture connection");
+        let mut headers = Vec::new();
+        let mut buffer = [0; 2048];
+        while !headers.windows(4).any(|window| window == b"\r\n\r\n") {
+            let count = connection.read(&mut buffer).await.expect("read request");
+            assert!(count > 0 && headers.len() < 16384);
+            headers.extend_from_slice(&buffer[..count]);
         }
+        connection
+            .write_all(
+                format!(
+                    "HTTP/1.1 307 Temporary Redirect\r\nLocation: http://{redirect_address}/forwarded\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"
+                )
+                .as_bytes(),
+            )
+            .await
+            .expect("send redirect");
+        String::from_utf8(headers)
+            .expect("request headers")
+            .to_ascii_lowercase()
+    });
+    let auth = codex_login::CodexAuth::create_dummy_chatgpt_auth_for_testing();
+    let factory = HttpClientFactory::new(OutboundProxyPolicy::ReqwestDefault);
+    send_track_events_request(
+        &auth,
+        &destination,
+        vec![sample_regular_track_event("thread-1")],
+        &factory,
+        Some("private-product"),
+    )
+    .await;
+
+    let headers = request.await.expect("capture task");
+    assert!(!headers.contains("authorization:"));
+    assert!(!headers.contains("chatgpt-account-id:"));
+    assert!(headers.contains("x-openai-product-sku: private-product"));
+    assert_eq!(
+        redirect
+            .accept()
+            .expect_err("redirect must not be followed")
+            .kind(),
+        std::io::ErrorKind::WouldBlock,
     );
 }
 
@@ -567,7 +636,7 @@ fn capture_write_failure_still_consumes_delivery() {
         events: vec![sample_regular_track_event("thread-1")],
     };
 
-    assert!(capture_track_events_request(&destination, &payload));
+    capture_track_events_request(&destination, &payload);
 }
 
 fn sample_turn_start_request() -> ClientRequest {

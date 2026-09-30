@@ -55,6 +55,10 @@ pub enum ProviderAccount {
     AmazonBedrock {
         uses_codex_managed_credentials: bool,
     },
+    GitHubCopilot {
+        login: Option<String>,
+        copilot_sku: Option<String>,
+    },
 }
 
 impl PlanType {

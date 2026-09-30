@@ -350,7 +350,11 @@ impl StatusHistoryCell {
             &approval,
             workspace_root_suffix.as_deref(),
         );
-        let show_chatgpt_usage_link = requires_openai_auth;
+        let show_chatgpt_usage_link = requires_openai_auth
+            && !matches!(
+                account_display,
+                Some(StatusAccountDisplay::GitHubCopilot { .. })
+            );
         let account = compose_account_display(account_display);
         let session_id = session_id.as_ref().map(std::string::ToString::to_string);
         let forked_from = forked_from.map(|id| id.to_string());
@@ -748,6 +752,14 @@ impl StatusHistoryCell {
             StatusAccountDisplay::ApiKey => {
                 "API key configured (run codex login to use ChatGPT)".to_string()
             }
+            StatusAccountDisplay::GitHubCopilot { login, copilot_sku } => {
+                match (login, copilot_sku) {
+                    (Some(login), Some(sku)) => format!("{login} (GitHub Copilot {sku})"),
+                    (Some(login), None) => format!("{login} (GitHub Copilot)"),
+                    (None, Some(sku)) => format!("GitHub Copilot ({sku})"),
+                    (None, None) => "GitHub Copilot".to_string(),
+                }
+            }
         });
 
         let mut labels: Vec<String> = vec!["Model", "Directory", "Permissions", "Agents.md"]
@@ -876,7 +888,18 @@ impl StatusHistoryCell {
             ""
         };
         let mut title = vec![indent.into()];
-        title.extend(crate::history_cell::codex_title(CODEX_CLI_VERSION));
+        if matches!(
+            self.account.as_ref(),
+            Some(StatusAccountDisplay::GitHubCopilot { .. })
+        ) {
+            title.extend([
+                ">_ ".fg(accent_color()),
+                "Idle Codex".bold(),
+                format!(" (v{CODEX_CLI_VERSION})").dim(),
+            ]);
+        } else {
+            title.extend(crate::history_cell::codex_title(CODEX_CLI_VERSION));
+        }
         let mut rendered = word_wrap_lines(
             [Line::from(title)],
             RtOptions::new(available_width).subsequent_indent(indent.into()),
