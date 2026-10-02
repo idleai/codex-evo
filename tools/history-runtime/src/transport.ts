@@ -23,4 +23,3 @@ export function validateLease(input: unknown): HostLease {
   }
   return { marker: value.marker, tunnelId: value.tunnelId!, clusterId: value.clusterId! };
 }
-
