@@ -32,9 +32,9 @@ tools/codex-session-exporter
 ```
 
 ```sh
-# Requires rustc/cargo 1.97 (matches the Codex checkout's toolchain).
+# Uses the exporter's pinned Rust 1.97 toolchain.
 cd tools/codex-session-exporter
-cargo build --release
+cargo build --release --locked
 ./target/release/codex-session-exporter --help
 ```
 
@@ -294,7 +294,7 @@ canonical for anything not projected.
 ## Testing and validation
 
 ```sh
-just test --manifest-path ../tools/codex-session-exporter/Cargo.toml
+RUSTUP_TOOLCHAIN=1.97.0 just test --manifest-path ../tools/codex-session-exporter/Cargo.toml
 ```
 
 Unit tests cover: closed JSON shape, content-carrying serialization, legacy
