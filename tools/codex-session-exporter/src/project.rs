@@ -17,7 +17,7 @@ use std::collections::HashMap;
 use codex_app_server_protocol::ThreadHistoryBuilder;
 use codex_app_server_protocol::ThreadHistoryChangeSet;
 use codex_app_server_protocol::ThreadHistoryItemChange;
-use codex_app_server_protocol::ThreadHistoryTurnChange;
+use codex_app_server_protocol::ThreadHistoryTurnMetadata;
 use codex_app_server_protocol::ThreadItem;
 use codex_app_server_protocol::Turn;
 use codex_protocol::items::TurnItem;
@@ -1285,8 +1285,9 @@ fn project_change_set(changes: ThreadHistoryChangeSet) -> ProjectionRecord {
         .changed_turns
         .into_iter()
         .map(
-            |ThreadHistoryTurnChange {
+            |ThreadHistoryTurnMetadata {
                  turn_id,
+                 root_turn_id: _,
                  status,
                  error,
                  started_at,
