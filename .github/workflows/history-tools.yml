@@ -1,0 +1,48 @@
+name: History tools
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  portable-runtime:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: tools/history-runtime
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: tools/history-runtime/package-lock.json
+      - run: npm ci
+      - run: npm test
+
+  exporter:
+    runs-on: ubuntu-latest
+    env:
+      RUSTUP_TOOLCHAIN: 1.97.0
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.97.0
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: "tools/codex-session-exporter -> target"
+      - run: cargo install --locked just cargo-nextest
+      - name: Exporter formatting
+        run: cargo fmt --manifest-path tools/codex-session-exporter/Cargo.toml -- --check
+      - name: Exporter tests
+        working-directory: codex-rs
+        run: just test --manifest-path ../tools/codex-session-exporter/Cargo.toml -p codex-session-exporter --locked
