@@ -1,4 +1,4 @@
-name: History tools
+name: Session exporter
 
 on:
   push:
@@ -9,23 +9,6 @@ permissions:
   contents: read
 
 jobs:
-  portable-runtime:
-    runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: tools/history-runtime
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          persist-credentials: false
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: npm
-          cache-dependency-path: tools/history-runtime/package-lock.json
-      - run: npm ci
-      - run: npm test
-
   exporter:
     runs-on: ubuntu-latest
     env:
