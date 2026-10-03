@@ -372,7 +372,7 @@ export class MultiplayerManager {
     if (remove && host && results[1].status === 'rejected') this.pendingCleanup.add(host);
     if (results.some(result => result.status === 'rejected')) {
       this.message = 'Sharing closed; saved state or tunnel cleanup needs attention.'; this.publish();
-      throw new ProbeError('Sharing closed; run EditChain: Clean Up Multiplayer Tunnels if cleanup is pending.');
+      throw new ProbeError('Sharing closed; run the host’s tunnel cleanup command if cleanup is pending.');
     }
   }
 

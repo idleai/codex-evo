@@ -23,7 +23,7 @@ export function advertisement(input: unknown, now = Date.now()): Advertisement {
   const value = input as Partial<Advertisement> | null;
   if (value?.version !== 1 || value.protocol !== PEER_PROTOCOL || value.encoding !== 1 ||
     typeof value.space !== 'string' || !/^[A-Za-z0-9-]{1,128}$/.test(value.space) ||
-    typeof value.instance !== 'string' || !/^editchain-multiplayer-[a-f0-9]{24}$/.test(value.instance) ||
+    typeof value.instance !== 'string' || !/^(?:editchain-multiplayer|idle-relay)-[a-f0-9]{24}$/.test(value.instance) ||
     !Number.isSafeInteger(value.expiresAt) || value.expiresAt! <= now || value.expiresAt! > now + 15 * 60_000) {
     throw new ProbeError('Invalid or stale multiplayer advertisement.');
   }

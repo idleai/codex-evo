@@ -17,7 +17,7 @@ export type ClientTransport = {
 
 export function validateLease(input: unknown): HostLease {
   const value = input as Partial<HostLease> | null;
-  if (!value || typeof value.marker !== 'string' || !/^editchain-multiplayer-[a-f0-9]{24}$/.test(value.marker) ||
+  if (!value || typeof value.marker !== 'string' || !/^(?:editchain-multiplayer|idle-relay)-[a-f0-9]{24}$/.test(value.marker) ||
     ![value.tunnelId, value.clusterId].every(id => typeof id === 'string' && /^[a-zA-Z0-9-]{1,128}$/.test(id))) {
     throw new ProbeError('Invalid saved hosting resource.');
   }

@@ -6,8 +6,8 @@ EditChain extension without changing the invitation, worker or saved-state
 formats.
 
 Hosts inject the relay transport, credentials, persistence and app-core peer-state
-factory. The VS Code compatibility adapter lives in
-`vscode-extension/extensions/vscode-editchain/src/multiplayer`; it supplies Dev
+factory. The VS Code adapter lives in
+`vscode-extension/extension/src/sharing`; it supplies Dev
 Tunnels, SecretStorage and the packaged peer-state WASM module. The package has no
 VS Code API dependency.
 
@@ -16,9 +16,11 @@ npm ci
 npm test
 ```
 
-The VS Code renderer workflow also runs the complete hosted sharing, reconnect,
-cleanup and native replication integration suite against this package. That host
-uses a local npm file dependency and includes its compiled `dist` in the VSIX.
+The VS Code checks run hosted sharing, reconnect, cleanup and native replication
+integration tests against this package. The host uses a local npm file dependency
+and bundles the runtime in its VSIX. Relay ownership markers accept both the
+original host spelling and `idle-relay-` so a host can retain its own resource
+journal without translating saved leases.
 
 The f18 standalone Evo coordination service and its configuration/provider
 connections remain separate roadmap work. This move does not start a service or
