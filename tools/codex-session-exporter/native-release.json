@@ -1,0 +1,11 @@
+{
+  "repository": "idleai/codex-evo",
+  "tag_prefix": "codex-session-exporter-v",
+  "build_args": [
+    "--bin",
+    "codex-session-exporter"
+  ],
+  "binaries": [
+    "codex-session-exporter"
+  ]
+}
