@@ -1,6 +1,6 @@
 [package]
 name = "codex-session-exporter"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2021"
 license = "MIT"
 rust-version = "1.97"
@@ -26,6 +26,10 @@ serde_json = "1"
 rama-error = "=0.3.0-alpha.4"
 rama-macros = "=0.3.0-alpha.4"
 rama-utils = "=0.3.0-alpha.4"
+
+# The isolated Windows build needs the same standard-library handle types as PTY.
+[target.'cfg(windows)'.dependencies]
+winapi = { version = "0.3.9", features = ["std"] }
 
 # Mirrors the main Codex checkout's [patch.crates-io] entries so this
 # isolated workspace resolves the same forked crates when they appear in the
