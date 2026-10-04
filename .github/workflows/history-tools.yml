@@ -2,6 +2,7 @@ name: Session exporter
 
 on:
   push:
+    branches: ["**"]
   pull_request:
   workflow_dispatch:
 
