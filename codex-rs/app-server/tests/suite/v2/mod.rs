@@ -66,6 +66,7 @@ mod guardian_v2;
 mod history_notes_extension;
 mod hooks_list;
 mod host_skills;
+mod idle_runtime;
 mod imagegen_extension;
 mod initialize;
 mod luna_reserve;

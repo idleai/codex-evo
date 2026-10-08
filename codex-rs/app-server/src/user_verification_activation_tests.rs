@@ -16,6 +16,13 @@ async fn user_verification_initialize_owns_advertisement_and_eligibility() -> Re
         (ConnectionOrigin::InProcess, "codex-tui", true, true, true),
         (ConnectionOrigin::WebSocket, "codex-tui", true, true, false),
         (
+            ConnectionOrigin::LocalSocket,
+            "codex-tui",
+            true,
+            true,
+            false,
+        ),
+        (
             ConnectionOrigin::RemoteControl,
             "codex-tui",
             true,

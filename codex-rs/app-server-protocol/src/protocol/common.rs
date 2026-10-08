@@ -503,6 +503,20 @@ client_request_definitions! {
         response: v1::InitializeResponse,
     },
 
+    #[experimental("idle/workspace/attach")]
+    IdleWorkspaceAttach => "idle/workspace/attach" {
+        params: v2::IdleWorkspaceAttachParams,
+        serialization: None,
+        response: v2::IdleWorkspaceAttachResponse,
+    },
+
+    #[experimental("idle/runtime/status/read")]
+    IdleRuntimeStatusRead => "idle/runtime/status/read" {
+        params: v2::IdleRuntimeStatusReadParams,
+        serialization: None,
+        response: v2::IdleRuntimeStatusReadResponse,
+    },
+
     #[experimental("server/diagnostics")]
     /// Read content-free, process-local diagnostics.
     ServerDiagnostics => "server/diagnostics" {

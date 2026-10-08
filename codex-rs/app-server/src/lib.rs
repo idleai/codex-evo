@@ -119,6 +119,7 @@ mod filters;
 mod fs_watch;
 mod fuzzy_file_search;
 mod gateway_oauth_notifications;
+mod idle_runtime;
 mod image_url;
 pub mod in_process;
 mod log_write_warning;

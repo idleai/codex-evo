@@ -147,6 +147,7 @@ pub(crate) struct MessageProcessor {
     models_refresh_worker: ModelsRefreshWorker,
     turn_cost_worker: Option<TurnCostWorker>,
     skills_watcher: Arc<SkillsWatcher>,
+    idle_runtime: crate::idle_runtime::IdleRuntime,
     account_processor: Arc<AccountRequestProcessor>,
     apps_processor: AppsRequestProcessor,
     catalog_processor: CatalogRequestProcessor,
@@ -321,6 +322,8 @@ impl MessageProcessor {
             ),
         );
         let goal_service = Arc::new(GoalService::new());
+        let idle_runtime =
+            crate::idle_runtime::IdleRuntime::new(&config.codex_home, installation_id.clone());
         let turn_admission = TurnAdmission::default();
         let turn_start_admission: Arc<dyn TurnStartAdmission> = Arc::new(turn_admission.clone());
         let extension_event_sink =
@@ -588,6 +591,7 @@ impl MessageProcessor {
             models_refresh_worker,
             turn_cost_worker,
             skills_watcher,
+            idle_runtime,
             account_processor,
             apps_processor,
             catalog_processor,
@@ -842,6 +846,7 @@ impl MessageProcessor {
     }
 
     pub(crate) async fn drain_background_tasks(&self) {
+        self.idle_runtime.shutdown();
         self.models_refresh_worker.shutdown();
         if let Some(worker) = &self.turn_cost_worker {
             worker.shutdown();
@@ -985,7 +990,8 @@ impl MessageProcessor {
         );
 
         let (turn_admission, recheck_turn_admission) = match &codex_request {
-            ClientRequest::ThreadStart { .. }
+            ClientRequest::IdleWorkspaceAttach { .. }
+            | ClientRequest::ThreadStart { .. }
             | ClientRequest::ThreadFork { .. }
             | ClientRequest::ThreadResume { .. }
             | ClientRequest::ThreadRevert { .. }
@@ -1085,6 +1091,16 @@ impl MessageProcessor {
             ClientRequest::Initialize { .. } => {
                 panic!("Initialize should be handled before initialized request dispatch");
             }
+            ClientRequest::IdleWorkspaceAttach { params, .. } => self
+                .idle_runtime
+                .attach(session.origin, params)
+                .await
+                .map(|response| Some(response.into())),
+            ClientRequest::IdleRuntimeStatusRead { params, .. } => self
+                .idle_runtime
+                .status(session.origin, params)
+                .await
+                .map(|response| Some(response.into())),
             ClientRequest::UserVerificationCancel { params, .. } => {
                 self.outgoing
                     .cancel_user_verification_request(&ConnectionRequestId {

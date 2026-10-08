@@ -1,3 +1,46 @@
+# Idle workspace attachment (experimental)
+
+Initialize with `capabilities.experimentalApi: true`, then call
+`idle/runtime/status/read` with `{"protocolVersion":1}` to read the daemon's
+installation identity, current runtime identity, version, supported Idle
+capabilities and saved workspace bindings. `hostId` remains stable within
+`CODEX_HOME`; `runtimeId` changes on app-server restart.
+
+`idle/workspace/attach` accepts an explicit local owner installation:
+
+```json
+{
+  "protocolVersion": 1,
+  "binding": {
+    "workspaceId": "workspace:example",
+    "repositoryId": "repository:example",
+    "checkoutId": "checkout:example",
+    "chainId": "chain:example",
+    "checkoutRoot": "/absolute/checkout",
+    "chainDirectory": "/absolute/existing-chain"
+  }
+}
+```
+
+Both directories must already exist. Both methods return a shared `status`
+object. Repeating an identical attachment is
+idempotent. A conflicting checkout identity, root or chain directory is rejected.
+Repository manifests do not create attachments. Saved bindings live in private,
+atomically replaced `CODEX_HOME/idle-runtime/workspaces.json`, with one process
+owner. Missing or redirected directories retain their binding with
+`available: false`.
+
+This initial API accepts stdio, embedded clients and the restricted local control
+socket. TCP WebSocket and Codex Remote Control connections are rejected regardless
+of `clientInfo.name`. Dev Tunnels access requires the subsequent scoped runtime
+ingress. The advertised capabilities cover workspace attachment and status;
+runner execution, model control and file/process access remain separate work.
+
+Unsupported Idle protocol versions return `-32602`; unnegotiated experimental
+methods and unauthorized transports return `-32600`. Unreadable, conflicting or
+unsupported saved state is rejected without resetting the registry. Unused
+installations create no Idle files.
+
 # Thread list exclusions
 
 `thread/list` accepts `excludedThreadIds`, an optional array of up to 100

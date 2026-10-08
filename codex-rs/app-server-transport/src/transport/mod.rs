@@ -198,6 +198,8 @@ pub enum TransportEvent {
 pub enum ConnectionOrigin {
     Stdio,
     InProcess,
+    /// Owner-restricted local control socket; distinct from a TCP WebSocket listener.
+    LocalSocket,
     WebSocket,
     RemoteControl,
 }

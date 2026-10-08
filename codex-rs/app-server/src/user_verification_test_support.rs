@@ -174,7 +174,9 @@ impl Harness {
                 ConnectionOrigin::Stdio | ConnectionOrigin::RemoteControl => {
                     AppServerRpcTransport::Stdio
                 }
-                ConnectionOrigin::WebSocket => AppServerRpcTransport::Websocket,
+                ConnectionOrigin::WebSocket | ConnectionOrigin::LocalSocket => {
+                    AppServerRpcTransport::Websocket
+                }
             },
             remote_control_handle: None,
             plugin_startup_tasks: None,
@@ -196,6 +198,7 @@ impl Harness {
                 // Keeping that case tests that authorization uses the connection's origin.
                 ConnectionOrigin::Stdio
                 | ConnectionOrigin::InProcess
+                | ConnectionOrigin::LocalSocket
                 | ConnectionOrigin::RemoteControl => AppServerTransport::Stdio,
             },
         })

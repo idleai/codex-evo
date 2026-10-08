@@ -801,14 +801,14 @@ async fn connect_default_daemon_client(socket_path: &Path) -> Result<WebSocketSt
     connect_daemon_client(socket_path, InitializeCapabilities::default()).await
 }
 
-async fn connect_daemon_client(
+pub(super) async fn connect_daemon_client(
     socket_path: &Path,
     capabilities: InitializeCapabilities,
 ) -> Result<WebSocketStream<UnixStream>> {
     connect_initialized(socket_path, capabilities, "daemon_recovery_test", "0.1.0").await
 }
 
-fn spawn_server(home: &Path, socket_path: &Path) -> Result<Child> {
+pub(super) fn spawn_server(home: &Path, socket_path: &Path) -> Result<Child> {
     let binary = codex_utils_cargo_bin::cargo_bin("codex-app-server")?;
     Ok(Command::new(binary)
         .args(["--listen", &format!("unix://{}", socket_path.display())])
@@ -827,7 +827,7 @@ fn spawn_server(home: &Path, socket_path: &Path) -> Result<Child> {
 }
 
 #[cfg(unix)]
-async fn request_shutdown(server: &Child, _socket_path: &Path) -> Result<()> {
+pub(super) async fn request_shutdown(server: &Child, _socket_path: &Path) -> Result<()> {
     let pid = server.id().context("server pid")?;
     let status = StdCommand::new("kill")
         .arg("-TERM")
@@ -838,7 +838,7 @@ async fn request_shutdown(server: &Child, _socket_path: &Path) -> Result<()> {
 }
 
 #[cfg(windows)]
-async fn request_shutdown(server: &Child, socket_path: &Path) -> Result<()> {
+pub(super) async fn request_shutdown(server: &Child, socket_path: &Path) -> Result<()> {
     let pid = server.id().context("server pid")?.to_string();
     timeout(DEFAULT_READ_TIMEOUT, async {
         let stream = UnixStream::connect(socket_path).await?;
@@ -888,7 +888,7 @@ async fn connect_initialized(
     Ok(websocket)
 }
 
-async fn request(
+pub(super) async fn request(
     websocket: &mut WebSocketStream<UnixStream>,
     id: i64,
     method: &str,

@@ -2090,6 +2090,7 @@ dependencies = [
  "codex-home",
  "codex-hooks",
  "codex-http-client",
+ "codex-idle-runtime",
  "codex-image-generation-extension",
  "codex-login",
  "codex-mcp",
@@ -3722,6 +3723,19 @@ dependencies = [
  "tracing-subscriber",
  "windows-sys 0.61.2",
  "zstd",
+]
+
+[[package]]
+name = "codex-idle-runtime"
+version = "0.0.0"
+dependencies = [
+ "anyhow",
+ "pretty_assertions",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "thiserror 2.0.18",
+ "uuid",
 ]
 
 [[package]]
