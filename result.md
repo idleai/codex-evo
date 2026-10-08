@@ -58,6 +58,35 @@ The helper installs and pins the complete daemon package, enables Remote,
 verifies the running version, then selects the standalone CLI. Restarting the
 daemon disconnects the current Remote session.
 
+### Prepared package
+
+The canonical assembler built the optimized Linux package from source commit
+`77bda8bf0b229688993db82c03555f842db10cce`, stamped through `STABLE_GIT_COMMIT`.
+It temporarily set the workspace version to `0.162.0-alpha.20` and restored
+`Cargo.toml` and `Cargo.lock` byte-for-byte afterward. The existing Bubblewrap
+helper was reused; its source is unchanged from the previous baseline.
+
+The package manifest, CLI version, and app-server initialization passed checks.
+The packaged V8 code-mode host executed the bundled ripgrep through a local mock
+Responses API in an isolated full-access thread with spaces in its working path.
+This check does not exercise Linux user-namespace sandbox setup.
+
+A running `0.161.0-alpha.1` daemon in a temporary Codex home successfully upgraded
+to `0.162.0-alpha.20` using `update --from-cli --yes`. Its CLI, managed package,
+and running app-server reported the new version; the installed binary matched
+the prepared package and production auto-updates remained disabled. The test
+daemon was stopped and its temporary home removed. The live standalone and
+daemon selections were not changed. The reload helper's `--check` passed.
+
+| Artifact | SHA-256 |
+| --- | --- |
+| `bin/codex` | `747c08b521cb41c940dbc6266a3183f8215764fcde313c4a35ad64cfb70bf0f5` |
+| `bin/codex-code-mode-host` | `c2167ccf8b64fe84d4d4cf164add70d5f59771902f193c122754f43344a96690` |
+| `codex-package.json` | `b203425ab687a9003116a379f01aed8201e76bc167a52a4725ac9b77f76edb8d` |
+| `codex-path/rg` | `e62198eb19b136b88c330af83647b5a962cb99b6b1f066758568f12de1974849` |
+| `codex-resources/bwrap` | `c102c5f893faed17ed053ce6ceb9fe0bb03069b991a6f0390e54d82c85f1bca0` |
+| `codex-resources/zsh/bin/zsh` | `52fc20199c35aac8a9ce1aad7de127a3cac47886a9ff0bf2f80bac3ebac2283f` |
+
 ## Previous releases
 
 ## Upstream refresh: 0.161.0-alpha.1 / idle.1
