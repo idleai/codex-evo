@@ -3,11 +3,11 @@ set -euo pipefail
 
 codex_home="${CODEX_HOME:-${HOME:?HOME must be set when CODEX_HOME is unset}/.codex}"
 export CODEX_HOME="$codex_home"
-release_name="0.161.0-alpha.1-codex-evo-idle.1-20260929-x86_64-unknown-linux-gnu"
+release_name="0.162.0-alpha.20-codex-evo-idle.1-20261008-x86_64-unknown-linux-gnu"
 standalone_dir="$codex_home/packages/standalone"
 custom_release="${CODEX_CUSTOM_RELEASE:-$standalone_dir/releases/$release_name}"
 package_codex="$custom_release/bin/codex"
-expected_version="0.161.0-alpha.1"
+expected_version="0.162.0-alpha.20"
 
 case "${1:-}" in
     ""|--check) ;;

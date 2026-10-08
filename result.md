@@ -1,6 +1,64 @@
 # Native OpenAI + Direct SGLang DSV4 Handoff: Result
 
-Last updated: 2026-09-29
+Last updated: 2026-10-08
+
+## Upstream refresh: 0.162.0-alpha.20 / idle.1
+
+`idle-base` merges OpenAI upstream main
+`9b738582b13c2cdbeff54af0afd04c50c3e7ba09`, fetched on October 8, 2026.
+This retains the existing 23-commit custom history and adds 446 upstream commits
+since the September 29 baseline. The previous branch tip is retained locally at
+`backup/idle-base-pre-20261008` (`74c21eb5f318ec9daf665b64067b3ef4d0f2ade3`).
+The working tree for this release is `codex-evo` on branch `idle-base`.
+
+The custom package uses `0.162.0-alpha.20` as its version. Its source is the newer
+main snapshot above, 17 commits beyond the source parent of the official
+`rust-v0.162.0-alpha.20` release; it is not an exact build of that official tag.
+
+The merge preserves custom model discovery and profile routing, named/default
+subagent profiles, provider-specific catalogs, portable handoff, Responses
+compatibility controls, service-tier precedence, and the extended Remote pairing
+timeout. The compatibility controls now coexist with upstream's provider
+capability overrides. Portable handoff uses the new history and turn metadata
+types, and prediction forks reject the custom profile/history overrides.
+The TUI retains its boxed resume/fork paths alongside upstream's permission
+selection and thread-tool transport validation.
+
+### Validation and activation
+
+The focused run selected 1,628 tests across ten affected crates: 1,626 passed and
+two model-picker tests failed because upstream moved base instructions from the
+Responses `instructions` field into a developer input message. Their assertions
+now use upstream's `instructions_text()` helper; all four model-picker cases
+passed on rerun, including cold resume and cross-provider change rejection.
+
+Passing coverage includes all six subagent-profile integrations, both portable
+handoff integrations, the provider-catalog regression, all 79 daemon tests,
+Responses compatibility controls alongside capability overrides, prediction-fork
+override rejection, subagent residency/reload, and TUI handoff/reconnect checks.
+The selected provider, catalog, configuration, protocol, and app-server-protocol
+crate suites passed in full. All six restart-helper tests passed. Config and
+experimental app-server schemas were regenerated, retaining the custom profile
+and portable-history fields. The full workspace suite was not run.
+Scoped `just fix` across the ten affected crates, `just fmt`, and a whitespace
+check of the custom diff against upstream completed successfully. Clippy removed
+an unused upstream test import and simplified an upstream dispatcher return.
+
+The release helper targets
+`${CODEX_HOME:-$HOME/.codex}/packages/standalone/releases/0.162.0-alpha.20-codex-evo-idle.1-20261008-x86_64-unknown-linux-gnu`.
+The live daemon remains on `0.161.0-alpha.1` until the user activates the package.
+From SSH or a local terminal:
+
+```bash
+"$HOME/repos/codex-evo/restart-custom-codex-daemon.sh" --check
+"$HOME/repos/codex-evo/restart-custom-codex-daemon.sh"
+```
+
+The helper installs and pins the complete daemon package, enables Remote,
+verifies the running version, then selects the standalone CLI. Restarting the
+daemon disconnects the current Remote session.
+
+## Previous releases
 
 ## Upstream refresh: 0.161.0-alpha.1 / idle.1
 
@@ -74,8 +132,6 @@ Check package readiness and activate from SSH or a local terminal:
 The helper discovers `CODEX_HOME` at runtime, installs and pins the complete daemon
 package, enables Remote, verifies the running version, then selects the standalone
 CLI. Restarting the daemon disconnects the current Remote session.
-
-## Previous releases
 
 ## Picker update: 0.158.0-alpha.14 / idle.2
 

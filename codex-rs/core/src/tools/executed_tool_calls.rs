@@ -20,19 +20,20 @@ use codex_code_mode::CellId;
 use codex_features::Feature;
 use codex_features::Features;
 use codex_history::InitialHistory;
+use codex_protocol::ResponseItemId;
 use codex_protocol::mcp::McpAttribution;
 use codex_protocol::mcp::McpAttributionSource;
 use codex_protocol::models::ExecutedToolCall;
 use codex_protocol::models::ExecutedToolCallArguments;
 use codex_protocol::models::ResponseItem;
 use codex_protocol::models::ToolResultMetadata;
-use codex_protocol::models::bound_executed_tool_calls_for_prompt;
-use codex_protocol::models::bound_executed_tool_calls_for_prompt_prioritizing_recent;
 use codex_protocol::models::executed_tool_call_metadata_bytes;
+use codex_protocol::models::normalize_executed_tool_call_arguments;
 use codex_protocol::openai_models::ToolMode;
 use indexmap::IndexMap;
 use serde_json::Value as JsonValue;
 
+use crate::session::session::Session;
 use crate::session::step_context::StepContext;
 use crate::tools::context::ToolCallSource;
 use crate::tools::context::ToolOutput;
@@ -97,6 +98,8 @@ impl Drop for DirectCallPermit {
 struct ExecutedToolCallRecorderState {
     // Disabling drops this lifetime, permanently invalidating prepared Direct records.
     recording: Arc<()>,
+    // Full live Direct observations; persisted outputs keep their bounded projection.
+    direct_calls: HashMap<ResponseItemId, ExecutedToolCall>,
     cells: HashMap<CellId, RecordedCell>,
     output_cells: HashMap<String, CellId>,
     retained_calls: HashMap<(std::mem::Discriminant<ResponseItem>, String), RetainedToolCalls>,
@@ -291,7 +294,7 @@ impl ExecutedToolCalls {
     }
 
     /// A later wait cannot claim a complete inventory if an earlier wire copy
-    /// lost recorded calls or arguments from the same Code Mode cell.
+    /// lost recorded calls or tool names from the same Code Mode cell.
     pub(crate) fn invalidate_wire_inventory_loss(
         &self,
         original: &[ResponseItem],
@@ -318,7 +321,7 @@ impl ExecutedToolCalls {
             };
             if bounded
                 .executed_tool_call_metadata()
-                .is_none_or(|bounded| !bounded.has_same_tool_calls(calls))
+                .is_none_or(|bounded| !bounded.has_same_tool_call_inventory(calls))
             {
                 state.invalidate_origin(origin);
             }
@@ -399,14 +402,20 @@ impl ExecutedToolCalls {
         let Some((call, permit)) = prepared else {
             return;
         };
-        let state = self.lock_state();
-        let Some(state) = state.as_ref() else {
+        let mut state = self.lock_state();
+        let Some(state) = state.as_mut() else {
             return;
         };
         if !permit.recording.ptr_eq(&Arc::downgrade(&state.recording)) {
             return;
         }
-        let complete = matches!(call.arguments(), ExecutedToolCallArguments::Raw(_));
+        // Assign the output's ordinary history ID here so reused model call IDs
+        // cannot associate this observation with a different output.
+        Session::assign_missing_response_item_id(item);
+        if let Some(id) = item.id() {
+            state.direct_calls.insert(id.clone(), call.clone());
+        }
+        let complete = call.has_complete_inventory();
         item.append_executed_tool_calls(vec![call]);
         if complete {
             item.mark_tool_calls_complete();
@@ -571,12 +580,14 @@ impl ExecutedToolCalls {
             ExecutedToolCallArguments::Truncated { .. }
         );
         cell.observed_truncated_call |= truncated;
-        cell.completion =
-            if cell.completion == CellCompletion::Recording && !duplicate_call_id && !truncated {
-                CellCompletion::Recording
-            } else {
-                CellCompletion::Incomplete
-            };
+        cell.completion = if cell.completion == CellCompletion::Recording
+            && !duplicate_call_id
+            && call.has_complete_inventory()
+        {
+            CellCompletion::Recording
+        } else {
+            CellCompletion::Incomplete
+        };
         cell.pending_calls.insert(call_id, call);
         if !duplicate_call_id {
             state.pending_nested_calls += 1;

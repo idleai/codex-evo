@@ -92,7 +92,6 @@ impl AppServerSession {
             config.workspace_roots.clone(),
             Vec::new(),
             thread.reasoning_effort,
-            config.personality,
             local_settings,
         )
         .await
@@ -175,6 +174,7 @@ impl AppServerSession {
         model_settings: ResumeModelSettings,
         permission_overrides: crate::resume_permissions::ResumePermissions,
     ) -> Result<AppServerStartedThread> {
+        self.thread_tool_transport().validate_config(&config)?;
         let session_config = if matches!(
             model_settings,
             ResumeModelSettings::RestoreFromThread | ResumeModelSettings::PreserveExistingThread
@@ -270,7 +270,6 @@ impl AppServerSession {
         let mut started = started_thread_from_resume_response(
             response,
             local_settings,
-            &config,
             self.thread_params_mode(),
         )
         .await?;

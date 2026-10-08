@@ -151,7 +151,6 @@ fn serializes_text_verbosity_when_set() {
     let input: Vec<ResponseItem> = vec![];
     let req = ResponsesApiRequest {
         model: "gpt-5.4".to_string(),
-        instructions: "i".to_string(),
         input,
         tools: Some(empty_tools().into()),
         tool_choice: "auto".to_string(),
@@ -199,7 +198,6 @@ fn serializes_text_schema_with_strict_format() {
 
     let req = ResponsesApiRequest {
         model: "gpt-5.4".to_string(),
-        instructions: "i".to_string(),
         input,
         tools: Some(empty_tools().into()),
         tool_choice: "auto".to_string(),
@@ -261,7 +259,6 @@ fn omits_text_when_not_set() {
     let input: Vec<ResponseItem> = vec![];
     let req = ResponsesApiRequest {
         model: "gpt-5.4".to_string(),
-        instructions: "i".to_string(),
         input,
         tools: Some(empty_tools().into()),
         tool_choice: "auto".to_string(),
@@ -286,7 +283,6 @@ fn omits_text_when_not_set() {
 fn serializes_flex_service_tier_when_set() {
     let req = ResponsesApiRequest {
         model: "gpt-5.4".to_string(),
-        instructions: "i".to_string(),
         input: vec![],
         tools: Some(empty_tools().into()),
         tool_choice: "auto".to_string(),

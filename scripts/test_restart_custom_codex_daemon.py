@@ -11,8 +11,8 @@ import unittest
 
 
 HELPER = Path(__file__).resolve().parents[1] / "restart-custom-codex-daemon.sh"
-VERSION = "0.161.0-alpha.1"
-RELEASE_NAME = f"{VERSION}-codex-evo-idle.1-20260929-x86_64-unknown-linux-gnu"
+VERSION = "0.162.0-alpha.20"
+RELEASE_NAME = f"{VERSION}-codex-evo-idle.1-20261008-x86_64-unknown-linux-gnu"
 MOCK_CODEX = r"""#!/usr/bin/env python3
 import json
 import os
@@ -24,7 +24,7 @@ home = Path(os.environ["CODEX_HOME"])
 args = sys.argv[1:]
 with (home / "commands.jsonl").open("a") as log:
     log.write(json.dumps(args) + "\n")
-version = os.environ.get("TEST_CLI_VERSION", "0.161.0-alpha.1")
+version = os.environ.get("TEST_CLI_VERSION", "0.162.0-alpha.20")
 if args == ["--version"]:
     print(f"codex-cli {version}")
 elif args == ["app-server", "daemon", "update", "--from-cli", "--yes"]:

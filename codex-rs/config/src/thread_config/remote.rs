@@ -194,6 +194,7 @@ fn model_provider_from_proto(
         requires_openai_auth: provider.requires_openai_auth,
         supports_websockets: provider.supports_websockets,
         supports_standalone_web_search: provider.supports_standalone_web_search,
+        capabilities: None,
         include_internal_metadata: false,
         supports_namespace_tools: provider.supports_namespace_tools,
         supports_codex_agent_messages: provider.supports_codex_agent_messages,
@@ -230,6 +231,7 @@ fn model_provider_to_proto(
         include_internal_metadata: _,
         supports_namespace_tools,
         supports_codex_agent_messages,
+        capabilities: _,
     } = provider;
 
     proto::ModelProvider {
@@ -591,6 +593,7 @@ mod tests {
             supports_namespace_tools: Some(false),
             supports_codex_agent_messages: Some(false),
             aws: None,
+            capabilities: None,
             include_internal_metadata: false,
         }
     }
