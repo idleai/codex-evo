@@ -846,12 +846,20 @@ impl MessageProcessor {
     }
 
     pub(crate) async fn drain_background_tasks(&self) {
-        self.idle_runtime.shutdown();
+        self.idle_runtime.shutdown().await;
         self.models_refresh_worker.shutdown();
         if let Some(worker) = &self.turn_cost_worker {
             worker.shutdown();
         }
         self.thread_processor.drain_background_tasks().await;
+    }
+
+    pub(crate) async fn start_idle_transport(
+        &self,
+        events: tokio::sync::mpsc::Sender<crate::transport::TransportEvent>,
+        cancel: CancellationToken,
+    ) {
+        self.idle_runtime.install_transport(events, cancel).await;
     }
 
     pub(crate) async fn cancel_active_login(&self) {
@@ -939,6 +947,8 @@ impl MessageProcessor {
         request_context: RequestContext,
     ) -> Result<(), JSONRPCErrorError> {
         let connection_id = connection_request_id.connection_id;
+        self.idle_runtime
+            .authorize_request(session.origin, connection_id, &codex_request)?;
         if let ClientRequest::Initialize { request_id, params } = codex_request {
             let connection_initialized = self
                 .initialize_processor
@@ -991,6 +1001,10 @@ impl MessageProcessor {
 
         let (turn_admission, recheck_turn_admission) = match &codex_request {
             ClientRequest::IdleWorkspaceAttach { .. }
+            | ClientRequest::IdleRelayConfigure { .. }
+            | ClientRequest::IdleConnectionInvite { .. }
+            | ClientRequest::IdleConnectionRevoke { .. }
+            | ClientRequest::IdleRelayStop { .. }
             | ClientRequest::ThreadStart { .. }
             | ClientRequest::ThreadFork { .. }
             | ClientRequest::ThreadResume { .. }
@@ -1093,12 +1107,32 @@ impl MessageProcessor {
             }
             ClientRequest::IdleWorkspaceAttach { params, .. } => self
                 .idle_runtime
-                .attach(session.origin, params)
+                .attach(session.origin, connection_id, params)
                 .await
                 .map(|response| Some(response.into())),
             ClientRequest::IdleRuntimeStatusRead { params, .. } => self
                 .idle_runtime
-                .status(session.origin, params)
+                .status(session.origin, connection_id, params)
+                .await
+                .map(|response| Some(response.into())),
+            ClientRequest::IdleRelayConfigure { params, .. } => self
+                .idle_runtime
+                .configure(session.origin, params)
+                .await
+                .map(|response| Some(response.into())),
+            ClientRequest::IdleConnectionInvite { params, .. } => self
+                .idle_runtime
+                .invite(session.origin, params)
+                .await
+                .map(|response| Some(response.into())),
+            ClientRequest::IdleConnectionRevoke { params, .. } => self
+                .idle_runtime
+                .revoke(session.origin, params)
+                .await
+                .map(|response| Some(response.into())),
+            ClientRequest::IdleRelayStop { params, .. } => self
+                .idle_runtime
+                .stop(session.origin, params)
                 .await
                 .map(|response| Some(response.into())),
             ClientRequest::UserVerificationCancel { params, .. } => {

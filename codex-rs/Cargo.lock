@@ -2130,6 +2130,7 @@ dependencies = [
  "core_test_support",
  "flate2",
  "futures",
+ "gethostname",
  "hmac 0.12.1",
  "http 1.4.0",
  "keyring",
@@ -2578,6 +2579,7 @@ dependencies = [
  "tracing-subscriber",
  "unicode-segmentation",
  "url",
+ "uuid",
  "vt100",
  "which 8.0.0",
  "windows-sys 0.61.2",
@@ -3730,9 +3732,11 @@ name = "codex-idle-runtime"
 version = "0.0.0"
 dependencies = [
  "anyhow",
+ "constant_time_eq",
  "pretty_assertions",
  "serde",
  "serde_json",
+ "sha2 0.10.9",
  "tempfile",
  "thiserror 2.0.18",
  "uuid",

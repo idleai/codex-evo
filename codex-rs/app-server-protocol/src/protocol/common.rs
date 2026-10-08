@@ -510,6 +510,34 @@ client_request_definitions! {
         response: v2::IdleWorkspaceAttachResponse,
     },
 
+    #[experimental("idle/relay/configure")]
+    IdleRelayConfigure => "idle/relay/configure" {
+        params: v2::IdleRelayConfigureParams,
+        serialization: None,
+        response: v2::IdleRelayConfigureResponse,
+    },
+
+    #[experimental("idle/connection/invite")]
+    IdleConnectionInvite => "idle/connection/invite" {
+        params: v2::IdleConnectionInviteParams,
+        serialization: None,
+        response: v2::IdleConnectionInviteResponse,
+    },
+
+    #[experimental("idle/connection/revoke")]
+    IdleConnectionRevoke => "idle/connection/revoke" {
+        params: v2::IdleConnectionRevokeParams,
+        serialization: None,
+        response: v2::IdleConnectionRevokeResponse,
+    },
+
+    #[experimental("idle/relay/stop")]
+    IdleRelayStop => "idle/relay/stop" {
+        params: v2::IdleRelayStopParams,
+        serialization: None,
+        response: v2::IdleRelayStopResponse,
+    },
+
     #[experimental("idle/runtime/status/read")]
     IdleRuntimeStatusRead => "idle/runtime/status/read" {
         params: v2::IdleRuntimeStatusReadParams,

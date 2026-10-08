@@ -1,6 +1,12 @@
 //! Daemon-owned Idle workspace bindings, independent of model and client lifetimes.
 
+mod remote;
 mod storage;
+
+pub use remote::GrantAccess;
+pub use remote::IssuedGrant;
+pub use remote::RelayConfiguration;
+pub use remote::Secret;
 
 use serde::Deserialize;
 use serde::Serialize;
@@ -100,6 +106,10 @@ pub enum Error {
     Stopped,
     #[error("Idle workspace limit reached")]
     Limit,
+    #[error("Idle workspace access is not authorized")]
+    Denied,
+    #[error("Idle workspace connection grant has expired")]
+    Expired,
     #[error("Idle workspace storage failed")]
     Io(#[from] std::io::Error),
     #[error("Idle workspace registry is invalid")]
@@ -115,6 +125,8 @@ impl Error {
             Self::Limit => Self::Limit,
             Self::InvalidBinding => Self::InvalidBinding,
             Self::Stopped => Self::Stopped,
+            Self::Denied => Self::Denied,
+            Self::Expired => Self::Expired,
             Self::Unavailable | Self::Io(_) | Self::Json(_) => Self::Unavailable,
         }
     }
@@ -215,6 +227,33 @@ impl WorkspaceService {
     pub fn shutdown(&self) {
         if let Ok(mut state) = self.state.lock() {
             *state = State::Stopped;
+        }
+    }
+
+    fn edit<T>(&self, operation: impl FnOnce(&mut Store) -> Result<T, Error>) -> Result<T, Error> {
+        let mut state = self.state.lock().map_err(|_| Error::Unavailable)?;
+        if matches!(*state, State::Dormant) {
+            *state = State::Ready(Store::open(&self.directory, &self.host_id)?);
+        }
+        let result = match &mut *state {
+            State::Ready(store) => operation(store),
+            State::Failed(error) => return Err(error.status_error()),
+            State::Stopped => return Err(Error::Stopped),
+            State::Dormant => return Err(Error::Unavailable),
+        };
+        if matches!(&result, Err(Error::Io(_) | Error::Json(_))) {
+            *state = State::Failed(Error::Unavailable);
+        }
+        result
+    }
+
+    fn read<T>(&self, operation: impl FnOnce(&Store) -> Result<T, Error>) -> Result<T, Error> {
+        let state = self.state.lock().map_err(|_| Error::Unavailable)?;
+        match &*state {
+            State::Ready(store) => operation(store),
+            State::Failed(error) => Err(error.status_error()),
+            State::Stopped => Err(Error::Stopped),
+            State::Dormant => Err(Error::Denied),
         }
     }
 }

@@ -36,6 +36,7 @@ pub use transport::acquire_app_server_startup_lock;
 pub use transport::app_server_control_socket_path;
 pub use transport::app_server_startup_lock_path;
 pub use transport::daemon_recovery_file_path;
+pub use transport::next_connection_id;
 pub use transport::start_control_socket_acceptor;
 pub use transport::start_remote_control;
 pub use transport::start_stdio_connection;

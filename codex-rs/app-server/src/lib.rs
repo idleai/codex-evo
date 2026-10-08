@@ -974,6 +974,7 @@ pub async fn run_main_with_transport_options(
 
     let recovery_file = daemon_recovery_file_path(&config.codex_home);
     let processor_handle = tokio::spawn({
+        let idle_transport_event_tx = transport_event_tx.clone();
         let auth_manager = Arc::clone(&auth_manager);
         let initialize_notification_sender = outgoing_message_sender.clone();
         let outbound_control_tx = outbound_control_tx;
@@ -1013,6 +1014,9 @@ pub async fn run_main_with_transport_options(
         let mut remote_control_status = remote_control_status_rx.borrow().clone();
         let transport_shutdown_token = transport_shutdown_token.clone();
         async move {
+            processor
+                .start_idle_transport(idle_transport_event_tx, transport_shutdown_token.clone())
+                .await;
             let recovery_task = if managed_daemon {
                 match daemon_thread_recovery::start_recovery(
                     recovery_file.clone(),
@@ -1292,7 +1296,9 @@ pub async fn run_main_with_transport_options(
                             Ok(thread_id) => {
                                 let mut initialized_connection_ids = Vec::new();
                                 for (connection_id, connection_state) in &connections {
-                                    if connection_state.session.initialized() {
+                                    if connection_state.origin != ConnectionOrigin::IdleRemote
+                                        && connection_state.session.initialized()
+                                    {
                                         initialized_connection_ids.push(*connection_id);
                                     }
                                 }

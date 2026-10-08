@@ -1,5 +1,8 @@
 use crate::Error;
+use crate::GrantAccess;
+use crate::RelayConfiguration;
 use crate::WorkspaceBinding;
+use crate::remote::StoredGrant;
 use serde::Deserialize;
 use serde::Serialize;
 use std::fs::File;
@@ -12,12 +15,16 @@ use std::path::PathBuf;
 const MAX_BYTES: u64 = 1024 * 1024;
 const MAX_BINDINGS: usize = 128;
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 struct Registry {
     version: u32,
     host_id: String,
     bindings: Vec<WorkspaceBinding>,
+    #[serde(default)]
+    relay: Option<RelayConfiguration>,
+    #[serde(default)]
+    grants: Vec<StoredGrant>,
 }
 
 #[derive(Debug)]
@@ -78,12 +85,30 @@ impl Store {
                         return Err(Error::Conflict);
                     }
                 }
+                if registry.grants.len() > 256 {
+                    return Err(Error::Limit);
+                }
+                for (index, grant) in registry.grants.iter().enumerate() {
+                    grant.validate()?;
+                    if !registry
+                        .bindings
+                        .iter()
+                        .any(|binding| binding.checkout_id == grant.checkout_id)
+                        || registry.grants[..index]
+                            .iter()
+                            .any(|other| other.id == grant.id)
+                    {
+                        return Err(Error::Conflict);
+                    }
+                }
                 registry
             }
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => Registry {
                 version: 1,
                 host_id: host_id.to_string(),
                 bindings: Vec::new(),
+                relay: None,
+                grants: Vec::new(),
             },
             Err(error) => return Err(error.into()),
         };
@@ -113,10 +138,71 @@ impl Store {
         if self.registry.bindings.len() >= MAX_BINDINGS {
             return Err(Error::Limit);
         }
-        self.registry.bindings.push(binding);
-        let bytes = serde_json::to_vec(&self.registry)?;
+        let mut registry = self.registry.clone();
+        registry.bindings.push(binding);
+        self.save(registry)
+    }
+
+    pub(crate) fn relay_configuration(&self) -> Option<&RelayConfiguration> {
+        self.registry.relay.as_ref()
+    }
+
+    pub(crate) fn configure_relay(
+        &mut self,
+        configuration: Option<RelayConfiguration>,
+    ) -> Result<(), Error> {
+        let mut registry = self.registry.clone();
+        registry.relay = configuration;
+        self.save(registry)
+    }
+
+    pub(crate) fn grant(&self, id: &str) -> Option<&StoredGrant> {
+        self.registry.grants.iter().find(|grant| grant.id == id)
+    }
+
+    pub(crate) fn grant_access(&self, grant: &StoredGrant, now: u64) -> Result<GrantAccess, Error> {
+        if grant.expires_at <= now {
+            return Err(Error::Expired);
+        }
+        let binding = self
+            .registry
+            .bindings
+            .iter()
+            .find(|binding| binding.checkout_id == grant.checkout_id)
+            .ok_or(Error::Denied)?;
+        Ok(GrantAccess {
+            grant_id: grant.id.clone(),
+            client_id: grant.client_id.clone(),
+            binding: binding.clone(),
+            expires_at: grant.expires_at,
+        })
+    }
+
+    pub(crate) fn issue_grant(
+        &mut self,
+        grant: StoredGrant,
+        now: u64,
+    ) -> Result<GrantAccess, Error> {
+        let access = self.grant_access(&grant, now)?;
+        let mut registry = self.registry.clone();
+        registry.grants.retain(|grant| grant.expires_at > now);
+        if registry.grants.len() >= 256 {
+            return Err(Error::Limit);
+        }
+        registry.grants.push(grant);
+        self.save(registry)?;
+        Ok(access)
+    }
+
+    pub(crate) fn revoke_grant(&mut self, id: &str) -> Result<(), Error> {
+        let mut registry = self.registry.clone();
+        registry.grants.retain(|grant| grant.id != id);
+        self.save(registry)
+    }
+
+    fn save(&mut self, registry: Registry) -> Result<(), Error> {
+        let bytes = serde_json::to_vec(&registry)?;
         if bytes.len() as u64 > MAX_BYTES {
-            self.registry.bindings.pop();
             return Err(Error::Limit);
         }
         let mut file = tempfile::NamedTempFile::new_in(&self.directory)?;
@@ -126,6 +212,7 @@ impl Store {
             .map_err(|error| error.error)?;
         #[cfg(unix)]
         File::open(&self.directory)?.sync_all()?;
+        self.registry = registry;
         Ok(())
     }
 }
