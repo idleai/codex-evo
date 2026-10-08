@@ -286,6 +286,7 @@ fn portable_rollout_items(turn: PortableTurn) -> Vec<RolloutItem> {
     } = turn;
     let mut items = vec![
         RolloutItem::EventMsg(EventMsg::TurnStarted(TurnStartedEvent {
+            turn_attribution: None,
             turn_id: id.clone(),
             root_turn_id: None,
             trace_id: None,
@@ -305,6 +306,7 @@ fn portable_rollout_items(turn: PortableTurn) -> Vec<RolloutItem> {
     }
     items.push(RolloutItem::EventMsg(EventMsg::TurnComplete(
         TurnCompleteEvent {
+            root_turn_id: None,
             turn_id: id,
             last_agent_message: None,
             error: None,
