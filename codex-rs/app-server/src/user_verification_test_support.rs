@@ -176,9 +176,9 @@ impl Harness {
                 ConnectionOrigin::Stdio | ConnectionOrigin::RemoteControl => {
                     AppServerRpcTransport::Stdio
                 }
-                ConnectionOrigin::WebSocket | ConnectionOrigin::LocalSocket => {
-                    AppServerRpcTransport::Websocket
-                }
+                ConnectionOrigin::WebSocket
+                | ConnectionOrigin::LocalSocket
+                | ConnectionOrigin::IdleRemote => AppServerRpcTransport::Websocket,
             },
             remote_control_handle: None,
             plugin_startup_tasks: None,
@@ -201,6 +201,7 @@ impl Harness {
                 ConnectionOrigin::Stdio
                 | ConnectionOrigin::InProcess
                 | ConnectionOrigin::LocalSocket
+                | ConnectionOrigin::IdleRemote
                 | ConnectionOrigin::RemoteControl => AppServerTransport::Stdio,
             },
         })
