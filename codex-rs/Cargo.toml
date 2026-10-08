@@ -70,6 +70,7 @@ members = [
     "ext/guardian-reviewer",
     "ext/guardian-v2",
     "ext/history-notes",
+    "ext/idle-runtime",
     "ext/image-generation",
     "ext/items",
     "ext/memories",
@@ -233,6 +234,7 @@ codex-extension-api = { path = "ext/extension-api" }
 codex-extension-items = { path = "ext/items" }
 codex-multi-env-copy-file = { path = "ext/multi-env-copy-file" }
 codex-goal-extension = { path = "ext/goal" }
+codex-idle-runtime = { path = "ext/idle-runtime" }
 codex-git-attribution = { path = "ext/git-attribution" }
 codex-guardian-reviewer = { path = "ext/guardian-reviewer" }
 codex-guardian-v2 = { path = "ext/guardian-v2" }
