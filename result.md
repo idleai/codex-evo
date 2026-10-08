@@ -1,6 +1,93 @@
 # Native OpenAI + Direct SGLang DSV4 Handoff: Result
 
-Last updated: 2026-09-29
+Last updated: 2026-10-08
+
+## Upstream refresh: 0.162.0-alpha.20 / idle.1
+
+`idle-base` merges OpenAI upstream main
+`9b738582b13c2cdbeff54af0afd04c50c3e7ba09`, fetched on October 8, 2026.
+This retains the existing 23-commit custom history and adds 446 upstream commits
+since the September 29 baseline. The previous branch tip is retained locally at
+`backup/idle-base-pre-20261008` (`74c21eb5f318ec9daf665b64067b3ef4d0f2ade3`).
+The working tree for this release is `codex-evo` on branch `idle-base`.
+
+The custom package uses `0.162.0-alpha.20` as its version. Its source is the newer
+main snapshot above, 17 commits beyond the source parent of the official
+`rust-v0.162.0-alpha.20` release; it is not an exact build of that official tag.
+
+The merge preserves custom model discovery and profile routing, named/default
+subagent profiles, provider-specific catalogs, portable handoff, Responses
+compatibility controls, service-tier precedence, and the extended Remote pairing
+timeout. The compatibility controls now coexist with upstream's provider
+capability overrides. Portable handoff uses the new history and turn metadata
+types, and prediction forks reject the custom profile/history overrides.
+The TUI retains its boxed resume/fork paths alongside upstream's permission
+selection and thread-tool transport validation.
+
+### Validation and activation
+
+The focused run selected 1,628 tests across ten affected crates: 1,626 passed and
+two model-picker tests failed because upstream moved base instructions from the
+Responses `instructions` field into a developer input message. Their assertions
+now use upstream's `instructions_text()` helper; all four model-picker cases
+passed on rerun, including cold resume and cross-provider change rejection.
+
+Passing coverage includes all six subagent-profile integrations, both portable
+handoff integrations, the provider-catalog regression, all 79 daemon tests,
+Responses compatibility controls alongside capability overrides, prediction-fork
+override rejection, subagent residency/reload, and TUI handoff/reconnect checks.
+The selected provider, catalog, configuration, protocol, and app-server-protocol
+crate suites passed in full. All six restart-helper tests passed. Config and
+experimental app-server schemas were regenerated, retaining the custom profile
+and portable-history fields. The full workspace suite was not run.
+Scoped `just fix` across the ten affected crates, `just fmt`, and a whitespace
+check of the custom diff against upstream completed successfully. Clippy removed
+an unused upstream test import and simplified an upstream dispatcher return.
+
+The release helper targets
+`${CODEX_HOME:-$HOME/.codex}/packages/standalone/releases/0.162.0-alpha.20-codex-evo-idle.1-20261008-x86_64-unknown-linux-gnu`.
+The live daemon remains on `0.161.0-alpha.1` until the user activates the package.
+From SSH or a local terminal:
+
+```bash
+"$HOME/repos/codex-evo/restart-custom-codex-daemon.sh" --check
+"$HOME/repos/codex-evo/restart-custom-codex-daemon.sh"
+```
+
+The helper installs and pins the complete daemon package, enables Remote,
+verifies the running version, then selects the standalone CLI. Restarting the
+daemon disconnects the current Remote session.
+
+### Prepared package
+
+The canonical assembler built the optimized Linux package from source commit
+`77bda8bf0b229688993db82c03555f842db10cce`, stamped through `STABLE_GIT_COMMIT`.
+It temporarily set the workspace version to `0.162.0-alpha.20` and restored
+`Cargo.toml` and `Cargo.lock` byte-for-byte afterward. The existing Bubblewrap
+helper was reused; its source is unchanged from the previous baseline.
+
+The package manifest, CLI version, and app-server initialization passed checks.
+The packaged V8 code-mode host executed the bundled ripgrep through a local mock
+Responses API in an isolated full-access thread with spaces in its working path.
+This check does not exercise Linux user-namespace sandbox setup.
+
+A running `0.161.0-alpha.1` daemon in a temporary Codex home successfully upgraded
+to `0.162.0-alpha.20` using `update --from-cli --yes`. Its CLI, managed package,
+and running app-server reported the new version; the installed binary matched
+the prepared package and production auto-updates remained disabled. The test
+daemon was stopped and its temporary home removed. The live standalone and
+daemon selections were not changed. The reload helper's `--check` passed.
+
+| Artifact | SHA-256 |
+| --- | --- |
+| `bin/codex` | `747c08b521cb41c940dbc6266a3183f8215764fcde313c4a35ad64cfb70bf0f5` |
+| `bin/codex-code-mode-host` | `c2167ccf8b64fe84d4d4cf164add70d5f59771902f193c122754f43344a96690` |
+| `codex-package.json` | `b203425ab687a9003116a379f01aed8201e76bc167a52a4725ac9b77f76edb8d` |
+| `codex-path/rg` | `e62198eb19b136b88c330af83647b5a962cb99b6b1f066758568f12de1974849` |
+| `codex-resources/bwrap` | `c102c5f893faed17ed053ce6ceb9fe0bb03069b991a6f0390e54d82c85f1bca0` |
+| `codex-resources/zsh/bin/zsh` | `52fc20199c35aac8a9ce1aad7de127a3cac47886a9ff0bf2f80bac3ebac2283f` |
+
+## Previous releases
 
 ## Upstream refresh: 0.161.0-alpha.1 / idle.1
 
@@ -74,8 +161,6 @@ Check package readiness and activate from SSH or a local terminal:
 The helper discovers `CODEX_HOME` at runtime, installs and pins the complete daemon
 package, enables Remote, verifies the running version, then selects the standalone
 CLI. Restarting the daemon disconnects the current Remote session.
-
-## Previous releases
 
 ## Picker update: 0.158.0-alpha.14 / idle.2
 
