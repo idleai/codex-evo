@@ -24,6 +24,8 @@ struct Registry {
     #[serde(default)]
     relay: Option<RelayConfiguration>,
     #[serde(default)]
+    coordination_helper: Option<PathBuf>,
+    #[serde(default)]
     grants: Vec<StoredGrant>,
 }
 
@@ -108,6 +110,7 @@ impl Store {
                 host_id: host_id.to_string(),
                 bindings: Vec::new(),
                 relay: None,
+                coordination_helper: None,
                 grants: Vec::new(),
             },
             Err(error) => return Err(error.into()),
@@ -152,8 +155,20 @@ impl Store {
         configuration: Option<RelayConfiguration>,
     ) -> Result<(), Error> {
         let mut registry = self.registry.clone();
+        if let Some(configuration) = &configuration {
+            registry.coordination_helper = Some(configuration.helper_path.clone());
+        }
         registry.relay = configuration;
         self.save(registry)
+    }
+
+    pub(crate) fn coordination_helper(&self) -> Option<&PathBuf> {
+        self.registry.coordination_helper.as_ref().or_else(|| {
+            self.registry
+                .relay
+                .as_ref()
+                .map(|configuration| &configuration.helper_path)
+        })
     }
 
     pub(crate) fn grant(&self, id: &str) -> Option<&StoredGrant> {
@@ -175,6 +190,7 @@ impl Store {
             client_id: grant.client_id.clone(),
             binding: binding.clone(),
             expires_at: grant.expires_at,
+            scope: grant.scope,
         })
     }
 

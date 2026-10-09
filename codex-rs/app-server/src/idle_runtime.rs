@@ -7,6 +7,8 @@ use codex_app_server_protocol::IdleConnectionInviteParams;
 use codex_app_server_protocol::IdleConnectionInviteResponse;
 use codex_app_server_protocol::IdleConnectionRevokeParams;
 use codex_app_server_protocol::IdleConnectionRevokeResponse;
+use codex_app_server_protocol::IdleCoordinationCallParams;
+use codex_app_server_protocol::IdleCoordinationCallResponse;
 use codex_app_server_protocol::IdleRelayConfigureParams;
 use codex_app_server_protocol::IdleRelayConfigureResponse;
 use codex_app_server_protocol::IdleRelayStopParams;
@@ -24,6 +26,7 @@ use codex_app_server_transport::ConnectionId;
 use codex_app_server_transport::TransportEvent;
 use codex_idle_runtime::Error;
 use codex_idle_runtime::GrantAccess;
+use codex_idle_runtime::GrantScope;
 use codex_idle_runtime::RelayConfiguration;
 use codex_idle_runtime::RuntimeStatus;
 use codex_idle_runtime::WorkspaceBinding;
@@ -40,6 +43,7 @@ const PROTOCOL_VERSION: u32 = 1;
 pub(crate) struct IdleRuntime {
     service: Arc<WorkspaceService>,
     relay: Arc<relay::Relay>,
+    coordination: coordination::Coordination,
     // Admit one relay administration operation at a time, including its I/O.
     admin: Semaphore,
 }
@@ -49,6 +53,7 @@ impl IdleRuntime {
         let service = Arc::new(WorkspaceService::new(codex_home, installation_id));
         Self {
             relay: Arc::new(relay::Relay::new(service.clone(), codex_home)),
+            coordination: coordination::Coordination::new(service.clone(), codex_home),
             service,
             admin: Semaphore::new(1),
         }
@@ -60,6 +65,7 @@ impl IdleRuntime {
         cancel: CancellationToken,
     ) {
         self.relay.install(events, cancel).await;
+        self.coordination.restore().await;
     }
 
     pub(crate) fn authorize_request(
@@ -73,6 +79,13 @@ impl IdleRuntime {
         }
         let access = self.relay.access(id).map_err(rpc_error)?;
         match request {
+            ClientRequest::IdleCoordinationCall { params, .. }
+                if access.scope == GrantScope::CoordinationOwner
+                    && params.checkout_id == access.binding.checkout_id
+                    && params.client_id == access.client_id =>
+            {
+                Ok(())
+            }
             ClientRequest::Initialize { .. } | ClientRequest::IdleRuntimeStatusRead { .. } => {
                 Ok(())
             }
@@ -82,7 +95,7 @@ impl IdleRuntime {
                 Ok(())
             }
             _ => Err(invalid_request(
-                "This Idle connection only permits its approved workspace attachment and status",
+                "This operation is not permitted by the Idle connection grant",
             )),
         }
     }
@@ -134,7 +147,7 @@ impl IdleRuntime {
         .map_err(|_| internal_error("Idle workspace task failed"))?
         .map_err(rpc_error)?;
         Ok(IdleWorkspaceAttachResponse {
-            status: response(scoped(status, access.as_ref())),
+            status: response(scoped(status, access.as_ref()), access.as_ref()),
         })
     }
 
@@ -151,7 +164,7 @@ impl IdleRuntime {
             .map_err(|_| internal_error("Idle workspace task failed"))?
             .map_err(rpc_error)?;
         Ok(IdleRuntimeStatusReadResponse {
-            status: response(scoped(status, access.as_ref())),
+            status: response(scoped(status, access.as_ref()), access.as_ref()),
         })
     }
 
@@ -183,8 +196,10 @@ impl IdleRuntime {
             .map_err(rpc_error)?;
         if !unchanged {
             self.relay.shutdown().await;
+            self.coordination.reset().await;
         }
         self.relay.start().await.map_err(rpc_error)?;
+        self.coordination.restore().await;
         Ok(IdleRelayConfigureResponse {
             state: self.relay.state(),
         })
@@ -208,18 +223,31 @@ impl IdleRuntime {
             .map_err(|_| internal_error("Idle relay is unavailable"))?;
         let service = self.service.clone();
         let grant = tokio::task::spawn_blocking(move || {
-            service.issue_grant(&params.checkout_id, &params.client_id, params.expires_at)
+            service.issue_scoped_grant(
+                &params.checkout_id,
+                &params.client_id,
+                params.expires_at,
+                if params.coordination_owner {
+                    GrantScope::CoordinationOwner
+                } else {
+                    GrantScope::Attachment
+                },
+            )
         })
         .await
         .map_err(|_| internal_error("Idle connection grant failed"))?
         .map_err(rpc_error)?;
         let host_id = self.service.status().map_err(rpc_error)?.host_id;
         let access = grant.access;
-        let invitation = json!({"version":1, "hostId":host_id,
+        let mut invitation = json!({"version":1, "hostId":host_id,
             "workspaceId":access.binding.workspace_id, "repositoryId":access.binding.repository_id,
             "checkoutId":access.binding.checkout_id, "chainId":access.binding.chain_id,
             "clientId":access.client_id, "grantId":access.grant_id,
             "grantToken":grant.token, "relay":descriptor, "expiresAt":access.expires_at});
+        if access.scope == GrantScope::CoordinationOwner {
+            invitation["version"] = json!(2);
+            invitation["coordinationOwner"] = json!(true);
+        }
         let bytes = serde_json::to_vec(&invitation)
             .map_err(|_| internal_error("Idle invitation encoding failed"))?;
         Ok(IdleConnectionInviteResponse {
@@ -283,9 +311,51 @@ impl IdleRuntime {
         Ok(None)
     }
 
+    pub(crate) async fn coordination_call(
+        &self,
+        origin: ConnectionOrigin,
+        id: ConnectionId,
+        params: IdleCoordinationCallParams,
+    ) -> Result<IdleCoordinationCallResponse, JSONRPCErrorError> {
+        let access = self.access(origin, id, params.protocol_version)?;
+        if params.request.len() > 256 * 1024
+            || params.client_id.is_empty()
+            || params.client_id.len() > 256
+            || access.as_ref().is_some_and(|access| {
+                access.scope != GrantScope::CoordinationOwner
+                    || access.client_id != params.client_id
+                    || access.binding.checkout_id != params.checkout_id
+            })
+        {
+            return Err(invalid_request(
+                "This connection cannot administer workspace coordination",
+            ));
+        }
+        let request = serde_json::from_str(&params.request)
+            .map_err(|_| invalid_params("Invalid coordination request"))?;
+        let binding = self
+            .service
+            .status()
+            .map_err(rpc_error)?
+            .workspaces
+            .into_iter()
+            .find(|workspace| {
+                workspace.available && workspace.binding.checkout_id == params.checkout_id
+            })
+            .ok_or_else(|| invalid_request("Idle workspace is unavailable"))?
+            .binding;
+        let result = self.coordination.call(binding, params.client_id, access, request).await
+            .map_err(|_| internal_error("Idle coordination owner is unavailable; retain the original request for recovery"))?;
+        Ok(IdleCoordinationCallResponse {
+            response: serde_json::to_string(&result)
+                .map_err(|_| internal_error("Idle coordination response encoding failed"))?,
+        })
+    }
+
     pub(crate) async fn shutdown(&self) {
         if let Ok(_admin) = self.admin.acquire().await {
             self.relay.shutdown().await;
+            self.coordination.shutdown().await;
             self.service.shutdown();
         }
     }
@@ -341,7 +411,14 @@ fn scoped(mut status: RuntimeStatus, access: Option<&GrantAccess>) -> RuntimeSta
     status
 }
 
-fn response(status: RuntimeStatus) -> IdleRuntimeStatus {
+fn response(status: RuntimeStatus, access: Option<&GrantAccess>) -> IdleRuntimeStatus {
+    let mut capabilities = vec![
+        IdleRuntimeCapability::WorkspaceAttachment,
+        IdleRuntimeCapability::WorkspaceStatus,
+    ];
+    if access.is_none_or(|access| access.scope == GrantScope::CoordinationOwner) {
+        capabilities.push(IdleRuntimeCapability::WorkspaceCoordination);
+    }
     IdleRuntimeStatus {
         protocol_version: PROTOCOL_VERSION,
         server_version: env!("CARGO_PKG_VERSION").to_string(),
@@ -352,10 +429,7 @@ fn response(status: RuntimeStatus) -> IdleRuntimeStatus {
             .take(256)
             .collect(),
         runtime_id: status.runtime_id,
-        capabilities: vec![
-            IdleRuntimeCapability::WorkspaceAttachment,
-            IdleRuntimeCapability::WorkspaceStatus,
-        ],
+        capabilities,
         workspaces: status
             .workspaces
             .into_iter()
@@ -401,6 +475,7 @@ mod tests {
     }
 }
 mod connections;
+mod coordination;
 mod relay;
 mod wire;
 

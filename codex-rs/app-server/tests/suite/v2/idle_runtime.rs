@@ -63,7 +63,8 @@ async fn idle_workspace_attachment_survives_app_server_restart() -> Result<()> {
         initial.capabilities,
         vec![
             IdleRuntimeCapability::WorkspaceAttachment,
-            IdleRuntimeCapability::WorkspaceStatus
+            IdleRuntimeCapability::WorkspaceStatus,
+            IdleRuntimeCapability::WorkspaceCoordination,
         ]
     );
     for _ in 0..2 {
@@ -234,6 +235,10 @@ async fn idle_workspace_rejects_tcp_clients_claiming_a_local_client_name() -> Re
         (
             "idle/workspace/attach",
             json!({"protocolVersion": 1, "binding": binding(&checkout, &chain)?}),
+        ),
+        (
+            "idle/coordination/call",
+            json!({"protocolVersion":1,"checkoutId":"checkout:one","clientId":"owner","request":"{\"kind\":\"status\"}"}),
         ),
     ] {
         send_request(&mut client, method, /*id*/ 2, Some(params)).await?;

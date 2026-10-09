@@ -38,6 +38,7 @@ pub struct IdleRuntimeStatusReadParams {
 pub enum IdleRuntimeCapability {
     WorkspaceAttachment,
     WorkspaceStatus,
+    WorkspaceCoordination,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, JsonSchema, TS)]
@@ -112,6 +113,39 @@ pub struct IdleConnectionInviteParams {
     pub client_id: String,
     /// Grant expiry in Unix milliseconds, at most seven days from issuance.
     pub expires_at: u64,
+    /// Explicitly permit transfer and administration of standalone workspace metadata.
+    /// Existing attachment grants never acquire this permission automatically.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub coordination_owner: bool,
+}
+
+#[derive(Serialize, Deserialize, Clone, PartialEq, Eq, JsonSchema, TS)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[ts(export_to = "v2/")]
+pub struct IdleCoordinationCallParams {
+    pub protocol_version: u32,
+    pub checkout_id: String,
+    /// Must match the authenticated runtime grant on remote connections.
+    pub client_id: String,
+    /// Bounded host-tools coordination request, preserving its native value encoding.
+    pub request: String,
+}
+
+impl std::fmt::Debug for IdleCoordinationCallParams {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("IdleCoordinationCallParams")
+            .field("checkout_id", &self.checkout_id)
+            .finish_non_exhaustive()
+    }
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, JsonSchema, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export_to = "v2/")]
+pub struct IdleCoordinationCallResponse {
+    /// Native result envelope; mutations retain their original request identities.
+    pub response: String,
 }
 
 #[derive(Serialize, Deserialize, Clone, PartialEq, Eq, JsonSchema, TS)]

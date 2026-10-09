@@ -1,5 +1,6 @@
 use anyhow::Result;
 use codex_idle_runtime::Error;
+use codex_idle_runtime::GrantScope;
 use codex_idle_runtime::RelayConfiguration;
 use codex_idle_runtime::Secret;
 use codex_idle_runtime::WorkspaceBinding;
@@ -64,6 +65,48 @@ fn grants_survive_restart_and_revocation_is_durable() -> Result<()> {
         restarted.authenticate(&grant.access.grant_id, &grant.token),
         Err(Error::Denied)
     ));
+    Ok(())
+}
+
+#[test]
+fn coordination_permission_and_helper_survive_restart_without_upgrading_old_grants() -> Result<()> {
+    let home = TempDir::new()?;
+    let checkout = TempDir::new()?;
+    let chain = TempDir::new()?;
+    let binding = binding(&checkout, &chain)?;
+    let service = WorkspaceService::new(home.path(), "host:one".into());
+    service.attach(binding.clone())?;
+    let helper = std::env::current_exe()?;
+    service.configure_relay(Some(RelayConfiguration {
+        helper_path: helper.clone(),
+        credential_program: helper.clone(),
+    }))?;
+    let ordinary = service.issue_grant(&binding.checkout_id, "client:one", future()?)?;
+    let owner = service.issue_scoped_grant(
+        &binding.checkout_id,
+        "client:one",
+        future()?,
+        GrantScope::CoordinationOwner,
+    )?;
+    service.configure_relay(/*configuration*/ None)?;
+    service.shutdown();
+    let restored = WorkspaceService::new(home.path(), "host:one".into());
+    assert_eq!(
+        restored.grant_access(&ordinary.access.grant_id)?.scope,
+        GrantScope::Attachment
+    );
+    assert_eq!(
+        restored.grant_access(&owner.access.grant_id)?.scope,
+        GrantScope::CoordinationOwner
+    );
+    assert_eq!(restored.coordination_helper()?, Some(helper));
+    assert_eq!(restored.relay_configuration()?, None);
+    restored.revoke_grant(&owner.access.grant_id)?;
+    assert!(restored.grant_access(&owner.access.grant_id).is_err());
+    assert_eq!(
+        restored.grant_access(&ordinary.access.grant_id)?.scope,
+        GrantScope::Attachment
+    );
     Ok(())
 }
 

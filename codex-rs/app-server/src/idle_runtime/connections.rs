@@ -108,8 +108,13 @@ impl Connections {
         };
         match &message {
             JSONRPCMessage::Request(request) if !allowed_method(&request.method) => {
-                return self.send(remote, json!({"id":request.id,"error":{"code":-32600,
-                    "message":"This Idle connection only permits workspace attachment and status"}})).await;
+                return self
+                    .send(
+                        remote,
+                        json!({"id":request.id,"error":{"code":-32600,
+                    "message":"This method is unavailable on the Idle connection"}}),
+                    )
+                    .await;
             }
             JSONRPCMessage::Request(_) => {}
             JSONRPCMessage::Notification(notification) if notification.method == "initialized" => {}
@@ -250,6 +255,9 @@ impl Connections {
 fn allowed_method(method: &str) -> bool {
     matches!(
         method,
-        "initialize" | "idle/workspace/attach" | "idle/runtime/status/read"
+        "initialize"
+            | "idle/workspace/attach"
+            | "idle/runtime/status/read"
+            | "idle/coordination/call"
     )
 }
