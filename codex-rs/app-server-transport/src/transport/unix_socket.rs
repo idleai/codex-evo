@@ -241,6 +241,7 @@ async fn run_control_socket_acceptor(
                 websocket_reader,
                 transport_event_tx,
                 negotiated_compression,
+                super::ConnectionOrigin::LocalSocket,
             )
             .await;
         });

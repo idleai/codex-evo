@@ -69,6 +69,7 @@ mod exec_server_auth;
 mod exec_server_command;
 mod exec_server_credential;
 mod exec_server_telemetry;
+mod idle_cmd;
 mod marketplace_cmd;
 mod mcp_cmd;
 mod mcp_login;
@@ -638,6 +639,8 @@ struct AppServerCommand {
 #[derive(Debug, clap::Subcommand)]
 #[allow(clippy::enum_variant_names)]
 enum AppServerSubcommand {
+    /// Connect Idle workspaces through the local daemon's Dev Tunnel.
+    Idle(idle_cmd::IdleCommand),
     /// Manage the local app-server daemon.
     Daemon(AppServerDaemonCommand),
 
@@ -1485,6 +1488,7 @@ async fn cli_main(
                     };
                     codex_stdio_to_uds::run(socket_path.as_path()).await?;
                 }
+                Some(AppServerSubcommand::Idle(idle)) => idle.run().await?,
                 Some(AppServerSubcommand::GenerateTs(gen_cli)) => {
                     let options = codex_app_server_protocol::GenerateTsOptions {
                         experimental_api: gen_cli.experimental,
@@ -2426,6 +2430,7 @@ fn reject_remote_mode_for_app_server_subcommand(
 fn app_server_subcommand_name(subcommand: Option<&AppServerSubcommand>) -> &'static str {
     match subcommand {
         None => "app-server",
+        Some(AppServerSubcommand::Idle(_)) => "app-server idle",
         Some(AppServerSubcommand::Daemon(daemon)) => match daemon.subcommand {
             AppServerDaemonSubcommand::Bootstrap(_) => "app-server daemon bootstrap",
             AppServerDaemonSubcommand::Start => "app-server daemon start",

@@ -833,7 +833,7 @@ pub(super) fn spawn_server(home: &Path, socket_path: &Path) -> Result<Child> {
 }
 
 #[cfg(unix)]
-async fn request_shutdown(server: &Child, _socket_path: &Path) -> Result<()> {
+pub(super) async fn request_shutdown(server: &Child, _socket_path: &Path) -> Result<()> {
     let pid = server.id().context("server pid")?;
     let status = StdCommand::new("kill")
         .arg("-TERM")
@@ -844,7 +844,7 @@ async fn request_shutdown(server: &Child, _socket_path: &Path) -> Result<()> {
 }
 
 #[cfg(windows)]
-async fn request_shutdown(server: &Child, socket_path: &Path) -> Result<()> {
+pub(super) async fn request_shutdown(server: &Child, socket_path: &Path) -> Result<()> {
     let pid = server.id().context("server pid")?.to_string();
     timeout(DEFAULT_READ_TIMEOUT, async {
         let stream = UnixStream::connect(socket_path).await?;
