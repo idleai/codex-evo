@@ -1,4 +1,4 @@
-# Idle workspace attachment (experimental)
+# Idle workspace attachment and coordination (experimental)
 
 Initialize with `capabilities.experimentalApi: true`, then call
 `idle/runtime/status/read` with `{"protocolVersion":1}` to read the daemon's
@@ -33,8 +33,9 @@ owner. Missing or redirected directories retain their binding with
 Local owners use stdio, embedded clients or the restricted local control socket.
 Remote Idle clients use the daemon's dedicated Dev Tunnels channel. Each private
 invitation authorizes one client and one existing workspace binding. The daemon
-checks its saved grant before every request; this channel permits initialization,
-workspace attachment and status only. TCP WebSocket and Codex Remote Control
+checks its saved grant before every request. A normal grant permits initialization,
+workspace attachment and status. An explicit coordination-owner grant also
+permits `idle/coordination/call` for that client and checkout. TCP WebSocket and Codex Remote Control
 connections cannot use these Idle methods, regardless of `clientInfo.name`.
 
 The daemon owns an `idle-host --runtime-relay` child process with bounded private
@@ -74,8 +75,36 @@ running. The CLI prints the grant ID when it creates an invitation. An expired
 invitation must be replaced by the owner. `--socket-path /absolute/socket` selects
 a non-default local daemon for any of these commands.
 
-The advertised capabilities cover workspace attachment and status. Runner
-execution, model control and file/process access remain separate work.
+To move coordination, first sync the tracked `.idle/workspace` definitions to
+the compute checkout. Create an invitation with `--coordination-owner`, connect
+it in the editor, then run **Idle: Move Workspace Coordination to Compute Host**.
+The version 2 invitation explicitly grants coordination access; existing
+version 1 invitations retain their attachment-only scope.
+
+`idle/coordination/call` accepts `protocolVersion`, `checkoutId`, `clientId` and
+a `request` JSON string. It returns a `response` JSON string containing the
+native result. Strings preserve native integer values through JavaScript
+clients. The `workspaceCoordination` capability is advertised only to local
+owners and clients with the explicit coordination-owner scope. Request strings
+are bounded to 256 KiB; native results are bounded to 500 KiB and return `busy`
+when larger. The private transport retains its one-MiB frame limit.
+
+The daemon owns one `idle-host --runtime-authority` worker per workspace,
+independently of connected editors and the relay. Each worker holds an exclusive
+state lock and uses the daemon's approved checkout and private state directory.
+The transfer freezes the editor's coordinator, retires its control lease and
+preserves grants, revisions, cursors and recorded write results. The accepted
+transfer receipt and state are committed together. Retries reuse that receipt
+without replacing later writes. Subsequent configuration changes update the
+compute checkout; the source coordinator retains a durable route and rejects
+local writes. The daemon restores accepted coordinators after restart even
+when no editor is connected.
+
+Grant checks run again when a queued call reaches its worker. Expiry, revocation,
+missing checkout directories and a failed worker report unavailability; they
+do not permit another local writer. Worker failures are restarted without
+replaying an uncertain mutation. History sharing remains separate. Runner
+execution, model control and general file/process access remain separate work.
 
 Unsupported Idle protocol versions return `-32602`; unnegotiated experimental
 methods and unauthorized transports return `-32600`. Unreadable, conflicting or

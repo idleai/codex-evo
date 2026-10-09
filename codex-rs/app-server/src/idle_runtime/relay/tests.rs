@@ -1,10 +1,12 @@
 use super::*;
 use crate::idle_runtime::IdleRuntime;
 use codex_app_server_protocol::ClientRequest;
+use codex_app_server_protocol::IdleCoordinationCallParams;
 use codex_app_server_protocol::IdleRuntimeStatusReadParams;
 use codex_app_server_protocol::IdleWorkspaceAttachParams;
 use codex_app_server_protocol::RequestId;
 use codex_app_server_transport::ConnectionOrigin;
+use codex_idle_runtime::GrantScope;
 use codex_idle_runtime::WorkspaceBinding;
 use serde_json::json;
 use std::time::SystemTime;
@@ -104,6 +106,20 @@ async fn idle_remote_authentication_scopes_status_and_rejects_other_methods() ->
         "workspace:1"
     );
     let approved = status.status.workspaces[0].binding.clone();
+    let coordination = ClientRequest::IdleCoordinationCall {
+        request_id: RequestId::Integer(2),
+        params: IdleCoordinationCallParams {
+            protocol_version: 1,
+            checkout_id: approved.checkout_id.clone(),
+            client_id: "client:one".into(),
+            request: "{\"kind\":\"status\"}".into(),
+        },
+    };
+    assert!(
+        runtime
+            .authorize_request(origin, connection_id, &coordination)
+            .is_err()
+    );
     let request = |binding| ClientRequest::IdleWorkspaceAttach {
         request_id: RequestId::Integer(2),
         params: IdleWorkspaceAttachParams {
@@ -173,6 +189,71 @@ async fn idle_remote_authentication_scopes_status_and_rejects_other_methods() ->
         Some(TransportEvent::ConnectionClosed { .. })
     ));
     connections.close_all().await;
+    Ok(())
+}
+
+#[tokio::test]
+async fn idle_coordination_requires_the_exact_owner_grant_on_every_request() -> anyhow::Result<()> {
+    let mut fixture = setup()?;
+    let grant = fixture.runtime.service.issue_scoped_grant(
+        "checkout:1",
+        "client:one",
+        fixture.grant.access.expires_at,
+        GrantScope::CoordinationOwner,
+    )?;
+    fixture.connections.opened(1).await?;
+    fixture.connections.incoming(1, json!({"kind":"authenticate","version":1,"grantId":grant.access.grant_id,"token":grant.token})).await?;
+    let Some(TransportEvent::ConnectionOpened {
+        connection_id,
+        origin,
+        writer: _writer,
+        ..
+    }) = fixture.events.recv().await
+    else {
+        anyhow::bail!("expected authenticated owner connection");
+    };
+    let request = |checkout: &str, client: &str| ClientRequest::IdleCoordinationCall {
+        request_id: RequestId::Integer(2),
+        params: IdleCoordinationCallParams {
+            protocol_version: 1,
+            checkout_id: checkout.into(),
+            client_id: client.into(),
+            request: "{\"kind\":\"status\"}".into(),
+        },
+    };
+    assert!(
+        fixture
+            .runtime
+            .authorize_request(origin, connection_id, &request("checkout:1", "client:one"))
+            .is_ok()
+    );
+    assert!(
+        fixture
+            .runtime
+            .authorize_request(origin, connection_id, &request("checkout:2", "client:one"))
+            .is_err()
+    );
+    assert!(
+        fixture
+            .runtime
+            .authorize_request(
+                origin,
+                connection_id,
+                &request("checkout:1", "another-owner")
+            )
+            .is_err()
+    );
+    fixture
+        .runtime
+        .service
+        .revoke_grant(&grant.access.grant_id)?;
+    assert!(
+        fixture
+            .runtime
+            .authorize_request(origin, connection_id, &request("checkout:1", "client:one"))
+            .is_err()
+    );
+    fixture.connections.close_all().await;
     Ok(())
 }
 

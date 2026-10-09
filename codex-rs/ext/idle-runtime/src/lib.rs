@@ -4,6 +4,7 @@ mod remote;
 mod storage;
 
 pub use remote::GrantAccess;
+pub use remote::GrantScope;
 pub use remote::IssuedGrant;
 pub use remote::RelayConfiguration;
 pub use remote::Secret;

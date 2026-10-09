@@ -76,6 +76,9 @@ struct Host {
     /// Grant lifetime in hours, from one to 168.
     #[arg(long, default_value_t = 24, value_parser = clap::value_parser!(u16).range(1..=168))]
     hours: u16,
+    /// Allow this client to move standalone workspace coordination to the daemon.
+    #[arg(long)]
+    coordination_owner: bool,
 }
 
 #[derive(Deserialize)]
@@ -235,6 +238,7 @@ impl Host {
                     checkout_id,
                     client_id: request.client_id,
                     expires_at,
+                    coordination_owner: self.coordination_owner,
                 },
             })
             .await?;
