@@ -503,6 +503,48 @@ client_request_definitions! {
         response: v1::InitializeResponse,
     },
 
+    #[experimental("idle/workspace/attach")]
+    IdleWorkspaceAttach => "idle/workspace/attach" {
+        params: v2::IdleWorkspaceAttachParams,
+        serialization: None,
+        response: v2::IdleWorkspaceAttachResponse,
+    },
+
+    #[experimental("idle/relay/configure")]
+    IdleRelayConfigure => "idle/relay/configure" {
+        params: v2::IdleRelayConfigureParams,
+        serialization: None,
+        response: v2::IdleRelayConfigureResponse,
+    },
+
+    #[experimental("idle/connection/invite")]
+    IdleConnectionInvite => "idle/connection/invite" {
+        params: v2::IdleConnectionInviteParams,
+        serialization: None,
+        response: v2::IdleConnectionInviteResponse,
+    },
+
+    #[experimental("idle/connection/revoke")]
+    IdleConnectionRevoke => "idle/connection/revoke" {
+        params: v2::IdleConnectionRevokeParams,
+        serialization: None,
+        response: v2::IdleConnectionRevokeResponse,
+    },
+
+    #[experimental("idle/relay/stop")]
+    IdleRelayStop => "idle/relay/stop" {
+        params: v2::IdleRelayStopParams,
+        serialization: None,
+        response: v2::IdleRelayStopResponse,
+    },
+
+    #[experimental("idle/runtime/status/read")]
+    IdleRuntimeStatusRead => "idle/runtime/status/read" {
+        params: v2::IdleRuntimeStatusReadParams,
+        serialization: None,
+        response: v2::IdleRuntimeStatusReadResponse,
+    },
+
     #[experimental("server/diagnostics")]
     /// Read content-free, process-local diagnostics.
     ServerDiagnostics => "server/diagnostics" {

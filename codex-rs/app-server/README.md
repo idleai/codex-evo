@@ -1,3 +1,87 @@
+# Idle workspace attachment (experimental)
+
+Initialize with `capabilities.experimentalApi: true`, then call
+`idle/runtime/status/read` with `{"protocolVersion":1}` to read the daemon's
+installation identity, current runtime identity, version, supported Idle
+capabilities and saved workspace bindings. `hostId` remains stable within
+`CODEX_HOME`; `runtimeId` changes on app-server restart.
+
+`idle/workspace/attach` accepts an explicit local owner installation:
+
+```json
+{
+  "protocolVersion": 1,
+  "binding": {
+    "workspaceId": "workspace:example",
+    "repositoryId": "repository:example",
+    "checkoutId": "checkout:example",
+    "chainId": "chain:example",
+    "checkoutRoot": "/absolute/checkout",
+    "chainDirectory": "/absolute/existing-chain"
+  }
+}
+```
+
+Both directories must already exist. Both methods return a shared `status`
+object. Repeating an identical attachment is
+idempotent. A conflicting checkout identity, root or chain directory is rejected.
+Repository manifests do not create attachments. Saved bindings live in private,
+atomically replaced `CODEX_HOME/idle-runtime/workspaces.json`, with one process
+owner. Missing or redirected directories retain their binding with
+`available: false`.
+
+Local owners use stdio, embedded clients or the restricted local control socket.
+Remote Idle clients use the daemon's dedicated Dev Tunnels channel. Each private
+invitation authorizes one client and one existing workspace binding. The daemon
+checks its saved grant before every request; this channel permits initialization,
+workspace attachment and status only. TCP WebSocket and Codex Remote Control
+connections cannot use these Idle methods, regardless of `clientInfo.name`.
+
+The daemon owns an `idle-host --runtime-relay` child process with bounded private
+pipes. That helper uses the existing host-tools Dev Tunnels SDK on a separate
+runtime port, renews its host connection and restores its saved tunnel after a
+restart. The runtime grant is checked independently of the relay connect token.
+Invitations expire, and revocation closes existing runtime connections. Closing
+VS Code does not stop the daemon or remove its workspace binding.
+
+### Connect from VS Code
+
+Build this branch's `codex` CLI and the companion host-tools `idle-host` binary.
+Install the companion VS Code extension; during development, point
+`idle.native.hostPath` at the new `idle-host` on the client machine.
+
+1. In a trusted VS Code workspace, run **Idle: Copy Compute Connection Request**.
+   Save that public JSON as `request.json` on the compute machine.
+2. On the compute machine, start the updated daemon with
+   `codex app-server daemon start`. Its owner must have an authenticated GitHub
+   CLI installation for Dev Tunnels management.
+3. Approve the exact checkout and chain directory:
+
+   ```sh
+   codex app-server idle host --request request.json \
+     --checkout-root /absolute/checkout --chain-directory /absolute/chain \
+     --relay-helper /absolute/idle-host --github-cli /absolute/gh \
+     --output /private/new-invitation.txt
+   ```
+
+4. Paste the private file's contents into **Idle: Connect Compute Host** in
+   VS Code. **Compute hosts** shows the daemon's machine name and current status.
+
+Use `codex app-server idle status` to inspect local bindings,
+`codex app-server idle revoke --grant-id ID` to revoke an invitation, and
+`codex app-server idle stop` to remove the owned tunnel while keeping Codex
+running. The CLI prints the grant ID when it creates an invitation. An expired
+invitation must be replaced by the owner. `--socket-path /absolute/socket` selects
+a non-default local daemon for any of these commands.
+
+The advertised capabilities cover workspace attachment and status. Runner
+execution, model control and file/process access remain separate work.
+
+Unsupported Idle protocol versions return `-32602`; unnegotiated experimental
+methods and unauthorized transports return `-32600`. Unreadable, conflicting or
+unsupported saved state is rejected without resetting the registry. Unused
+installations create no Idle files.
+
 # Thread list exclusions
 
 `thread/list` accepts `excludedThreadIds`, an optional array of up to 100
