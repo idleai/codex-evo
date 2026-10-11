@@ -1479,5 +1479,9 @@ fn find_first_non_existent_component(target_path: &Path) -> Option<PathBuf> {
 mod wslg_tests;
 
 #[cfg(test)]
+#[path = "bwrap_denied_metadata_tests.rs"]
+mod denied_metadata_tests;
+
+#[cfg(test)]
 #[path = "bwrap_tests.rs"]
 mod tests;
