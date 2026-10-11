@@ -33,6 +33,62 @@ const PROTECTED_MODEL: &str = "gpt-5.2";
 const REVIEW_INSTRUCTIONS: &str = "Protected-model automatic review instructions.";
 const PERMISSION_INSTRUCTIONS: &str = "Protected-model read-only instructions.";
 
+#[test_case(SettingsOperation::Standalone; "standalone settings")]
+#[test_case(SettingsOperation::StandaloneWithReply; "standalone settings with reply")]
+#[test_case(SettingsOperation::TurnStart; "turn-start settings")]
+#[tokio::test]
+async fn frozen_permission_profile_rejects_later_widening(
+    operation: SettingsOperation,
+) -> Result<()> {
+    let server = responses::start_mock_server().await;
+    let response = responses::mount_sse_once(
+        &server,
+        responses::sse(vec![
+            responses::ev_response_created("response"),
+            responses::ev_completed("response"),
+        ]),
+    )
+    .await;
+    let test = test_codex()
+        .with_config(|config| {
+            let approval = config.permissions.approval_policy.clone();
+            config
+                .permissions
+                .set_permission_profile(PermissionProfile::read_only())
+                .expect("read-only profile is allowed");
+            config
+                .permissions
+                .freeze_permission_profile()
+                .expect("freeze current profile");
+            assert_eq!(config.permissions.approval_policy, approval);
+        })
+        .build_with_auto_env(&server)
+        .await?;
+    let initial = test.codex.thread_settings_snapshot().await;
+    for permission_profile in [
+        PermissionProfile::Disabled,
+        PermissionProfile::workspace_write(),
+    ] {
+        operation
+            .submit(
+                &test.codex,
+                ThreadSettingsOverrides {
+                    permission_profile: Some(permission_profile),
+                    ..Default::default()
+                },
+            )
+            .await
+            .expect_err("frozen permissions cannot be widened");
+        assert_eq!(test.codex.thread_settings_snapshot().await, initial);
+        assert!(response.requests().is_empty());
+    }
+    test.submit_text_turn("continue with the fixed profile")
+        .await?;
+    assert_eq!(response.requests().len(), 1);
+    assert_eq!(test.codex.thread_settings_snapshot().await, initial);
+    Ok(())
+}
+
 #[derive(Clone, Copy)]
 enum SettingsOperation {
     Standalone,
