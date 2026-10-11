@@ -47,6 +47,17 @@ pub(crate) struct StoredGrant {
     pub(crate) checkout_id: String,
     pub(crate) expires_at: u64,
     pub(crate) token_hash: [u8; 32],
+    #[serde(default)]
+    pub(crate) scope: GrantScope,
+}
+
+/// Explicit owner-approved authority; existing grants retain attachment access only.
+#[derive(Clone, Copy, Debug, Default, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub enum GrantScope {
+    #[default]
+    Attachment,
+    CoordinationOwner,
 }
 
 impl StoredGrant {
@@ -72,6 +83,7 @@ pub struct GrantAccess {
     pub client_id: String,
     pub binding: WorkspaceBinding,
     pub expires_at: u64,
+    pub scope: GrantScope,
 }
 
 /// A new private grant. The registry retains only the credential hash.
@@ -82,6 +94,11 @@ pub struct IssuedGrant {
 }
 
 impl WorkspaceService {
+    /// Retain the owner-selected native adapter when runtime sharing is stopped.
+    pub fn coordination_helper(&self) -> Result<Option<PathBuf>, Error> {
+        self.read(|store| Ok(store.coordination_helper().cloned()))
+    }
+
     /// Read the owner-approved relay setup without creating state on unused installs.
     pub fn relay_configuration(&self) -> Result<Option<RelayConfiguration>, Error> {
         let state = self.state.lock().map_err(|_| Error::Unavailable)?;
@@ -108,6 +125,17 @@ impl WorkspaceService {
         client_id: &str,
         expires_at: u64,
     ) -> Result<IssuedGrant, Error> {
+        self.issue_scoped_grant(checkout_id, client_id, expires_at, GrantScope::Attachment)
+    }
+
+    /// Issue only the capabilities explicitly selected by the local daemon owner.
+    pub fn issue_scoped_grant(
+        &self,
+        checkout_id: &str,
+        client_id: &str,
+        expires_at: u64,
+        scope: GrantScope,
+    ) -> Result<IssuedGrant, Error> {
         let now = now_ms()?;
         if !valid_id(client_id)
             || expires_at <= now
@@ -127,6 +155,7 @@ impl WorkspaceService {
             checkout_id: checkout_id.into(),
             expires_at,
             token_hash: hash(&token.0),
+            scope,
         };
         let access = self.edit(|store| store.issue_grant(grant, now))?;
         Ok(IssuedGrant { access, token })

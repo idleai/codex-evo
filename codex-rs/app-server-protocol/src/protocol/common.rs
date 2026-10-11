@@ -531,6 +531,12 @@ client_request_definitions! {
         response: v2::IdleConnectionRevokeResponse,
     },
 
+    #[experimental("idle/coordination/call")]
+    IdleCoordinationCall => "idle/coordination/call" {
+        params: v2::IdleCoordinationCallParams,
+        serialization: None,
+        response: v2::IdleCoordinationCallResponse,
+    },
     #[experimental("idle/relay/stop")]
     IdleRelayStop => "idle/relay/stop" {
         params: v2::IdleRelayStopParams,

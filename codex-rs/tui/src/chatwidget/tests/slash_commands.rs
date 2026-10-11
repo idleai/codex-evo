@@ -3285,7 +3285,7 @@ async fn slash_handoff_without_profile_shows_usage() {
 async fn model_picker_without_handoff_catalog_explains_profile_switching() {
     let (mut chat, mut rx, _op_rx) = make_chatwidget_manual(/*model_override*/ None).await;
     chat.thread_id = Some(ThreadId::new());
-    chat.set_model_picker_catalog_available(false);
+    chat.set_model_picker_catalog_available(/*available*/ false);
 
     chat.dispatch_command(SlashCommand::Model);
 

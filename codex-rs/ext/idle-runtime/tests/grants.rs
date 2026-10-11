@@ -1,5 +1,6 @@
 use anyhow::Result;
 use codex_idle_runtime::Error;
+use codex_idle_runtime::GrantScope;
 use codex_idle_runtime::RelayConfiguration;
 use codex_idle_runtime::Secret;
 use codex_idle_runtime::WorkspaceBinding;
@@ -68,6 +69,48 @@ fn grants_survive_restart_and_revocation_is_durable() -> Result<()> {
 }
 
 #[test]
+fn coordination_permission_and_helper_survive_restart_without_upgrading_old_grants() -> Result<()> {
+    let home = TempDir::new()?;
+    let checkout = TempDir::new()?;
+    let chain = TempDir::new()?;
+    let binding = binding(&checkout, &chain)?;
+    let service = WorkspaceService::new(home.path(), "host:one".into());
+    service.attach(binding.clone())?;
+    let helper = std::env::current_exe()?;
+    service.configure_relay(Some(RelayConfiguration {
+        helper_path: helper.clone(),
+        credential_program: helper.clone(),
+    }))?;
+    let ordinary = service.issue_grant(&binding.checkout_id, "client:one", future()?)?;
+    let owner = service.issue_scoped_grant(
+        &binding.checkout_id,
+        "client:one",
+        future()?,
+        GrantScope::CoordinationOwner,
+    )?;
+    service.configure_relay(/*configuration*/ None)?;
+    service.shutdown();
+    let restored = WorkspaceService::new(home.path(), "host:one".into());
+    assert_eq!(
+        restored.grant_access(&ordinary.access.grant_id)?.scope,
+        GrantScope::Attachment
+    );
+    assert_eq!(
+        restored.grant_access(&owner.access.grant_id)?.scope,
+        GrantScope::CoordinationOwner
+    );
+    assert_eq!(restored.coordination_helper()?, Some(helper));
+    assert_eq!(restored.relay_configuration()?, None);
+    restored.revoke_grant(&owner.access.grant_id)?;
+    assert!(restored.grant_access(&owner.access.grant_id).is_err());
+    assert_eq!(
+        restored.grant_access(&ordinary.access.grant_id)?.scope,
+        GrantScope::Attachment
+    );
+    Ok(())
+}
+
+#[test]
 fn grants_reject_unknown_checkout_expiry_and_invalid_principal() -> Result<()> {
     let home = TempDir::new()?;
     let checkout = TempDir::new()?;
@@ -82,7 +125,7 @@ fn grants_reject_unknown_checkout_expiry_and_invalid_principal() -> Result<()> {
     );
     assert!(
         service
-            .issue_grant(&binding.checkout_id, "client:one", 0)
+            .issue_grant(&binding.checkout_id, "client:one", /*expires_at*/ 0)
             .is_err()
     );
     assert!(
@@ -122,7 +165,7 @@ fn local_relay_configuration_survives_restart_and_explicit_stop() -> Result<()> 
     service.shutdown();
     let restored = WorkspaceService::new(home.path(), "host:one".into());
     assert_eq!(restored.relay_configuration()?, Some(configuration));
-    restored.configure_relay(None)?;
+    restored.configure_relay(/*configuration*/ None)?;
     restored.shutdown();
     let restarted = WorkspaceService::new(home.path(), "host:one".into());
     assert_eq!(restarted.relay_configuration()?, None);
