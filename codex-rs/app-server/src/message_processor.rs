@@ -1024,6 +1024,7 @@ impl MessageProcessor {
             | ClientRequest::IdleConnectionInvite { .. }
             | ClientRequest::IdleConnectionRevoke { .. }
             | ClientRequest::IdleRelayStop { .. }
+            | ClientRequest::IdleCoordinationCall { .. }
             | ClientRequest::ThreadStart { .. }
             | ClientRequest::ThreadFork { .. }
             | ClientRequest::ThreadResume { .. }
@@ -1133,6 +1134,11 @@ impl MessageProcessor {
             ClientRequest::IdleRuntimeStatusRead { params, .. } => self
                 .idle_runtime
                 .status(session.origin, connection_id, params)
+                .await
+                .map(|response| Some(response.into())),
+            ClientRequest::IdleCoordinationCall { params, .. } => self
+                .idle_runtime
+                .coordination_call(session.origin, connection_id, params)
                 .await
                 .map(|response| Some(response.into())),
             ClientRequest::IdleRelayConfigure { params, .. } => self

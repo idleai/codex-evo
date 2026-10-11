@@ -24,6 +24,8 @@ struct Registry {
     #[serde(default)]
     relay: Option<RelayConfiguration>,
     #[serde(default)]
+    coordination_helper: Option<PathBuf>,
+    #[serde(default)]
     grants: Vec<StoredGrant>,
 }
 
@@ -44,7 +46,7 @@ impl Store {
             builder.mode(0o700);
         }
         builder.create(directory)?;
-        check_private_path(directory, true)?;
+        check_private_path(directory, /*directory*/ true)?;
         let lock_path = directory.join("owner.lock");
         let mut options = OpenOptions::new();
         options.read(true).write(true).create(true).truncate(false);
@@ -54,14 +56,14 @@ impl Store {
             options.mode(0o600);
         }
         if lock_path.symlink_metadata().is_ok() {
-            check_private_path(&lock_path, false)?;
+            check_private_path(&lock_path, /*directory*/ false)?;
         }
         let owner = options.open(lock_path)?;
         owner.try_lock().map_err(|_| Error::Busy)?;
         let registry_path = directory.join("workspaces.json");
         let registry = match registry_path.symlink_metadata() {
             Ok(_) => {
-                check_private_path(&registry_path, false)?;
+                check_private_path(&registry_path, /*directory*/ false)?;
                 let mut bytes = Vec::new();
                 File::open(&registry_path)?
                     .take(MAX_BYTES + 1)
@@ -108,6 +110,7 @@ impl Store {
                 host_id: host_id.to_string(),
                 bindings: Vec::new(),
                 relay: None,
+                coordination_helper: None,
                 grants: Vec::new(),
             },
             Err(error) => return Err(error.into()),
@@ -152,8 +155,20 @@ impl Store {
         configuration: Option<RelayConfiguration>,
     ) -> Result<(), Error> {
         let mut registry = self.registry.clone();
+        if let Some(configuration) = &configuration {
+            registry.coordination_helper = Some(configuration.helper_path.clone());
+        }
         registry.relay = configuration;
         self.save(registry)
+    }
+
+    pub(crate) fn coordination_helper(&self) -> Option<&PathBuf> {
+        self.registry.coordination_helper.as_ref().or_else(|| {
+            self.registry
+                .relay
+                .as_ref()
+                .map(|configuration| &configuration.helper_path)
+        })
     }
 
     pub(crate) fn grant(&self, id: &str) -> Option<&StoredGrant> {
@@ -175,6 +190,7 @@ impl Store {
             client_id: grant.client_id.clone(),
             binding: binding.clone(),
             expires_at: grant.expires_at,
+            scope: grant.scope,
         })
     }
 
