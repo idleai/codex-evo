@@ -72,7 +72,7 @@ impl Store {
                     return Err(Error::Limit);
                 }
                 let registry: Registry = serde_json::from_slice(&bytes)?;
-                if registry.version != 1 {
+                if !matches!(registry.version, 1 | 2) {
                     return Err(Error::Version);
                 }
                 if registry.host_id != host_id || registry.bindings.len() > MAX_BINDINGS {
@@ -92,6 +92,9 @@ impl Store {
                 }
                 for (index, grant) in registry.grants.iter().enumerate() {
                     grant.validate()?;
+                    if registry.version == 1 && grant.runner_policy.is_some() {
+                        return Err(Error::Version);
+                    }
                     if !registry
                         .bindings
                         .iter()
@@ -191,6 +194,7 @@ impl Store {
             binding: binding.clone(),
             expires_at: grant.expires_at,
             scope: grant.scope,
+            runner_policy: grant.runner_policy.clone(),
         })
     }
 
@@ -200,7 +204,13 @@ impl Store {
         now: u64,
     ) -> Result<GrantAccess, Error> {
         let access = self.grant_access(&grant, now)?;
+        if let Some(policy) = &grant.runner_policy {
+            policy.validate(&access.binding)?;
+        }
         let mut registry = self.registry.clone();
+        if grant.runner_policy.is_some() {
+            registry.version = 2;
+        }
         registry.grants.retain(|grant| grant.expires_at > now);
         if registry.grants.len() >= 256 {
             return Err(Error::Limit);
@@ -240,7 +250,7 @@ fn overlaps(left: &WorkspaceBinding, right: &WorkspaceBinding) -> bool {
         || (left.workspace_id == right.workspace_id && left.chain_id != right.chain_id)
 }
 
-fn check_private_path(path: &Path, directory: bool) -> Result<(), Error> {
+pub(crate) fn check_private_path(path: &Path, directory: bool) -> Result<(), Error> {
     let metadata = path.symlink_metadata()?;
     if metadata.file_type().is_symlink()
         || (directory && !metadata.is_dir())
