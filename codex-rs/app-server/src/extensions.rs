@@ -47,6 +47,7 @@ pub(crate) struct ThreadExtensionDependencies {
     /// Process-scoped queue shared by idle dispatch and app-server requests.
     pub(crate) queue_service: Option<Arc<QueuedItemService>>,
     pub(crate) turn_start_admission: Option<Arc<dyn TurnStartAdmission>>,
+    pub(crate) idle_runtime: Arc<crate::idle_runtime::IdleRuntime>,
 }
 
 pub(crate) fn thread_extensions(
@@ -68,8 +69,10 @@ pub(crate) fn thread_extensions(
         http_client_factory,
         queue_service,
         turn_start_admission,
+        idle_runtime,
     } = dependencies;
     let mut builder = ExtensionRegistryBuilder::<Config>::with_event_sink(Arc::clone(&event_sink));
+    builder.tool_admission_contributor(idle_runtime);
     if config
         .features
         .enabled(codex_features::Feature::MultiEnvCopyFile)
