@@ -40,6 +40,7 @@ enum Dispatch {
 }
 
 pub(super) enum RunnerRequest {
+    Register,
     Authorize,
 }
 
@@ -109,6 +110,9 @@ impl Coordination {
             .runner_access(binding)
             .map_err(|_| wire::invalid())?;
         let request = match request {
+            RunnerRequest::Register => {
+                json!({"kind":"register_runner","session_id":binding.thread_id,"parent":binding.parent})
+            }
             RunnerRequest::Authorize => {
                 json!({"kind":"authorize_runner","session_id":binding.thread_id,"write":!binding.policy.write_roots.is_empty()})
             }
