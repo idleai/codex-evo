@@ -1,3 +1,4 @@
+mod admission;
 mod approvals;
 pub(crate) mod call_trace;
 mod catalog_parameters;
