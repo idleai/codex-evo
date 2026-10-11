@@ -1259,7 +1259,7 @@ pub async fn run_main_with_transport_options(
                                         }
                                     }
                                     JSONRPCMessage::Response(response) => {
-                                        processor.process_response(connection_id, response).await;
+                                        processor.process_response(connection_state.session.origin, connection_id, response).await;
                                     }
                                     JSONRPCMessage::Notification(notification) => {
                                         processor.process_notification(notification).await;

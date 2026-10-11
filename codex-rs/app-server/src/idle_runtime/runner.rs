@@ -41,6 +41,18 @@ pub(super) struct Runners {
 }
 
 impl IdleRuntime {
+    pub(super) fn loaded_runner(&self, binding: &RunnerBinding) -> RunnerBinding {
+        self.runners
+            .active
+            .lock()
+            .ok()
+            .and_then(|active| {
+                active
+                    .get(&binding.thread_id)
+                    .map(|runner| runner.binding.clone())
+            })
+            .unwrap_or_else(|| binding.clone())
+    }
     pub(crate) fn has_runner(&self, thread_id: ThreadId) -> Result<bool, JSONRPCErrorError> {
         self.service
             .runner(&thread_id.to_string())

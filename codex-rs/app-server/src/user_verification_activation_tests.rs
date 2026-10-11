@@ -101,6 +101,7 @@ async fn user_verification_initialize_owns_advertisement_and_eligibility() -> Re
                 json!({"action":"accept", "content":{"credentialId":"AQ", "signature":"Ag"}});
             h.processor
                 .process_response(
+                    crate::transport::ConnectionOrigin::InProcess,
                     ConnectionId(2),
                     rpc::JSONRPCResponse {
                         id: id.clone(),
@@ -115,6 +116,7 @@ async fn user_verification_initialize_owns_advertisement_and_eligibility() -> Re
             ));
             h.processor
                 .process_response(
+                    crate::transport::ConnectionOrigin::InProcess,
                     ConnectionId(1),
                     rpc::JSONRPCResponse {
                         id,
