@@ -1194,6 +1194,7 @@ impl ThreadRequestProcessor {
         client_mcp_extensions: ClientMcpExtensions,
         request_context: RequestContext,
     ) -> Result<(), JSONRPCErrorError> {
+        let runner_access = request_context.idle_runner.clone();
         let ThreadStartParams {
             model,
             model_provider,
@@ -1256,6 +1257,10 @@ impl ThreadRequestProcessor {
             }
         }
         let runtime_workspace_roots = runtime_workspace_roots.map(resolve_runtime_workspace_roots);
+        let cwd = runner_access
+            .as_ref()
+            .map(|access| access.binding.checkout_root.display().to_string())
+            .or(cwd);
         let environment_requests =
             resolve_turn_environment_requests(self.thread_manager.as_ref(), environments)?;
         let mut typesafe_overrides = self.build_thread_config_overrides(
@@ -1289,6 +1294,7 @@ impl ThreadRequestProcessor {
         let initial_config_warnings = Arc::clone(&self.initial_config_warnings);
         let outgoing = Arc::clone(&listener_task_context.outgoing);
         let error_request_id = request_id.clone();
+        let runner = runner_access.map(|access| (Arc::clone(&self.idle_runtime), access));
         let thread_start_task = async move {
             if let Err(error) = Self::thread_start_task(
                 listener_task_context,
@@ -1313,6 +1319,7 @@ impl ThreadRequestProcessor {
                 experimental_raw_events,
                 request_trace,
                 initial_config_warnings,
+                runner,
             )
             .await
             {
@@ -1395,6 +1402,10 @@ impl ThreadRequestProcessor {
         experimental_raw_events: bool,
         request_trace: Option<W3cTraceContext>,
         initial_config_warnings: Arc<Vec<ConfigWarningNotification>>,
+        runner: Option<(
+            Arc<crate::idle_runtime::IdleRuntime>,
+            codex_idle_runtime::GrantAccess,
+        )>,
     ) -> Result<(), JSONRPCErrorError> {
         let thread_start_started_at = std::time::Instant::now();
         let requested_cwd = typesafe_overrides.cwd.clone();
@@ -1554,6 +1565,20 @@ impl ThreadRequestProcessor {
         let thread_id = reserved_thread_id
             .unwrap_or_else(|| listener_task_context.thread_manager.reserve_thread_id());
         start_options.reserved_thread_id = Some(thread_id);
+        if let Some((runtime, access)) = runner {
+            start_options.environments = Some(environment_requests.clone());
+            start_options.thread_extension_init = thread_extension_init;
+            runtime
+                .prepare_runner(
+                    thread_id,
+                    Some(access),
+                    /*parent*/ None,
+                    &mut start_options,
+                    &listener_task_context.thread_manager,
+                )
+                .await?;
+            thread_extension_init = std::mem::take(&mut start_options.thread_extension_init);
+        }
         // Startup can prewarm the Responses socket before start_thread returns.
         // Register the creating client first so that handshake can request attestation.
         listener_task_context
@@ -1576,7 +1601,10 @@ impl ThreadRequestProcessor {
                 dynamic_tools,
                 metrics_service_name: service_name,
                 parent_trace: request_trace,
-                environments: Some(environment_requests),
+                environments: start_options
+                    .environments
+                    .take()
+                    .or(Some(environment_requests)),
                 thread_extension_init,
                 client_mcp_extensions,
                 ..start_options

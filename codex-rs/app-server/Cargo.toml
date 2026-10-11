@@ -16,6 +16,10 @@ path = "src/bin/notify_capture.rs"
 name = "exec-server"
 path = "src/bin/exec_server.rs"
 
+[[bin]]
+name = "codex-app-server-test-idle-helper"
+path = "src/bin/idle_helper.rs"
+
 [lib]
 name = "codex_app_server"
 path = "src/lib.rs"
