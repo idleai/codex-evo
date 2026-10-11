@@ -46,16 +46,24 @@ pub(crate) struct IdleRuntime {
     coordination: coordination::Coordination,
     // Admit one relay administration operation at a time, including its I/O.
     admin: Semaphore,
+    runners: runner::Runners,
+    turn_start_admission: Option<Arc<dyn codex_extension_api::TurnStartAdmission>>,
 }
 
 impl IdleRuntime {
-    pub(crate) fn new(codex_home: &Path, installation_id: String) -> Self {
+    pub(crate) fn new(
+        codex_home: &Path,
+        installation_id: String,
+        turn_start_admission: Option<Arc<dyn codex_extension_api::TurnStartAdmission>>,
+    ) -> Self {
         let service = Arc::new(WorkspaceService::new(codex_home, installation_id));
         Self {
             relay: Arc::new(relay::Relay::new(service.clone(), codex_home)),
             coordination: coordination::Coordination::new(service.clone(), codex_home),
             service,
             admin: Semaphore::new(1),
+            runners: runner::Runners::default(),
+            turn_start_admission,
         }
     }
 
@@ -353,6 +361,7 @@ impl IdleRuntime {
     }
 
     pub(crate) async fn shutdown(&self) {
+        self.stop_runner_monitor().await;
         if let Ok(_admin) = self.admin.acquire().await {
             self.relay.shutdown().await;
             self.coordination.shutdown().await;
@@ -478,6 +487,8 @@ mod connections;
 mod coordination;
 mod relay;
 mod runner;
+mod runner_policy;
+pub(crate) mod runner_requests;
 mod wire;
 
 use base64::Engine;

@@ -24,7 +24,11 @@ struct Fixture {
 
 fn setup() -> anyhow::Result<Fixture> {
     let home = TempDir::new()?;
-    let runtime = IdleRuntime::new(home.path(), "host:one".into());
+    let runtime = IdleRuntime::new(
+        home.path(),
+        "host:one".into(),
+        /*turn_start_admission*/ None,
+    );
     for index in 1..=2 {
         let checkout = home.path().join(format!("checkout-{index}"));
         let chain = home.path().join(format!("chain-{index}"));
