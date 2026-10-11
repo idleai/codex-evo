@@ -1404,7 +1404,23 @@ fn append_unreadable_root_args(
         if let Some(first_missing_component) = find_first_non_existent_component(unreadable_root)
             && is_within_allowed_write_paths(&first_missing_component, allowed_write_paths)
         {
-            append_missing_empty_file_bind_data_args(bwrap_args, &first_missing_component)?;
+            if bwrap_args.synthetic_mount_targets.iter().any(|target| {
+                target.path == first_missing_component
+                    && target.kind == SyntheticMountTargetKind::EmptyDirectory
+            }) {
+                // Metadata protection has already planned a directory here.
+                // Keep that mount type when adding the stricter read denial.
+                bwrap_args.args.extend([
+                    "--perms".to_string(),
+                    "000".to_string(),
+                    "--tmpfs".to_string(),
+                    path_to_string(&first_missing_component),
+                    "--remount-ro".to_string(),
+                    path_to_string(&first_missing_component),
+                ]);
+            } else {
+                append_missing_empty_file_bind_data_args(bwrap_args, &first_missing_component)?;
+            }
         }
         return Ok(());
     }
@@ -1569,6 +1585,10 @@ fn find_first_non_existent_component(target_path: &Path) -> Option<PathBuf> {
 #[cfg(test)]
 #[path = "bwrap_wslg_tests.rs"]
 mod wslg_tests;
+
+#[cfg(test)]
+#[path = "bwrap_denied_metadata_tests.rs"]
+mod denied_metadata_tests;
 
 #[cfg(test)]
 mod tests {
