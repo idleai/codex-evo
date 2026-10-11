@@ -147,7 +147,7 @@ pub(crate) struct MessageProcessor {
     models_refresh_worker: ModelsRefreshWorker,
     turn_cost_worker: Option<TurnCostWorker>,
     skills_watcher: Arc<SkillsWatcher>,
-    idle_runtime: crate::idle_runtime::IdleRuntime,
+    idle_runtime: Arc<crate::idle_runtime::IdleRuntime>,
     account_processor: Arc<AccountRequestProcessor>,
     apps_processor: AppsRequestProcessor,
     catalog_processor: CatalogRequestProcessor,
@@ -322,8 +322,10 @@ impl MessageProcessor {
             ),
         );
         let goal_service = Arc::new(GoalService::new());
-        let idle_runtime =
-            crate::idle_runtime::IdleRuntime::new(&config.codex_home, installation_id.clone());
+        let idle_runtime = Arc::new(crate::idle_runtime::IdleRuntime::new(
+            &config.codex_home,
+            installation_id.clone(),
+        ));
         let turn_admission = TurnAdmission::default();
         let turn_start_admission: Arc<dyn TurnStartAdmission> = Arc::new(turn_admission.clone());
         let extension_event_sink =
@@ -357,6 +359,7 @@ impl MessageProcessor {
                     http_client_factory: config.http_client_factory(),
                     queue_service: queue_service.clone(),
                     turn_start_admission: Some(Arc::clone(&turn_start_admission)),
+                    idle_runtime: Arc::clone(&idle_runtime),
                 }),
                 Arc::new(CodexHomeUserInstructionsProvider::new(
                     config.codex_home.clone(),

@@ -477,6 +477,7 @@ mod tests {
 mod connections;
 mod coordination;
 mod relay;
+mod runner;
 mod wire;
 
 use base64::Engine;
