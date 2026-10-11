@@ -228,6 +228,8 @@ mod subagent_profiles;
 mod subagent_service_tier;
 mod token_budget;
 mod token_usage_rollout;
+#[path = "tool_admission_tests.rs"]
+mod tool_admission;
 mod tool_harness;
 mod tool_lifecycle;
 mod tool_parallelism;
