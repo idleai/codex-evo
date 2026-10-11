@@ -560,6 +560,7 @@ enabled = false
                         idle_runtime: Arc::new(crate::idle_runtime::IdleRuntime::new(
                             &good_config.codex_home,
                             "idle-test".into(),
+                            /*turn_start_admission*/ None,
                         )),
                     },
                 ),
