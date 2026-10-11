@@ -137,6 +137,15 @@ impl ToolOrchestrator {
         let otel_tn = flat_tool_name(&tool_ctx.tool_name).into_owned();
         let otel_ci = &tool_ctx.call_id;
         let strict_auto_review = turn_ctx.strict_auto_review_enabled();
+        let frozen_permissions = tool_ctx.session.tool_policy.freeze_execution_permissions;
+        if frozen_permissions
+            && tool.sandbox_permissions(req)
+                != codex_protocol::models::SandboxPermissions::UseDefault
+        {
+            return Err(ToolError::Rejected(
+                "This thread's execution permissions cannot be escalated".into(),
+            ));
+        }
         // 1) Approval
         let mut initial_approval_source = None;
 
@@ -227,12 +236,16 @@ impl ToolOrchestrator {
 
         // 2) First attempt under the selected sandbox.
         let unsandboxed_allowed = unsandboxed_execution_allowed(&file_system_sandbox_policy);
-        let sandbox_override = sandbox_override_for_first_attempt(
-            tool.sandbox_permissions(req),
-            &requirement,
-            &file_system_sandbox_policy,
-            /*already_approved*/ initial_approval_source.is_some(),
-        );
+        let sandbox_override = if frozen_permissions {
+            SandboxOverride::NoOverride
+        } else {
+            sandbox_override_for_first_attempt(
+                tool.sandbox_permissions(req),
+                &requirement,
+                &file_system_sandbox_policy,
+                /*already_approved*/ initial_approval_source.is_some(),
+            )
+        };
         let (escalated_profile, writable_root_metadata) = if sandbox_override
             == SandboxOverride::EscalatedSandboxWithRestrictions
         {
@@ -351,6 +364,14 @@ impl ToolOrchestrator {
         if !executor_managed_process_sandbox {
             ensure_native_sandbox(sandbox_override, initial_sandbox)?;
         }
+        if frozen_permissions
+            && (!sandbox_requested
+                || (!executor_managed_process_sandbox && initial_sandbox == SandboxType::None))
+        {
+            return Err(ToolError::Rejected(
+                "This thread requires a native execution sandbox".into(),
+            ));
+        }
 
         let sandbox_policy_cwd = tool
             .sandbox_cwd(req)
@@ -426,7 +447,7 @@ impl ToolOrchestrator {
                     );
                     return Err(ToolError::Codex(err));
                 }
-                if !tool.escalate_on_failure() {
+                if frozen_permissions || !tool.escalate_on_failure() {
                     otel.sandbox_outcome(
                         &otel_tn,
                         otel_ci,
