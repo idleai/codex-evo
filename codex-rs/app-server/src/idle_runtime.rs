@@ -87,6 +87,12 @@ impl IdleRuntime {
         }
         let access = self.relay.access(id).map_err(rpc_error)?;
         match request {
+            request
+                if access.scope == GrantScope::Runner
+                    && runner_requests::allowed(request.method_name()) =>
+            {
+                Ok(())
+            }
             ClientRequest::IdleCoordinationCall { params, .. }
                 if access.scope == GrantScope::CoordinationOwner
                     && params.checkout_id == access.binding.checkout_id
@@ -219,6 +225,11 @@ impl IdleRuntime {
         params: IdleConnectionInviteParams,
     ) -> Result<IdleConnectionInviteResponse, JSONRPCErrorError> {
         authorize(origin, params.protocol_version)?;
+        if params.runner && params.coordination_owner {
+            return Err(invalid_params(
+                "Select either runner or coordination-owner permission",
+            ));
+        }
         let _admin = self
             .admin
             .acquire()
@@ -231,6 +242,28 @@ impl IdleRuntime {
             .map_err(|_| internal_error("Idle relay is unavailable"))?;
         let service = self.service.clone();
         let grant = tokio::task::spawn_blocking(move || {
+            if params.runner {
+                let binding = service
+                    .status()?
+                    .workspaces
+                    .into_iter()
+                    .find(|workspace| {
+                        workspace.available && workspace.binding.checkout_id == params.checkout_id
+                    })
+                    .ok_or(Error::Denied)?
+                    .binding;
+                let policy = codex_idle_runtime::RunnerPolicy::new(
+                    &binding,
+                    vec![binding.checkout_root.clone()],
+                    vec![binding.checkout_root.clone()],
+                )?;
+                return service.issue_runner_grant(
+                    &params.checkout_id,
+                    &params.client_id,
+                    params.expires_at,
+                    policy,
+                );
+            }
             service.issue_scoped_grant(
                 &params.checkout_id,
                 &params.client_id,
@@ -255,6 +288,10 @@ impl IdleRuntime {
         if access.scope == GrantScope::CoordinationOwner {
             invitation["version"] = json!(2);
             invitation["coordinationOwner"] = json!(true);
+        }
+        if access.scope == GrantScope::Runner {
+            invitation["version"] = json!(3);
+            invitation["runner"] = json!(true);
         }
         let bytes = serde_json::to_vec(&invitation)
             .map_err(|_| internal_error("Idle invitation encoding failed"))?;
@@ -427,6 +464,9 @@ fn response(status: RuntimeStatus, access: Option<&GrantAccess>) -> IdleRuntimeS
     ];
     if access.is_none_or(|access| access.scope == GrantScope::CoordinationOwner) {
         capabilities.push(IdleRuntimeCapability::WorkspaceCoordination);
+    }
+    if access.is_none_or(|access| access.scope == GrantScope::Runner) {
+        capabilities.push(IdleRuntimeCapability::RunnerSessions);
     }
     IdleRuntimeStatus {
         protocol_version: PROTOCOL_VERSION,

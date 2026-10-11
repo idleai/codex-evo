@@ -99,15 +99,19 @@ impl Connections {
             .map_err(|_| wire::invalid())?
             .get(&id)
             .cloned();
-        if grant.is_none_or(|grant| self.service.grant_access(&grant).is_err()) {
+        let Some(access) = grant.and_then(|grant| self.service.grant_access(&grant).ok()) else {
             return self.close(remote).await;
-        }
+        };
+        let runner = access.scope == codex_idle_runtime::GrantScope::Runner;
         let message = match serde_json::from_value::<JSONRPCMessage>(value) {
             Ok(message) => message,
             Err(_) => return self.close(remote).await,
         };
         match &message {
-            JSONRPCMessage::Request(request) if !allowed_method(&request.method) => {
+            JSONRPCMessage::Request(request)
+                if !(allowed_method(&request.method)
+                    || runner && super::runner_requests::allowed(&request.method)) =>
+            {
                 return self
                     .send(
                         remote,
@@ -117,6 +121,7 @@ impl Connections {
                     .await;
             }
             JSONRPCMessage::Request(_) => {}
+            JSONRPCMessage::Response(_) if runner => {}
             JSONRPCMessage::Notification(notification) if notification.method == "initialized" => {}
             _ => return self.close(remote).await,
         }
@@ -148,7 +153,7 @@ impl Connections {
         self.grants
             .lock()
             .map_err(|_| wire::invalid())?
-            .insert(id, access.grant_id);
+            .insert(id, access.grant_id.clone());
         self.clients.insert(
             remote,
             Client::Authenticated {
@@ -167,13 +172,20 @@ impl Connections {
             .await
             .map_err(|_| wire::invalid())?;
         let commands = self.commands.clone();
+        let service = self.service.clone();
+        let grant_id = access.grant_id.clone();
         self.writers.spawn(async move {
             loop {
                 let outgoing = tokio::select! { () = cancel.cancelled() => break, message = output.recv() => message };
                 let Some(outgoing) = outgoing else { break; };
-                // No account, thread or approval broadcasts cross this workspace-only channel.
-                if !matches!(outgoing.message, OutgoingMessage::Response(_) | OutgoingMessage::Error(_)) { continue; }
+                let Ok(current) = service.grant_access(&grant_id) else { break; };
+                let direct = matches!(outgoing.message, OutgoingMessage::Response(_) | OutgoingMessage::Error(_));
                 let Ok(message) = serde_json::to_value(outgoing.message) else { break; };
+                if !direct {
+                    let thread = message.pointer("/params/threadId").or_else(|| message.pointer("/params/thread/id")).and_then(Value::as_str);
+                    let authorized = current.scope == codex_idle_runtime::GrantScope::Runner && thread.is_some_and(|id| service.runner(id).ok().flatten().is_some_and(|binding| binding.workspace == current.binding && binding.client_id == current.client_id && binding.grant_id == current.grant_id));
+                    if !authorized { continue; }
+                }
                 let sent = tokio::select! {
                     () = cancel.cancelled() => break,
                     sent = commands.send(wire::Command::Send { connection_id: remote, message }) => sent,
