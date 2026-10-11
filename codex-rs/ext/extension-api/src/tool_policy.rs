@@ -18,6 +18,10 @@ pub struct ToolPolicy {
     pub require_unified_exec: bool,
     /// Advertise additional-permission arguments when the feature is enabled.
     pub expose_additional_permissions: bool,
+    /// Keep execution inside its configured sandbox even after command approval
+    /// or sandbox failure. Explicit permission escalation is rejected.
+    /// Isolated sessions also retain configured command approval and deny rules.
+    pub freeze_execution_permissions: bool,
 }
 
 impl Default for ToolPolicy {
@@ -27,6 +31,7 @@ impl Default for ToolPolicy {
             require_managed_sandbox: false,
             require_unified_exec: false,
             expose_additional_permissions: true,
+            freeze_execution_permissions: false,
         }
     }
 }

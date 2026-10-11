@@ -39,6 +39,7 @@ pub fn reviewer_tool_policy() -> ToolPolicy {
         require_managed_sandbox: true,
         require_unified_exec: true,
         expose_additional_permissions: false,
+        freeze_execution_permissions: false,
     }
 }
 

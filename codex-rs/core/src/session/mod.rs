@@ -634,7 +634,12 @@ impl Session {
         } else {
             instructions
         };
-        let exec_policy = if isolation == codex_extension_api::SessionIsolation::Isolated {
+        let preserve_execution_rules = thread_extension_init
+            .get::<codex_extension_api::ToolPolicy>()
+            .is_some_and(|policy| policy.freeze_execution_permissions);
+        let exec_policy = if isolation == codex_extension_api::SessionIsolation::Isolated
+            && !preserve_execution_rules
+        {
             let managed_policy = config
                 .config_layer_stack
                 .requirements()
