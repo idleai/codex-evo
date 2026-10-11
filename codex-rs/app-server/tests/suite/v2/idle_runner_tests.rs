@@ -16,6 +16,16 @@ use tokio::net::TcpStream;
 use tokio::time::Duration;
 use tokio::time::timeout;
 
+#[path = "idle_runner_execution_tests.rs"]
+mod execution;
+
+#[path = "idle_runner_approval_tests.rs"]
+mod approvals;
+
+#[cfg(unix)]
+#[path = "idle_runner_shutdown_tests.rs"]
+mod shutdown;
+
 async fn owner_rpc(owner: &mut TestAppServer, method: &str, params: Value) -> Result<Value> {
     let id = owner.send_raw_request(method, Some(params)).await?;
     Ok(timeout(
