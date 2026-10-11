@@ -39,6 +39,7 @@ pub enum IdleRuntimeCapability {
     WorkspaceAttachment,
     WorkspaceStatus,
     WorkspaceCoordination,
+    RunnerSessions,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, JsonSchema, TS)]
@@ -117,6 +118,10 @@ pub struct IdleConnectionInviteParams {
     /// Existing attachment grants never acquire this permission automatically.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub coordination_owner: bool,
+    /// Permit bound runner sessions inside the selected checkout, with network access denied.
+    /// Cannot be combined with coordinationOwner.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub runner: bool,
 }
 
 #[derive(Serialize, Deserialize, Clone, PartialEq, Eq, JsonSchema, TS)]

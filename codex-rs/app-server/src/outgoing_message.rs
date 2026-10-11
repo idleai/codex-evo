@@ -69,6 +69,7 @@ pub(crate) struct RequestContext {
     span: Span,
     parent_trace: Option<W3cTraceContext>,
     _diagnostics_guard: Arc<GaugeGuard>,
+    pub(crate) idle_runner: Option<codex_idle_runtime::GrantAccess>,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -97,6 +98,7 @@ impl RequestContext {
             span,
             parent_trace,
             _diagnostics_guard: Arc::new(IN_FLIGHT_REQUESTS.track()),
+            idle_runner: None,
         }
     }
 
@@ -599,6 +601,14 @@ impl OutgoingMessageSender {
             .collect::<Vec<_>>();
         requests.sort_by(|left, right| left.id().cmp(right.id()));
         requests
+    }
+
+    pub(crate) async fn pending_request_thread(&self, id: &RequestId) -> Option<ThreadId> {
+        self.request_id_to_callback
+            .lock()
+            .await
+            .get(id)
+            .and_then(|entry| entry.thread_id)
     }
 
     pub(crate) async fn cancel_requests_for_thread(
