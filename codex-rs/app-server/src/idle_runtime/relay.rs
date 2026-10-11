@@ -136,7 +136,7 @@ impl Relay {
         let cancel = context.cancel.child_token();
         let (commands, incoming) = mpsc::channel(32);
         let stopping = Arc::new(AtomicBool::new(false));
-        self.update(IdleRelayState::Starting, None);
+        self.update(IdleRelayState::Starting, /*descriptor*/ None);
         let owner = self.clone();
         let task_cancel = cancel.clone();
         let task_commands = commands.clone();
@@ -174,7 +174,7 @@ impl Relay {
                 let _ = running.task.await;
             }
         }
-        self.update(IdleRelayState::Disabled, None);
+        self.update(IdleRelayState::Disabled, /*descriptor*/ None);
     }
 
     pub(super) async fn remove(&self) -> io::Result<()> {
@@ -205,7 +205,7 @@ impl Relay {
             running.task.abort();
             let _ = running.task.await;
         }
-        self.update(IdleRelayState::Disabled, None);
+        self.update(IdleRelayState::Disabled, /*descriptor*/ None);
         result
     }
 
@@ -233,7 +233,7 @@ impl Relay {
                     cancel,
                 )
                 .await;
-            self.update(IdleRelayState::Unavailable, None);
+            self.update(IdleRelayState::Unavailable, /*descriptor*/ None);
             if stopping.load(Ordering::Acquire) {
                 return result;
             }
@@ -302,7 +302,7 @@ impl Relay {
                     }
                     Some(wire::Event::Unavailable { code }) => {
                         let _ = code;
-                        self.update(IdleRelayState::Unavailable, None);
+                        self.update(IdleRelayState::Unavailable, /*descriptor*/ None);
                         connections.close_all().await;
                     }
                     Some(wire::Event::Opened { connection_id }) => {

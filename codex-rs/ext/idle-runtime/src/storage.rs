@@ -46,7 +46,7 @@ impl Store {
             builder.mode(0o700);
         }
         builder.create(directory)?;
-        check_private_path(directory, true)?;
+        check_private_path(directory, /*directory*/ true)?;
         let lock_path = directory.join("owner.lock");
         let mut options = OpenOptions::new();
         options.read(true).write(true).create(true).truncate(false);
@@ -56,14 +56,14 @@ impl Store {
             options.mode(0o600);
         }
         if lock_path.symlink_metadata().is_ok() {
-            check_private_path(&lock_path, false)?;
+            check_private_path(&lock_path, /*directory*/ false)?;
         }
         let owner = options.open(lock_path)?;
         owner.try_lock().map_err(|_| Error::Busy)?;
         let registry_path = directory.join("workspaces.json");
         let registry = match registry_path.symlink_metadata() {
             Ok(_) => {
-                check_private_path(&registry_path, false)?;
+                check_private_path(&registry_path, /*directory*/ false)?;
                 let mut bytes = Vec::new();
                 File::open(&registry_path)?
                     .take(MAX_BYTES + 1)

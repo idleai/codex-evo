@@ -74,8 +74,8 @@ async fn idle_remote_authentication_scopes_status_and_rejects_other_methods() ->
         mut sent,
         grant,
     } = setup()?;
-    connections.opened(1).await?;
-    connections.incoming(1, json!({"kind":"authenticate","version":1,"grantId":grant.access.grant_id,"token":grant.token})).await?;
+    connections.opened(/*id*/ 1).await?;
+    connections.incoming(/*remote*/ 1, json!({"kind":"authenticate","version":1,"grantId":grant.access.grant_id,"token":grant.token})).await?;
     let Some(TransportEvent::ConnectionOpened {
         connection_id,
         origin,
@@ -148,7 +148,10 @@ async fn idle_remote_authentication_scopes_status_and_rejects_other_methods() ->
         "account/read",
     ] {
         connections
-            .incoming(1, json!({"id":3,"method":method,"params":{}}))
+            .incoming(
+                /*remote*/ 1,
+                json!({"id":3,"method":method,"params":{}}),
+            )
             .await?;
         let Some(wire::Command::Send { message, .. }) = sent.recv().await else {
             anyhow::bail!("expected denial");
@@ -201,8 +204,8 @@ async fn idle_coordination_requires_the_exact_owner_grant_on_every_request() -> 
         fixture.grant.access.expires_at,
         GrantScope::CoordinationOwner,
     )?;
-    fixture.connections.opened(1).await?;
-    fixture.connections.incoming(1, json!({"kind":"authenticate","version":1,"grantId":grant.access.grant_id,"token":grant.token})).await?;
+    fixture.connections.opened(/*id*/ 1).await?;
+    fixture.connections.incoming(/*remote*/ 1, json!({"kind":"authenticate","version":1,"grantId":grant.access.grant_id,"token":grant.token})).await?;
     let Some(TransportEvent::ConnectionOpened {
         connection_id,
         origin,

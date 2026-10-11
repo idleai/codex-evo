@@ -125,7 +125,7 @@ fn grants_reject_unknown_checkout_expiry_and_invalid_principal() -> Result<()> {
     );
     assert!(
         service
-            .issue_grant(&binding.checkout_id, "client:one", 0)
+            .issue_grant(&binding.checkout_id, "client:one", /*expires_at*/ 0)
             .is_err()
     );
     assert!(
@@ -165,7 +165,7 @@ fn local_relay_configuration_survives_restart_and_explicit_stop() -> Result<()> 
     service.shutdown();
     let restored = WorkspaceService::new(home.path(), "host:one".into());
     assert_eq!(restored.relay_configuration()?, Some(configuration));
-    restored.configure_relay(None)?;
+    restored.configure_relay(/*configuration*/ None)?;
     restored.shutdown();
     let restarted = WorkspaceService::new(home.path(), "host:one".into());
     assert_eq!(restarted.relay_configuration()?, None);

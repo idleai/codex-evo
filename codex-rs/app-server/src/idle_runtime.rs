@@ -286,7 +286,7 @@ impl IdleRuntime {
             internal_error("Idle relay cleanup failed; retry when the relay is available")
         })?;
         let service = self.service.clone();
-        tokio::task::spawn_blocking(move || service.configure_relay(None))
+        tokio::task::spawn_blocking(move || service.configure_relay(/*configuration*/ None))
             .await
             .map_err(|_| internal_error("Idle relay shutdown failed"))?
             .map_err(rpc_error)?;
@@ -462,15 +462,15 @@ mod tests {
             ConnectionOrigin::InProcess,
             ConnectionOrigin::LocalSocket,
         ] {
-            assert!(authorize(origin, 1).is_ok());
-            assert!(authorize(origin, 2).is_err());
+            assert!(authorize(origin, /*version*/ 1).is_ok());
+            assert!(authorize(origin, /*version*/ 2).is_err());
         }
         for origin in [
             ConnectionOrigin::WebSocket,
             ConnectionOrigin::RemoteControl,
             ConnectionOrigin::IdleRemote,
         ] {
-            assert!(authorize(origin, 1).is_err());
+            assert!(authorize(origin, /*version*/ 1).is_err());
         }
     }
 }
