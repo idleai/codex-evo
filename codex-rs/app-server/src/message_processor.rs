@@ -943,10 +943,20 @@ impl MessageProcessor {
     /// Handle a standalone JSON-RPC response originating from the peer.
     pub(crate) async fn process_response(
         &self,
+        origin: crate::transport::ConnectionOrigin,
         connection_id: ConnectionId,
         response: JSONRPCResponse,
     ) {
         let JSONRPCResponse { id, result, .. } = response;
+        let thread_id = self.outgoing.pending_request_thread(&id).await;
+        if self
+            .idle_runtime
+            .runner_response(origin, connection_id, thread_id, &result)
+            .await
+            .is_err()
+        {
+            return;
+        }
         self.outgoing
             .notify_client_response(connection_id, id, result)
             .await
@@ -968,11 +978,15 @@ impl MessageProcessor {
         // connection outbound-ready. Websocket JSON-RPC calls pass `None` so
         // lib.rs can deliver connection-scoped initialize notifications first.
         outbound_initialized: Option<&AtomicBool>,
-        request_context: RequestContext,
+        mut request_context: RequestContext,
     ) -> Result<(), JSONRPCErrorError> {
         let connection_id = connection_request_id.connection_id;
         self.idle_runtime
             .authorize_request(session.origin, connection_id, &codex_request)?;
+        request_context.idle_runner = self
+            .idle_runtime
+            .runner_request(session.origin, connection_id, &codex_request)
+            .await?;
         if let ClientRequest::Initialize { request_id, params } = codex_request {
             let connection_initialized = self
                 .initialize_processor

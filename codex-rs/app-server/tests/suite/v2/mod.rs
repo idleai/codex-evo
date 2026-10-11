@@ -74,6 +74,8 @@ mod guardian_v2;
 mod history_notes_extension;
 mod hooks_list;
 mod host_skills;
+#[path = "idle_runner_tests.rs"]
+mod idle_runner;
 mod idle_runtime;
 mod imagegen_extension;
 mod initialize;
