@@ -22,6 +22,8 @@ use codex_extension_api::ResponseItem;
 use codex_extension_api::SkillInvocationContributor;
 use codex_extension_api::ThreadLifecycleContributor;
 use codex_extension_api::TokenUsageContributor;
+use codex_extension_api::ToolAdmissionContributor;
+use codex_extension_api::ToolAdmissionInput;
 use codex_extension_api::ToolCall;
 use codex_extension_api::ToolContributor;
 use codex_extension_api::ToolExecutor;
@@ -179,6 +181,15 @@ impl ToolContributor for AllContributors {
 
 impl ToolLifecycleContributor for AllContributors {}
 
+impl ToolAdmissionContributor for AllContributors {
+    fn admit<'a>(
+        &'a self,
+        _input: ToolAdmissionInput<'a>,
+    ) -> ExtensionFuture<'a, Result<(), String>> {
+        Box::pin(std::future::ready(Ok(())))
+    }
+}
+
 impl TurnItemContributor for AllContributors {
     fn contribute<'a>(
         &'a self,
@@ -226,10 +237,11 @@ async fn build_round_trips_every_contributor_category() {
     builder.prompt_contributor(contributor.clone());
     builder.turn_input_contributor(contributor.clone());
     builder.tool_contributor(contributor.clone());
+    builder.tool_admission_contributor(contributor.clone());
     builder.tool_lifecycle_contributor(contributor.clone());
     builder.turn_item_contributor(contributor.clone());
     builder.approval_review_contributor(contributor);
-    let registry = builder.build();
+    let registry = builder.build().to_builder().build();
 
     assert_eq!(registry.thread_lifecycle_contributors().len(), 1);
     assert_eq!(registry.turn_lifecycle_contributors().len(), 1);
@@ -239,6 +251,7 @@ async fn build_round_trips_every_contributor_category() {
     assert_eq!(registry.context_contributors().len(), 1);
     assert_eq!(registry.turn_input_contributors().len(), 1);
     assert_eq!(registry.tool_contributors().len(), 1);
+    assert_eq!(registry.tool_admission_contributors().len(), 1);
     assert_eq!(registry.tool_lifecycle_contributors().len(), 1);
     assert_eq!(registry.turn_item_contributors().len(), 1);
     let thread_store = ExtensionData::new("thread");

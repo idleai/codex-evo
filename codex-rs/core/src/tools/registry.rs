@@ -13,6 +13,7 @@ use crate::memory_usage::emit_metric_for_tool_read;
 use crate::memory_usage::shell_script_for_invocation;
 use crate::session::session::Session;
 use crate::session::turn_context::TurnContext;
+use crate::tools::admission::admit_tool_call;
 use crate::tools::context::FunctionToolOutput;
 use crate::tools::context::ToolCallState;
 use crate::tools::context::ToolInvocation;
@@ -751,6 +752,25 @@ impl ToolRegistry {
                     updated_input: None,
                 } => {}
             }
+        }
+
+        if let Err(message) = admit_tool_call(&invocation)
+            .or_cancel_tool(&cancellation_token)
+            .await?
+        {
+            if tool.is_builtin_control_tool() {
+                let mut analytics = ControlToolCallGuard::new(&invocation);
+                analytics.finish(ControlToolCallStatus::Rejected);
+            }
+            let err = FunctionCallError::RespondToModel(message);
+            dispatch_trace.record_failed(&err);
+            notify_tool_finish_if_unclaimed(
+                &invocation,
+                call_state.as_deref(),
+                ToolCallOutcome::Blocked,
+            )
+            .await;
+            return Err(err);
         }
 
         if tool.mcp_server_name().is_none() {
