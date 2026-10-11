@@ -322,12 +322,13 @@ impl MessageProcessor {
             ),
         );
         let goal_service = Arc::new(GoalService::new());
+        let turn_admission = TurnAdmission::default();
+        let turn_start_admission: Arc<dyn TurnStartAdmission> = Arc::new(turn_admission.clone());
         let idle_runtime = Arc::new(crate::idle_runtime::IdleRuntime::new(
             &config.codex_home,
             installation_id.clone(),
+            Some(Arc::clone(&turn_start_admission)),
         ));
-        let turn_admission = TurnAdmission::default();
-        let turn_start_admission: Arc<dyn TurnStartAdmission> = Arc::new(turn_admission.clone());
         let extension_event_sink =
             app_server_extension_event_sink(outgoing.clone(), thread_state_manager.clone());
         let mut queue_service = None;
@@ -529,7 +530,9 @@ impl MessageProcessor {
             Arc::clone(&skills_watcher),
             turn_cost_worker.as_ref().map(TurnCostWorker::handle),
             config_warnings,
+            Arc::clone(&idle_runtime),
         );
+        idle_runtime.monitor_runners(Arc::downgrade(&thread_manager));
         let turn_processor = TurnRequestProcessor::new(
             auth_manager,
             Arc::clone(&thread_manager),
