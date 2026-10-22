@@ -1,5 +1,10 @@
 # Workflow Strategy
 
+This fork uses standard GitHub-hosted Linux, Windows and macOS runners for
+required checks. Both macOS architectures retain test coverage. Cold builds have
+a 90-minute job budget, and `idle-base` receives the same required checks on push.
+The fork does not require an organization runner group or paid macOS runners.
+
 The workflows in this directory are split so that pull requests get fast, review-friendly signal while `main` still gets the full cross-platform verification pass.
 
 ## Pull Requests
