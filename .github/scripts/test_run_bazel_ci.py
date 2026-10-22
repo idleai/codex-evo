@@ -42,13 +42,13 @@ class WindowsLocalFallbackTest(unittest.TestCase):
                         check=True,
                     )
                     args = result.stdout.splitlines()
-                    self.assertIn("--host_platform=//:local_windows_msvc", args)
+                    self.assertIn("--host_platform=//:local_windows", args)
                     self.assertEqual(
                         [arg for arg in args if arg.startswith("--platforms=")],
                         override or ["--platforms=//:windows_x86_64_gnullvm"],
                     )
                     self.assertIn(
-                        "--extra_toolchains=//:windows_gnullvm_tests_on_msvc_host_toolchain",
+                        "--extra_toolchains=//:windows_gnullvm_test_toolchain,//:windows_gnullvm_tests_on_msvc_host_toolchain",
                         args,
                     )
                     self.assertNotIn("--host_platform=//:rbe", args)

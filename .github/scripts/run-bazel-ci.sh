@@ -259,7 +259,6 @@ if [[ "${RUNNER_OS:-}" == "Windows" && $windows_cross_compile -eq 1 && -z "${BUI
   # Windows cross-compilation depends on authenticated RBE. Preserve the local
   # Windows build shape when credentials are unavailable.
   ci_config=ci-windows
-  windows_msvc_host_platform=1
 fi
 
 post_config_bazel_args=()
@@ -300,22 +299,26 @@ if [[ "${RUNNER_OS:-}" == "Windows" && $windows_cross_compile -eq 1 && -n "${BUI
 fi
 
 if [[ "${RUNNER_OS:-}" == "Windows" && $windows_cross_compile -eq 1 && -z "${BUILDBUDDY_API_KEY:-}" ]]; then
-  # The remote config also selects the GNU target. Keep that target when
-  # building locally, with native MSVC tools for build scripts and tests.
-  # Otherwise the fallback changes the target to MSVC and pulls in a different
-  # native audio toolchain.
+  # Keep host proc-macros and target crates on the GNU ABI used by hermetic
+  # LLVM and AWS-LC. Mixing an MSVC host with GNU C libraries fails to link.
+  has_host_platform_override=0
   has_target_platform_override=0
-  for arg in "${bazel_args[@]}"; do
+  for arg in "${bazel_args[@]}" "${post_config_bazel_args[@]}"; do
+    if [[ "$arg" == --host_platform=* ]]; then
+      has_host_platform_override=1
+    fi
     if [[ "$arg" == --platforms=* ]]; then
       has_target_platform_override=1
-      break
     fi
   done
+  if [[ $has_host_platform_override -eq 0 ]]; then
+    post_config_bazel_args+=(--host_platform=//:local_windows)
+  fi
   if [[ $has_target_platform_override -eq 0 ]]; then
     post_config_bazel_args+=(--platforms=//:windows_x86_64_gnullvm)
   fi
   post_config_bazel_args+=(
-    --extra_toolchains=//:windows_gnullvm_tests_on_msvc_host_toolchain
+    --extra_toolchains=//:windows_gnullvm_test_toolchain,//:windows_gnullvm_tests_on_msvc_host_toolchain
     --jobs=8
   )
 fi
