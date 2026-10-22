@@ -70,14 +70,19 @@ feature-depth = 1
 # A list of advisory IDs to ignore. Note that ignored advisories will still
 # output a note when they are encountered.
 ignore = [
-    # Reviewed 2026-07-02. Keep this list in sync with .cargo/audit.toml.
+    # Maintenance notices only; security fixes are installed in Cargo.lock.
+    { id = "RUSTSEC-2026-0374", reason = "basic-toml is unmaintained; used only at build time by i18n-config 0.4.8 through age/i18n-embed; remove when cargo-i18n releases a maintained parser dependency" },
+    { id = "RUSTSEC-2024-0449", reason = "unsafe-libyaml is unmaintained; used by serde_yaml 0.9 for skill and plugin metadata and agent migration; remove after migration to a maintained YAML parser" },
+    { id = "RUSTSEC-2026-0371", reason = "zbus_names is now part of zbus 6; retained through zbus 4 by keyring 3.6 and TUI notifications; remove after the coordinated keyring and zbus migration" },
+    { id = "RUSTSEC-2026-0370", reason = "zvariant is now part of zbus 6; retained through zbus 4 by keyring 3.6 and TUI notifications; remove after the coordinated keyring and zbus migration" },
+    { id = "RUSTSEC-2026-0372", reason = "zvariant_derive is now part of zbus 6; retained through zbus 4 by keyring 3.6 and TUI notifications; remove after the coordinated keyring and zbus migration" },
+    # Reviewed 2026-10-22. Keep this list in sync with .cargo/audit.toml.
     # Each exception must identify the dependency path and removal condition.
     { id = "RUSTSEC-2024-0388", reason = "derivative is unmaintained; pulled in via starlark/starlark_syntax v0.14.2 used by execpolicy/cli/core; no fixed starlark release yet" },
     { id = "RUSTSEC-2025-0057", reason = "fxhash is unmaintained; pulled in via starlark_map under starlark v0.14.2 used by execpolicy/cli/core and bm25 used by core; remove when upstream dependencies drop fxhash" },
     { id = "RUSTSEC-2024-0436", reason = "paste is unmaintained; pulled in via starlark/v8 used by execpolicy/code-mode; no fixed release yet" },
     { id = "RUSTSEC-2023-0089", reason = "atomic-polyfill is unmaintained; pulled in via postcard/heapless/pagable under starlark v0.14.2 used by execpolicy/cli/core; no fixed starlark release yet" },
     # TODO(fcoury): remove this exception when syntect drops yaml-rust and bincode, or updates to versions that have fixed the vulnerabilities.
-    { id = "RUSTSEC-2024-0320", reason = "yaml-rust is unmaintained; pulled in via syntect v5.3.0 used by codex-tui for syntax highlighting; no fixed release yet" },
     { id = "RUSTSEC-2025-0141", reason = "bincode is unmaintained; pulled in via syntect v5.3.0 used by codex-tui for syntax highlighting; no fixed release yet" },
     { id = "RUSTSEC-2026-0118", reason = "hickory-proto v0.25.2 is pulled in via rama-dns/rama-tcp used by codex-network-proxy; DNSSEC features are not enabled; remove when rama updates to hickory 0.26.1 or hickory-net" },
     { id = "RUSTSEC-2026-0119", reason = "hickory-proto v0.25.2 is pulled in via rama-dns/rama-tcp used by codex-network-proxy; no fixed rama release is available yet; remove when rama updates to hickory 0.26.1 or hickory-net" },
