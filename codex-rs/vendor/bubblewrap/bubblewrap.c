@@ -1416,7 +1416,23 @@ setup_newroot (bool unshare_pid,
 
           /* /dev/fd and /dev/core - legacy, but both nspawn and docker do these */
           { cleanup_free char *dev_fd = strconcat (dest, "/fd");
-            if (symlink ("/proc/self/fd", dev_fd) < 0)
+            cleanup_free char *fd_dest = strconcat (op->dest, "/fd");
+            bool fd_is_masked = false;
+            SetupOp *later;
+
+            /* An explicit mask needs a directory mount point. The absolute
+             * procfs symlink cannot be followed while newroot is being built,
+             * and masking the setup process's proc fd directory would not
+             * hide the command's descriptors after it starts. */
+            for (later = op->next; later != NULL; later = later->next)
+              if (later->type == SETUP_MOUNT_TMPFS &&
+                  strcmp (later->dest, fd_dest) == 0)
+                {
+                  fd_is_masked = true;
+                  break;
+                }
+
+            if (!fd_is_masked && symlink ("/proc/self/fd", dev_fd) < 0)
               die_with_error ("Can't create symlink %s", dev_fd);
           }
           { cleanup_free char *dev_core = strconcat (dest, "/core");
