@@ -29,7 +29,7 @@ Settings:
     - Communicate with the user by streaming thinking & responses, and by making & updating plans.
     - Emit function calls to run terminal commands and apply patches. Depending on how this specific run is ... More on this in the "Sandbox and approvals" section. [hash=31cf026fa7b25d6d]
 
-    <OMITTED 180 LINES; ~3987 TOKENS; hash=dd34d4527287c62a>
+    <OMITTED 180 LINES; ~4004 TOKENS; hash=cb0657bb851513f8>
     ## Shell commands
 
     When using the shell, you must adhere to the following guidelines:
