@@ -248,8 +248,8 @@ jobs:
 
   test-windows-native-main:
     # Native Windows Bazel tests are slower and frequently approach the
-    # PR budget. Run this additional native check on integration branch pushes.
-    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/idle-base')
+    # PR budget. Keep this additional native check on main, as before.
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     timeout-minutes: 90
     runs-on: windows-2025
     name: Bazel test on windows-2025 for x86_64-pc-windows-msvc (native main)
