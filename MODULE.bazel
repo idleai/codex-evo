@@ -255,6 +255,7 @@ nightly_rust.repository_set(
         "@platforms//os:windows",
         "@llvm//constraints/windows/abi:msvc",
     ],
+    target_settings = ["@rules_rust//rust/toolchain/channel:nightly"],
     target_triple = "x86_64-pc-windows-msvc",
     versions = ["nightly/2026-08-20"],
 )
@@ -290,6 +291,7 @@ nightly_rust.repository_set(
         "@llvm//constraints/windows/abi:gnullvm",
         "@llvm//constraints/windows/crt:msvcrt",
     ],
+    target_settings = ["@rules_rust//rust/toolchain/channel:nightly"],
     target_triple = "x86_64-pc-windows-gnullvm",
     versions = ["nightly/2026-08-20"],
 )
@@ -312,6 +314,7 @@ nightly_rust.repository_set(
         "@llvm//constraints/windows/abi:gnullvm",
         "@llvm//constraints/windows/crt:msvcrt",
     ],
+    target_settings = ["@rules_rust//rust/toolchain/channel:stable"],
     target_triple = "x86_64-pc-windows-gnullvm",
     versions = ["1.95.0"],
 )
