@@ -300,10 +300,24 @@ if [[ "${RUNNER_OS:-}" == "Windows" && $windows_cross_compile -eq 1 && -n "${BUI
 fi
 
 if [[ "${RUNNER_OS:-}" == "Windows" && $windows_cross_compile -eq 1 && -z "${BUILDBUDDY_API_KEY:-}" ]]; then
-  # The Windows cross-compile config depends on authenticated remote
-  # execution. When credentials are unavailable, keep the local build shape
-  # and its lower concurrency cap.
-  post_config_bazel_args+=(--jobs=8)
+  # The remote config also selects the GNU target. Keep that target when
+  # building locally, with native MSVC tools for build scripts and tests.
+  # Otherwise the fallback changes the target to MSVC and pulls in a different
+  # native audio toolchain.
+  has_target_platform_override=0
+  for arg in "${bazel_args[@]}"; do
+    if [[ "$arg" == --platforms=* ]]; then
+      has_target_platform_override=1
+      break
+    fi
+  done
+  if [[ $has_target_platform_override -eq 0 ]]; then
+    post_config_bazel_args+=(--platforms=//:windows_x86_64_gnullvm)
+  fi
+  post_config_bazel_args+=(
+    --extra_toolchains=//:windows_gnullvm_tests_on_msvc_host_toolchain
+    --jobs=8
+  )
 fi
 
 if [[ -n "${BAZEL_REPO_CONTENTS_CACHE:-}" ]]; then
