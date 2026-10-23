@@ -65,7 +65,7 @@ public static class FixtureAclCheck {
         } finally { Marshal.FreeHGlobal(buffer); }
     }
 
-    public static void Run(string root, uint flags, bool includeUser, bool includeEveryone, bool worldFullControl) {
+    public static void Run(string root, uint flags, bool includeUser, bool includeLogon, bool includeEveryone, bool worldFullControl) {
         Directory.CreateDirectory(root);
         try {
             using (var identity = WindowsIdentity.GetCurrent()) {
@@ -85,6 +85,7 @@ public static class FixtureAclCheck {
                 }
                 Console.WriteLine("worldFullControl=" + worldFullControl);
                 Console.WriteLine("includeEveryone=" + includeEveryone);
+                Console.WriteLine("includeLogon=" + includeLogon);
                 Console.WriteLine("flags=" + flags);
                 Console.WriteLine("includeUser=" + includeUser);
                 Console.WriteLine("root=" + root);
@@ -121,7 +122,8 @@ public static class FixtureAclCheck {
                 }
                 var logon = LogonSid(identity.AccessToken.DangerousGetHandle());
                 Console.WriteLine("logon=" + logon.Value);
-                var sids = new [] { capability, logon }
+                var sids = new [] { capability }
+                    .Concat(includeLogon ? new [] { logon } : Array.Empty<SecurityIdentifier>())
                     .Concat(includeUser ? new [] { identity.User } : Array.Empty<SecurityIdentifier>())
                     .Concat(includeEveryone ? new [] { everyone } : Array.Empty<SecurityIdentifier>())
                     .ToArray();
@@ -187,9 +189,11 @@ $roots = @(
 foreach ($root in $roots) {
     foreach ($includeUser in @($false, $true)) {
         foreach ($includeEveryone in @($false, $true)) {
-            foreach ($worldFullControl in @($false, $true)) {
-                $fixture = $root + '-' + $includeUser + '-' + $includeEveryone + '-' + $worldFullControl
-                [FixtureAclCheck]::Run($fixture, 0xD, $includeUser, $includeEveryone, $worldFullControl)
+            foreach ($includeLogon in @($false, $true)) {
+                foreach ($worldFullControl in @($false, $true)) {
+                    $fixture = $root + '-' + $includeUser + '-' + $includeLogon + '-' + $includeEveryone + '-' + $worldFullControl
+                    [FixtureAclCheck]::Run($fixture, 0xD, $includeUser, $includeLogon, $includeEveryone, $worldFullControl)
+                }
             }
         }
     }
