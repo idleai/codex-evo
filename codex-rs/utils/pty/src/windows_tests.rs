@@ -376,20 +376,22 @@ async fn conpty_delivers_input_to_foreground_children() -> anyhow::Result<()> {
     let code = format!(
         "print('__CODEX_CHILD_'+'READY__', flush=True); value=input(); print('{VALUE_MARKER}'+value.encode('utf-8').hex(), flush=True)"
     );
+    let fixture = tempfile::tempdir()?;
+    std::fs::write(fixture.path().join("input.py"), code)?;
     let expected = "cafeé 漢字";
     let expected_marker = format!("{VALUE_MARKER}{}", utf8_hex(expected));
     let mut shells = vec![WindowsShell {
         name: "cmd",
         program: std::env::var("COMSPEC").unwrap_or_else(|_| "cmd.exe".to_string()),
         args: vec!["/D".to_string(), "/Q".to_string()],
-        child_command: format!("\"{}\" -u -c \"{code}\"", python.replace('"', "\"\"")),
+        child_command: format!("\"{}\" -u input.py", python.replace('"', "\"\"")),
     }];
     if let Some(program) = find_powershell() {
         shells.push(WindowsShell {
             name: "PowerShell",
             program,
             args: vec!["-NoLogo".to_string(), "-NoProfile".to_string()],
-            child_command: format!("& '{}' -u -c \"{code}\"", python.replace('\'', "''")),
+            child_command: format!("& '{}' -u input.py", python.replace('\'', "''")),
         });
     }
     let env: HashMap<String, String> = std::env::vars().collect();
@@ -398,7 +400,7 @@ async fn conpty_delivers_input_to_foreground_children() -> anyhow::Result<()> {
         let spawned = spawn_pty_process(
             &shell.program,
             &shell.args,
-            Path::new("."),
+            fixture.path(),
             &env,
             /*arg0*/ &None,
             TerminalSize::default(),
