@@ -7,7 +7,7 @@ permissions:
   contents: read
 jobs:
   deletion:
-    name: Check elevated and legacy deletion boundaries
+    name: Check elevated shared-folder deletion boundaries
     runs-on: windows-2025
     timeout-minutes: 60
     steps:
@@ -18,7 +18,7 @@ jobs:
         with:
           target: x86_64-pc-windows-msvc
           cache-scope: windows-deletion-check
-      - name: Run both backend deletion tests
+      - name: Run elevated shared-folder deletion test
         shell: bash
         run: |
           ./.github/scripts/run-bazel-ci.sh \
@@ -31,7 +31,7 @@ jobs:
             --platforms=//:windows_x86_64_msvc \
             --lockfile_mode=error \
             --test_sharding_strategy=disabled \
-            --test_arg=workspace_write_delete_is_limited_to_writable_roots \
+            --test_arg=elevated_workspace_write_delete_is_limited_to_writable_roots_with_shared_acl \
             --test_output=all \
             --test_arg=--test-threads=1 \
             --test_arg=--nocapture \

@@ -1,8 +1,23 @@
 use super::*;
 use pretty_assertions::assert_eq;
+use windows_sys::Win32::Storage::FileSystem::FILE_ALL_ACCESS;
+
+enum OutsideAccess {
+    Inherited,
+    EveryoneFullControl,
+}
 
 #[test]
 fn elevated_workspace_write_delete_is_limited_to_writable_roots() {
+    check_elevated_delete_boundaries(OutsideAccess::Inherited);
+}
+
+#[test]
+fn elevated_workspace_write_delete_is_limited_to_writable_roots_with_shared_acl() {
+    check_elevated_delete_boundaries(OutsideAccess::EveryoneFullControl);
+}
+
+fn check_elevated_delete_boundaries(outside_access: OutsideAccess) {
     let _account_guard =
         WindowsSandboxAccountTestGuard::acquire().expect("lock Windows sandbox test accounts");
     let _guard = legacy_process_test_guard();
@@ -29,6 +44,17 @@ fn elevated_workspace_write_delete_is_limited_to_writable_roots() {
         fs::write(&temp_file, "temp").expect("seed TEMP file");
         fs::write(&tmp_file, "tmp").expect("seed TMP file");
         fs::write(&outside_file, "outside").expect("seed outside file");
+        if let OutsideAccess::EveryoneFullControl = outside_access {
+            unsafe {
+                let mut everyone = crate::token::world_sid().expect("resolve Everyone SID");
+                crate::acl::ensure_allow_mask_aces(
+                    &outside_root,
+                    &[everyone.as_mut_ptr().cast()],
+                    FILE_ALL_ACCESS,
+                )
+                .expect("grant access to shared outside fixture");
+            }
+        }
 
         let script = workspace.join("delete-fixtures.cmd");
         fs::write(
