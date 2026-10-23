@@ -1,0 +1,88 @@
+name: Check Linux and Wine test fixtures
+
+on:
+  push:
+    branches: [evo2/linux-fixtures-check]
+
+permissions:
+  contents: read
+
+jobs:
+  fixtures:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 100
+    strategy:
+      fail-fast: false
+      matrix:
+        target: [x86_64-unknown-linux-gnu, x86_64-unknown-linux-musl]
+    environment:
+      name: bazel
+      deployment: false
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/prepare-bazel-ci
+        with:
+          target: ${{ matrix.target }}
+          cache-scope: bazel-test
+      - name: Check core test helper declarations
+        shell: bash
+        env:
+          BUILDBUDDY_API_KEY: ${{ secrets.BUILDBUDDY_API_KEY }}
+          TEST_TARGET: ${{ matrix.target }}
+        run: |
+          target_args=()
+          if [[ "$TEST_TARGET" == *musl ]]; then
+            target_args+=(--platforms=@rules_rs//rs/platforms:x86_64-unknown-linux-musl --extra_toolchains=//:linux_musl_tests_on_gnu_host_toolchain)
+          fi
+          ./.github/scripts/run-bazel-ci.sh \
+            --print-failed-action-summary --print-failed-test-logs --remote-download-toplevel -- \
+            test --lockfile_mode=error --test_sharding_strategy=disabled \
+            --flaky_test_attempts=1 --test_output=errors "${target_args[@]}" -- \
+            //codex-rs/ext/guardian-v2:guardian-v2-unit-tests \
+            //codex-rs/ext/mcp:mcp-unit-tests \
+            //codex-rs/memories/write:write-unit-tests \
+            //codex-rs/ext/history-notes:history-notes-image_model_input-test \
+            //codex-rs/ext/queue:queue-queue_service-test \
+            //codex-rs/ext/agent:agent-agent_service-test
+      - name: Check runner commands from the installed package layout
+        if: always() && !cancelled()
+        shell: bash
+        env:
+          BUILDBUDDY_API_KEY: ${{ secrets.BUILDBUDDY_API_KEY }}
+          TEST_TARGET: ${{ matrix.target }}
+        run: |
+          target_args=()
+          if [[ "$TEST_TARGET" == *musl ]]; then
+            target_args+=(--platforms=@rules_rs//rs/platforms:x86_64-unknown-linux-musl --extra_toolchains=//:linux_musl_tests_on_gnu_host_toolchain)
+          fi
+          ./.github/scripts/run-bazel-ci.sh \
+            --print-failed-action-summary --print-failed-test-logs --remote-download-toplevel -- \
+            test --lockfile_mode=error --test_sharding_strategy=disabled \
+            --flaky_test_attempts=1 --test_output=all --test_arg=idle_runner \
+            --test_arg=--test-threads=4 "${target_args[@]}" -- \
+            //codex-rs/app-server:app-server-all-test
+      - name: Inspect release cleanup under the complete unit suite
+        if: always() && !cancelled() && matrix.target == 'x86_64-unknown-linux-gnu'
+        shell: bash
+        env:
+          BUILDBUDDY_API_KEY: ${{ secrets.BUILDBUDDY_API_KEY }}
+        run: |
+          ./.github/scripts/run-bazel-ci.sh \
+            --print-failed-action-summary --print-failed-test-logs --remote-download-toplevel -- \
+            test --lockfile_mode=error --runs_per_test=10 --flaky_test_attempts=1 \
+            --test_output=all --test_arg=--nocapture -- \
+            //codex-rs/app-server-daemon:app-server-daemon-unit-tests
+      - name: Inspect the Windows executor approval and sandbox setup
+        if: always() && !cancelled() && matrix.target == 'x86_64-unknown-linux-gnu'
+        shell: bash
+        env:
+          BUILDBUDDY_API_KEY: ${{ secrets.BUILDBUDDY_API_KEY }}
+        run: |
+          ./.github/scripts/run-bazel-ci.sh \
+            --print-failed-action-summary --print-failed-test-logs --remote-download-toplevel -- \
+            test --lockfile_mode=error --test_sharding_strategy=disabled \
+            --flaky_test_attempts=1 --test_output=all --test_arg=frozen_execution \
+            --test_arg=--nocapture -- \
+            //codex-rs/core:core-all-wine-exec-test

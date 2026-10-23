@@ -122,6 +122,7 @@ async fn execution_permission_ceiling(execution: Execution, approval: Approval) 
         .await
         {
             EventMsg::ExecApprovalRequest(request) => {
+                eprintln!("FROZEN EXEC APPROVAL: {request:?}");
                 approvals += 1;
                 assert!(approvals <= 2, "unexpected approval loop");
                 agent
@@ -137,6 +138,10 @@ async fn execution_permission_ceiling(execution: Execution, approval: Approval) 
             _ => unreachable!("event filter"),
         }
     }
+    eprintln!(
+        "FROZEN EXEC OUTPUT: {}",
+        requests.requests()[1].function_call_output("write")
+    );
     assert_eq!(approvals, usize::from(matches!(approval, Approval::Prompt)));
     let output = requests.requests()[1]
         .function_call_output("write")
