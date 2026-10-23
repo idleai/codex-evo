@@ -5606,7 +5606,12 @@ impl ThreadRequestProcessor {
             // Derive a Config using the same logic as new conversation, honoring overrides if provided.
             let config = self
                 .config_manager
-                .load_for_cwd_with_profile(request_overrides, typesafe_overrides, history_cwd, profile)
+                .load_for_cwd_with_profile(
+                    request_overrides,
+                    typesafe_overrides,
+                    history_cwd,
+                    profile,
+                )
                 .await
                 .map_err(|err| config_load_error(&err))?;
             StartThreadOptions {

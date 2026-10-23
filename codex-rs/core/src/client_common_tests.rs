@@ -132,6 +132,8 @@ fn rewrites_codex_agent_messages_as_user_messages() {
     assert_eq!(
         input,
         vec![ResponseItem::Message {
+            encrypted_content: None,
+            status: None,
             id: None,
             role: "user".to_string(),
             content: vec![

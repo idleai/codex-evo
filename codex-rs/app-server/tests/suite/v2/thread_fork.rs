@@ -374,6 +374,8 @@ stream_max_retries = 0
         &source_path,
         &RolloutItem::ResponseItem(
             ResponseItem::FunctionCall {
+                encrypted_content: None,
+                status: None,
                 id: None,
                 name: "web_search".to_string(),
                 namespace: None,
@@ -391,9 +393,13 @@ stream_max_retries = 0
         &RolloutItem::ResponseItem(
             ResponseItem::Message {
                 id: None,
+                encrypted_content: None,
+                status: None,
                 role: "assistant".to_string(),
                 content: vec![ContentItem::OutputText {
                     text: "Keep this assistant message".to_string(),
+                    annotations: None,
+                    logprobs: None,
                 }],
                 phase: None,
                 internal_chat_message_metadata_passthrough: None,
@@ -406,6 +412,7 @@ stream_max_retries = 0
         &source_path,
         &RolloutItem::EventMsg(EventMsg::TurnComplete(TurnCompleteEvent {
             turn_id: "source-turn".to_string(),
+            root_turn_id: None,
             last_agent_message: None,
             error: None,
             started_at: None,

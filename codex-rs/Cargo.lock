@@ -3782,7 +3782,7 @@ name = "codex-idle-runtime"
 version = "0.0.0"
 dependencies = [
  "anyhow",
- "constant_time_eq",
+ "constant_time_eq 0.3.1",
  "pretty_assertions",
  "serde",
  "serde_json",

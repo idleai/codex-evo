@@ -11,6 +11,8 @@ fn message(role: &str, text: &str) -> RolloutItem {
     let content = if role == "assistant" {
         ContentItem::OutputText {
             text: text.to_string(),
+            annotations: Some(Vec::new()),
+            logprobs: Some(Vec::new()),
         }
     } else {
         ContentItem::InputText {
@@ -18,6 +20,8 @@ fn message(role: &str, text: &str) -> RolloutItem {
         }
     };
     response_item(ResponseItem::Message {
+        encrypted_content: (role == "assistant").then(|| "provider-only-ciphertext".to_string()),
+        status: (role == "assistant").then(|| "completed".to_string()),
         id: None,
         role: role.to_string(),
         content: vec![content],
@@ -28,7 +32,7 @@ fn message(role: &str, text: &str) -> RolloutItem {
 
 fn turn_started(turn_id: &str) -> RolloutItem {
     RolloutItem::EventMsg(EventMsg::TurnStarted(TurnStartedEvent {
-            turn_attribution: None,
+        turn_attribution: None,
         turn_id: turn_id.to_string(),
         root_turn_id: None,
         trace_id: None,
@@ -40,7 +44,7 @@ fn turn_started(turn_id: &str) -> RolloutItem {
 
 fn turn_completed(turn_id: &str) -> RolloutItem {
     RolloutItem::EventMsg(EventMsg::TurnComplete(TurnCompleteEvent {
-            root_turn_id: None,
+        root_turn_id: None,
         turn_id: turn_id.to_string(),
         last_agent_message: None,
         error: None,
@@ -57,6 +61,8 @@ fn keeps_visible_text_and_drops_provider_specific_items() {
         turn_started("turn-1"),
         message("user", "inspect the repository"),
         response_item(ResponseItem::FunctionCall {
+            encrypted_content: None,
+            status: None,
             id: None,
             name: "web_search".to_string(),
             namespace: None,
@@ -79,12 +85,16 @@ fn keeps_visible_text_and_drops_provider_specific_items() {
                     content,
                     phase,
                     internal_chat_message_metadata_passthrough,
+                    encrypted_content,
+                    status,
                     ..
                 } => Some((
                     role.clone(),
                     content.clone(),
                     phase.clone(),
                     internal_chat_message_metadata_passthrough.clone(),
+                    encrypted_content.clone(),
+                    status.clone(),
                 )),
                 _ => panic!("portable history retained a provider-specific response item"),
             },
@@ -102,12 +112,18 @@ fn keeps_visible_text_and_drops_provider_specific_items() {
                 }],
                 None,
                 None,
+                None,
+                None,
             ),
             (
                 "assistant".to_string(),
                 vec![ContentItem::OutputText {
                     text: "Here is the result.".to_string(),
+                    annotations: None,
+                    logprobs: None,
                 }],
+                None,
+                None,
                 None,
                 None,
             ),
@@ -135,7 +151,7 @@ fn bounds_each_message_without_splitting_utf8() {
             _ => None,
         })
         .map(|content| match content {
-            ContentItem::InputText { text } | ContentItem::OutputText { text } => text,
+            ContentItem::InputText { text } | ContentItem::OutputText { text, .. } => text,
             ContentItem::InputImage { .. } | ContentItem::InputAudio { .. } => {
                 panic!("portable history retained non-text content")
             }
@@ -185,7 +201,7 @@ fn repeated_handoff_keeps_inherited_portable_turns_before_new_native_turns() {
             _ => None,
         })
         .map(|content| match content {
-            ContentItem::InputText { text } | ContentItem::OutputText { text } => text.as_str(),
+            ContentItem::InputText { text } | ContentItem::OutputText { text, .. } => text.as_str(),
             ContentItem::InputImage { .. } | ContentItem::InputAudio { .. } => {
                 panic!("portable history retained non-text content")
             }

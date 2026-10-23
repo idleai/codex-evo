@@ -133,6 +133,8 @@ pub(crate) fn rewrite_codex_agent_messages_as_user_messages(items: &mut [Respons
             })
             .collect();
         *item = ResponseItem::Message {
+            encrypted_content: None,
+            status: None,
             id: None,
             role: "user".to_string(),
             content,

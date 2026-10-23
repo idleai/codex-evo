@@ -143,7 +143,7 @@ fn portable_response_item_turns(items: &[RolloutItem]) -> Vec<PortableTurn> {
                 let text = content
                     .iter()
                     .filter_map(|content| match content {
-                        ContentItem::InputText { text } | ContentItem::OutputText { text }
+                        ContentItem::InputText { text } | ContentItem::OutputText { text, .. }
                             if !text.trim().is_empty() =>
                         {
                             Some(text.as_str())
@@ -301,6 +301,8 @@ fn portable_rollout_items(turn: PortableTurn) -> Vec<RolloutItem> {
             "assistant",
             ContentItem::OutputText {
                 text: assistant_text,
+                annotations: None,
+                logprobs: None,
             },
         ));
     }
@@ -321,6 +323,8 @@ fn portable_rollout_items(turn: PortableTurn) -> Vec<RolloutItem> {
 
 fn message(role: &str, content: ContentItem) -> RolloutItem {
     RolloutItem::ResponseItem(ResponseItemEnvelope::new(ResponseItem::Message {
+        encrypted_content: None,
+        status: None,
         id: None,
         role: role.to_string(),
         content: vec![content],

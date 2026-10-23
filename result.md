@@ -1,6 +1,67 @@
 # Native OpenAI + Direct SGLang DSV4 Handoff: Result
 
-Last updated: 2026-10-08
+Last updated: 2026-10-22
+
+## Upstream refresh: 0.164.0-alpha.12 / idle.1
+
+`idle-base` was rebased with merge history preserved onto OpenAI upstream main
+`e5ea2ed50b3a28092b13a4dd64463748b060b7af`, also the fetched `origin/main`.
+This adds 541 upstream commits since the October 8 baseline. The previous branch
+tip is retained locally at `backup/idle-base-pre-20261022`
+(`e44fecd1def10c5acf134bdc829ad39aefdbdc5c`).
+
+The custom package uses `0.164.0-alpha.12`, the highest release version available
+when this refresh began. Its source is the newer main snapshot above, 45 commits
+beyond the source parent of the official `rust-v0.164.0-alpha.12` release.
+
+The rebase retains the model picker profiles, named/default subagent profiles,
+provider-specific catalogs, portable handoffs, Responses compatibility controls,
+service-tier precedence, and extended Remote pairing timeout. Named profiles now
+flow through upstream's shared subagent spawn path. Provider catalog selection
+retains upstream's originator routing and account-transition refresh behavior.
+Google Cloud and Bedrock retain their upstream capability settings alongside the
+custom compatibility flags.
+
+The newer Idle workspace registry, connection grants, daemon-owned relays, and
+workspace coordination are also retained. Transport connections carry both
+upstream's compression negotiation and the Idle connection origin used for
+authorization. The release requires Rust 1.99.1 and the verified V8 152.2.0 pair.
+
+### Validation and activation
+
+All 1,866 selected tests across thirteen affected crates passed, including the
+complete provider, model catalog, configuration, protocol, daemon, Idle runtime,
+and transport suites. Focused core, app-server, CLI, and TUI coverage includes
+named/default subagent profiles, model-picker routing and cold resume, portable
+handoffs, service-tier precedence, provider compatibility, agent reload, workspace
+authorization and relay ownership, and reconnect behavior. All six restart-helper
+tests passed. The full workspace suite was not run.
+
+The config and experimental app-server schemas were regenerated. The compressed
+API bundle retains the custom profile and portable-history fields and all seven
+Idle RPC methods. Portable handoff now drops the new upstream encrypted response
+metadata, status, text annotations, and log probabilities; its existing regression
+test verifies that only visible text crosses providers.
+
+Scoped `just fix` across the thirteen affected crates passed, with one redundant
+upstream return binding simplified. `just fmt` and the whitespace check against
+upstream passed. Build and test processes disable transparent huge pages only for
+their process tree to avoid host memory-compaction stalls; host settings and
+package launch behavior are unchanged.
+
+The release helper targets
+`${CODEX_HOME:-$HOME/.codex}/packages/standalone/releases/0.164.0-alpha.12-codex-evo-idle.1-20261022-x86_64-unknown-linux-gnu`.
+The current daemon remains on `0.162.0-alpha.20` until the user activates the
+new package. From SSH or a local terminal:
+
+```bash
+"$HOME/repos/codex-evo/restart-custom-codex-daemon.sh" --check
+"$HOME/repos/codex-evo/restart-custom-codex-daemon.sh"
+```
+
+The helper installs and pins the complete daemon package, enables Remote,
+verifies the running version, then selects the standalone CLI. Restarting the
+daemon disconnects the current Remote session.
 
 ## Upstream refresh: 0.162.0-alpha.20 / idle.1
 
