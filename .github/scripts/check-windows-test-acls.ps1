@@ -44,7 +44,7 @@ public static class FixtureAclCheck {
                 }
                 Console.WriteLine("privateAcl=" + privateAcl);
                 Console.WriteLine("root=" + root);
-                Console.WriteLine("root SDDL=" + new DirectoryInfo(root).GetAccessControl().Sddl);
+                Console.WriteLine("root SDDL=" + new DirectoryInfo(root).GetAccessControl().GetSecurityDescriptorSddlForm(AccessControlSections.All));
                 var workspace = Path.Combine(root, "workspace");
                 var outside = Path.Combine(root, "outside");
                 Directory.CreateDirectory(workspace);
@@ -66,7 +66,7 @@ public static class FixtureAclCheck {
                 File.WriteAllText(writableFile, "workspace");
                 File.WriteAllText(outsideFile, "outside");
                 foreach (var path in new [] { workspace, outside, protectedDir }) {
-                    Console.WriteLine(path + " SDDL=" + new DirectoryInfo(path).GetAccessControl().Sddl);
+                    Console.WriteLine(path + " SDDL=" + new DirectoryInfo(path).GetAccessControl().GetSecurityDescriptorSddlForm(AccessControlSections.All));
                 }
                 var sids = new [] { capability, logon, everyone };
                 var entries = new SidAndAttributes[sids.Length];
