@@ -498,13 +498,16 @@ fn unix_sock_body() {
 
 #[tokio::test]
 async fn allow_unix_socketpair_recvfrom() {
-    run_code_under_sandbox(
-        "allow_unix_socketpair_recvfrom",
+    let status = run_code_under_sandbox(
+        "suite::sandbox::allow_unix_socketpair_recvfrom",
         &PermissionProfile::read_only(),
         || async { unix_sock_body() },
     )
     .await
     .expect("should be able to reexec");
+    if let Some(status) = status {
+        assert!(status.success(), "sandbox subprocess failed: {status}");
+    }
 }
 
 const IN_SANDBOX_ENV_VAR: &str = "IN_SANDBOX";

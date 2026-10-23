@@ -1,0 +1,77 @@
+name: Check Linux unit helpers and HTTPS proxy stability
+
+on:
+  push:
+    branches: [evo2/linux-followup-check]
+
+permissions:
+  contents: read
+
+jobs:
+  fixtures:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 100
+    strategy:
+      fail-fast: false
+      matrix:
+        target: [x86_64-unknown-linux-gnu, x86_64-unknown-linux-musl]
+    environment:
+      name: bazel
+      deployment: false
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/prepare-bazel-ci
+        with:
+          target: ${{ matrix.target }}
+          cache-scope: bazel-test
+      - name: Repeat the complete WebSocket unit suite
+        shell: bash
+        env:
+          BUILDBUDDY_API_KEY: ${{ secrets.BUILDBUDDY_API_KEY }}
+          TEST_TARGET: ${{ matrix.target }}
+        run: |
+          target_args=()
+          if [[ "$TEST_TARGET" == *musl ]]; then
+            target_args+=(--platforms=@rules_rs//rs/platforms:x86_64-unknown-linux-musl --extra_toolchains=//:linux_musl_tests_on_gnu_host_toolchain)
+          fi
+          ./.github/scripts/run-bazel-ci.sh \
+            --print-failed-action-summary --print-failed-test-logs --remote-download-toplevel -- \
+            test --lockfile_mode=error --runs_per_test=100 --local_test_jobs=8 \
+            --flaky_test_attempts=1 --test_output=errors "${target_args[@]}" -- \
+            //codex-rs/websocket-client:websocket-client-unit-tests
+      - name: Check the app-server unit test executable layout
+        if: always() && !cancelled()
+        shell: bash
+        env:
+          BUILDBUDDY_API_KEY: ${{ secrets.BUILDBUDDY_API_KEY }}
+          TEST_TARGET: ${{ matrix.target }}
+        run: |
+          target_args=()
+          if [[ "$TEST_TARGET" == *musl ]]; then
+            target_args+=(--platforms=@rules_rs//rs/platforms:x86_64-unknown-linux-musl --extra_toolchains=//:linux_musl_tests_on_gnu_host_toolchain)
+          fi
+          ./.github/scripts/run-bazel-ci.sh \
+            --print-failed-action-summary --print-failed-test-logs --remote-download-toplevel -- \
+            test --lockfile_mode=error --test_sharding_strategy=disabled \
+            --flaky_test_attempts=1 --test_output=all \
+            --test_arg=doctor_uses_loaded_feedback_thread_cwd "${target_args[@]}" -- \
+            //codex-rs/app-server:app-server-unit-tests
+      - name: Check the Unix socket sandbox subprocess
+        if: always() && !cancelled()
+        shell: bash
+        env:
+          BUILDBUDDY_API_KEY: ${{ secrets.BUILDBUDDY_API_KEY }}
+          TEST_TARGET: ${{ matrix.target }}
+        run: |
+          target_args=()
+          if [[ "$TEST_TARGET" == *musl ]]; then
+            target_args+=(--platforms=@rules_rs//rs/platforms:x86_64-unknown-linux-musl --extra_toolchains=//:linux_musl_tests_on_gnu_host_toolchain)
+          fi
+          ./.github/scripts/run-bazel-ci.sh \
+            --print-failed-action-summary --print-failed-test-logs --remote-download-toplevel -- \
+            test --lockfile_mode=error --test_sharding_strategy=disabled \
+            --flaky_test_attempts=1 --test_output=all \
+            --test_arg=allow_unix_socketpair_recvfrom --test_arg=--nocapture "${target_args[@]}" -- \
+            //codex-rs/exec:exec-all-test
