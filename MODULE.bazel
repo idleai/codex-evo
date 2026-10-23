@@ -325,7 +325,7 @@ nightly_rust.repository_set(
     ],
     target_settings = ["@rules_rust//rust/toolchain/channel:stable"],
     target_triple = "x86_64-pc-windows-gnullvm",
-    versions = ["1.95.0"],
+    versions = ["1.99.1"],
 )
 use_repo(nightly_rust, "rust_toolchains")
 
