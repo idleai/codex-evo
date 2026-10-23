@@ -1,6 +1,7 @@
 $ErrorActionPreference = 'Stop'
 $source = @'
 using System;
+using System.Collections.Generic;
 using System.ComponentModel;
 using System.IO;
 using System.Runtime.InteropServices;
@@ -29,6 +30,20 @@ public static class AppContainerCheck {
     }
     [StructLayout(LayoutKind.Sequential)]
     private struct SidAndAttributes { public IntPtr Sid; public uint Attributes; }
+    [DllImport("advapi32.dll", SetLastError = true)]
+    private static extern bool OpenProcessToken(IntPtr process, uint access, out SafeAccessTokenHandle token);
+    [DllImport("kernel32.dll")]
+    private static extern IntPtr GetCurrentProcess();
+    [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+    private static extern IntPtr LoadLibrary(string path);
+    [DllImport("kernel32.dll", CharSet = CharSet.Ansi, ExactSpelling = true)]
+    private static extern IntPtr GetProcAddress(IntPtr module, string name);
+    [DllImport("kernel32.dll")]
+    private static extern bool FreeLibrary(IntPtr module);
+    [UnmanagedFunctionPointer(CallingConvention.Winapi)]
+    private delegate int QuerySupport(out ulong flags);
+    [UnmanagedFunctionPointer(CallingConvention.Winapi)]
+    private delegate int QueryVersion(uint major, out byte available, out uint minor);
     [DllImport("advapi32.dll", SetLastError = true)]
     private static extern bool CreateRestrictedToken(IntPtr existing, uint flags,
         uint disabledCount, IntPtr disabled, uint privilegeCount, IntPtr privileges,
@@ -65,24 +80,26 @@ public static class AppContainerCheck {
     private static extern bool CloseHandle(IntPtr handle);
 
     private static uint Start(IntPtr sid, string application, string command, string cwd, string backend) {
-        IntPtr size = IntPtr.Zero;
-        InitializeProcThreadAttributeList(IntPtr.Zero, 1, 0, ref size);
-        var attributes = Marshal.AllocHGlobal(size);
-        var capabilitySize = Marshal.SizeOf<SecurityCapabilities>();
-        var capabilities = Marshal.AllocHGlobal(capabilitySize);
+        IntPtr attributes = IntPtr.Zero, capabilities = IntPtr.Zero;
         bool initialized = false;
         try {
-            if (!InitializeProcThreadAttributeList(attributes, 1, 0, ref size))
-                throw new Win32Exception(Marshal.GetLastWin32Error(), "initialize attributes");
-            initialized = true;
-            Marshal.StructureToPtr(new SecurityCapabilities { Package = sid }, capabilities, false);
-            if (!UpdateProcThreadAttribute(attributes, 0, new IntPtr(0x20009), capabilities,
-                new IntPtr(capabilitySize), IntPtr.Zero, IntPtr.Zero))
-                throw new Win32Exception(Marshal.GetLastWin32Error(), "set AppContainer identity");
-            var startup = new StartupInfoEx { Attributes = attributes };
+            var startup = new StartupInfoEx();
             startup.Startup.Size = (uint)Marshal.SizeOf<StartupInfoEx>();
             ProcessInfo process;
             if (backend == "appcontainer") {
+                IntPtr size = IntPtr.Zero;
+                InitializeProcThreadAttributeList(IntPtr.Zero, 1, 0, ref size);
+                attributes = Marshal.AllocHGlobal(size);
+                if (!InitializeProcThreadAttributeList(attributes, 1, 0, ref size))
+                    throw new Win32Exception(Marshal.GetLastWin32Error(), "initialize attributes");
+                initialized = true;
+                var capabilitySize = Marshal.SizeOf<SecurityCapabilities>();
+                capabilities = Marshal.AllocHGlobal(capabilitySize);
+                Marshal.StructureToPtr(new SecurityCapabilities { Package = sid }, capabilities, false);
+                if (!UpdateProcThreadAttribute(attributes, 0, new IntPtr(0x20009), capabilities,
+                    new IntPtr(capabilitySize), IntPtr.Zero, IntPtr.Zero))
+                    throw new Win32Exception(Marshal.GetLastWin32Error(), "set AppContainer identity");
+                startup.Attributes = attributes;
                 if (!CreateProcess(application, new StringBuilder(command), IntPtr.Zero, IntPtr.Zero,
                     false, 0x08080000, IntPtr.Zero, cwd, ref startup, out process))
                     throw new Win32Exception(Marshal.GetLastWin32Error(), "launch " + application);
@@ -91,16 +108,34 @@ public static class AppContainerCheck {
                 var bytes = new byte[systemReadSid.BinaryLength];
                 systemReadSid.GetBinaryForm(bytes, 0);
                 var systemRead = Marshal.AllocHGlobal(bytes.Length);
+                IntPtr logon = IntPtr.Zero;
                 try {
                     Marshal.Copy(bytes, 0, systemRead, bytes.Length);
-                    var restrictions = new [] {
+                    var restrictions = new List<SidAndAttributes> {
                         new SidAndAttributes { Sid = sid },
                         new SidAndAttributes { Sid = systemRead }
                     };
-                    using (var identity = WindowsIdentity.GetCurrent(TokenAccessLevels.MaximumAllowed)) {
+                    if (backend == "full-restricted-logon") {
+                        using (var identity = WindowsIdentity.GetCurrent()) {
+                            foreach (SecurityIdentifier group in identity.Groups) {
+                                if (!group.Value.StartsWith("S-1-5-5-")) continue;
+                                var logonBytes = new byte[group.BinaryLength];
+                                group.GetBinaryForm(logonBytes, 0);
+                                logon = Marshal.AllocHGlobal(logonBytes.Length);
+                                Marshal.Copy(logonBytes, 0, logon, logonBytes.Length);
+                                restrictions.Add(new SidAndAttributes { Sid = logon });
+                                break;
+                            }
+                        }
+                        if (logon == IntPtr.Zero) throw new Exception("Missing logon SID");
+                    }
+                    SafeAccessTokenHandle original;
+                    if (!OpenProcessToken(GetCurrentProcess(), 0x000F01FF, out original))
+                        throw new Win32Exception(Marshal.GetLastWin32Error(), "open process token");
+                    using (original) {
                         SafeAccessTokenHandle token;
-                        if (!CreateRestrictedToken(identity.AccessToken.DangerousGetHandle(), 0x5,
-                            0, IntPtr.Zero, 0, IntPtr.Zero, (uint)restrictions.Length, restrictions, out token))
+                        if (!CreateRestrictedToken(original.DangerousGetHandle(), 0x5,
+                            0, IntPtr.Zero, 0, IntPtr.Zero, (uint)restrictions.Count, restrictions.ToArray(), out token))
                             throw new Win32Exception(Marshal.GetLastWin32Error(), "create full restricted token");
                         using (token) {
                             startup.Startup.Size = (uint)Marshal.SizeOf<StartupInfo>();
@@ -110,7 +145,7 @@ public static class AppContainerCheck {
                                 throw new Win32Exception(Marshal.GetLastWin32Error(), "launch full restricted token");
                         }
                     }
-                } finally { Marshal.FreeHGlobal(systemRead); }
+                } finally { Marshal.FreeHGlobal(systemRead); Marshal.FreeHGlobal(logon); }
             }
             try {
                 var wait = WaitForSingleObject(process.Process, 45000);
@@ -130,13 +165,44 @@ public static class AppContainerCheck {
         }
     }
 
+    public static void DescribeKernelSupport() {
+        var module = LoadLibrary(Path.Combine(Environment.SystemDirectory, "processmodel.dll"));
+        Console.WriteLine("PSEC DLL=" + (module != IntPtr.Zero));
+        if (module == IntPtr.Zero) return;
+        try {
+            foreach (var name in new [] { "CreateProcessSecurityEnvironment", "QueryProcessSecurityEnvironmentSupport", "IsProcessSecurityEnvironmentVersionSupported", "CloseProcessSecurityEnvironment" })
+                Console.WriteLine("PSEC EXPORT " + name + "=" + (GetProcAddress(module, name) != IntPtr.Zero));
+            var query = GetProcAddress(module, "QueryProcessSecurityEnvironmentSupport");
+            if (query != IntPtr.Zero) {
+                ulong flags;
+                int status = Marshal.GetDelegateForFunctionPointer<QuerySupport>(query)(out flags);
+                Console.WriteLine("PSEC SUPPORT HRESULT=0x" + status.ToString("X8") + " FLAGS=0x" + flags.ToString("X"));
+            }
+            var version = GetProcAddress(module, "IsProcessSecurityEnvironmentVersionSupported");
+            if (version != IntPtr.Zero) {
+                byte available;
+                uint minor;
+                int status = Marshal.GetDelegateForFunctionPointer<QueryVersion>(version)(1, out available, out minor);
+                Console.WriteLine("PSEC VERSION HRESULT=0x" + status.ToString("X8") + " AVAILABLE=" + available + " MINOR=" + minor);
+            }
+        } finally { FreeLibrary(module); }
+    }
+
     public static void Run(string root, string shell, string shellName, string backend) {
         string profile = "CodexDeletionProbe" + Guid.NewGuid().ToString("N");
         IntPtr sid = IntPtr.Zero;
         Directory.CreateDirectory(root);
         try {
-            int result = CreateAppContainerProfile(profile, profile, "Temporary sandbox check", IntPtr.Zero, 0, out sid);
-            if (result < 0) Marshal.ThrowExceptionForHR(result);
+            if (backend == "appcontainer") {
+                int result = CreateAppContainerProfile(profile, profile, "Temporary sandbox check", IntPtr.Zero, 0, out sid);
+                if (result < 0) Marshal.ThrowExceptionForHR(result);
+            } else {
+                var unique = new SecurityIdentifier("S-1-5-21-10-20-30-" + BitConverter.ToUInt32(Guid.NewGuid().ToByteArray(), 0));
+                var bytes = new byte[unique.BinaryLength];
+                unique.GetBinaryForm(bytes, 0);
+                sid = Marshal.AllocHGlobal(bytes.Length);
+                Marshal.Copy(bytes, 0, sid, bytes.Length);
+            }
             var package = new SecurityIdentifier(sid);
             var inheritance = InheritanceFlags.ContainerInherit | InheritanceFlags.ObjectInherit;
             var acl = new DirectorySecurity();
@@ -164,12 +230,13 @@ public static class AppContainerCheck {
             string writableFile = Path.Combine(workspace, "delete.txt"), outsideFile = Path.Combine(outside, "delete.txt");
             File.WriteAllText(writableFile, "workspace");
             File.WriteAllText(outsideFile, "outside");
-            File.WriteAllText(Path.Combine(root, "read.txt"), "private read succeeded");
+            string readFile = Path.Combine(root, "read.txt");
+            File.WriteAllText(readFile, "private read succeeded");
             string script = Path.Combine(root, shellName == "cmd" ? "probe.cmd" : "probe.ps1");
             if (shellName == "cmd") {
-                File.WriteAllText(script, "@echo off\r\ntype ..\\read.txt\r\necho wrote>delete.txt\r\ndel delete.txt\r\ndel ..\\outside\\delete.txt\r\nrmdir .git\r\ncmd /d /c echo child process succeeded\r\necho shell succeeded\r\n");
+                File.WriteAllText(script, "@echo off\r\necho CWD=%CD%\r\ntype \"" + readFile + "\"\r\necho WRITE\r\necho wrote>\"" + writableFile + "\"\r\ntype \"" + writableFile + "\"\r\necho DELETE-ALLOWED\r\ndel \"" + writableFile + "\"\r\necho DELETE-OUTSIDE\r\ndel \"" + outsideFile + "\"\r\necho DELETE-PROTECTED\r\nrmdir \"" + protectedDir + "\"\r\ncmd /d /c echo child process succeeded\r\necho shell succeeded\r\n");
             } else {
-                File.WriteAllText(script, "$ErrorActionPreference='Continue'\nGet-Content ../read.txt\n[IO.File]::WriteAllText((Join-Path (Get-Location) 'delete.txt'), 'wrote')\n[IO.File]::Delete((Join-Path (Get-Location) 'delete.txt'))\ntry { [IO.File]::Delete((Join-Path (Get-Location) '../outside/delete.txt')) } catch { Write-Output $_.Exception.Message }\ntry { [IO.Directory]::Delete((Join-Path (Get-Location) '.git')) } catch { Write-Output $_.Exception.Message }\n& cmd.exe /d /c 'echo child process succeeded'\nWrite-Output 'shell succeeded'\n");
+                File.WriteAllText(script, "$ErrorActionPreference='Continue'\nWrite-Output ('CWD=' + (Get-Location))\n[IO.File]::ReadAllText('" + readFile.Replace("'", "''") + "')\nWrite-Output 'WRITE'\n[IO.File]::WriteAllText('" + writableFile.Replace("'", "''") + "', 'wrote')\n[IO.File]::ReadAllText('" + writableFile.Replace("'", "''") + "')\nWrite-Output 'DELETE-ALLOWED'\ntry { [IO.File]::Delete('" + writableFile.Replace("'", "''") + "') } catch { Write-Output $_.Exception.Message }\nWrite-Output 'DELETE-OUTSIDE'\ntry { [IO.File]::Delete('" + outsideFile.Replace("'", "''") + "') } catch { Write-Output $_.Exception.Message }\nWrite-Output 'DELETE-PROTECTED'\ntry { [IO.Directory]::Delete('" + protectedDir.Replace("'", "''") + "') } catch { Write-Output $_.Exception.Message }\n& cmd.exe /d /c 'echo child process succeeded'\nWrite-Output 'shell succeeded'\n");
             }
             string output = Path.Combine(workspace, "output.txt");
             string inner = shellName == "cmd" ? "\"" + script + "\"" : "\"" + shell + "\" -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File \"" + script + "\"";
@@ -179,23 +246,27 @@ public static class AppContainerCheck {
             Console.WriteLine("BACKEND=" + backend + " SHELL=" + shellName + " EXIT=" + exit + "\n" + log);
             bool writableDeleted = !File.Exists(writableFile), outsideKept = File.Exists(outsideFile), protectedKept = Directory.Exists(protectedDir);
             Console.WriteLine("RESULT writableDeleted=" + writableDeleted + " outsideKept=" + outsideKept + " protectedKept=" + protectedKept);
-            if (exit != 0 || !log.Contains("private read succeeded") || !log.Contains("child process succeeded") || !log.Contains("shell succeeded") || !writableDeleted || !outsideKept || !protectedKept)
+            if (exit != 0 || !log.Contains("private read succeeded") || !log.Contains("wrote") || !log.Contains("child process succeeded") || !log.Contains("shell succeeded") || !writableDeleted || !outsideKept || !protectedKept)
                 throw new Exception(backend + " compatibility or deletion boundary check failed for " + shellName);
         } finally {
-            if (sid != IntPtr.Zero) { FreeSid(sid); DeleteAppContainerProfile(profile); }
+            if (sid != IntPtr.Zero) {
+                if (backend == "appcontainer") { FreeSid(sid); DeleteAppContainerProfile(profile); }
+                else Marshal.FreeHGlobal(sid);
+            }
             Directory.Delete(root, true);
         }
     }
 }
 '@
 Add-Type -TypeDefinition $source
+[AppContainerCheck]::DescribeKernelSupport()
 $failed = $false
 $shells = @{
     cmd = (Join-Path $env:SystemRoot 'System32/cmd.exe')
     powershell = (Join-Path $env:SystemRoot 'System32/WindowsPowerShell/v1.0/powershell.exe')
     pwsh = (Get-Command pwsh).Source
 }
-foreach ($backend in @('appcontainer', 'full-restricted')) {
+foreach ($backend in @('appcontainer', 'full-restricted', 'full-restricted-logon')) {
     foreach ($entry in $shells.GetEnumerator()) {
         $root = Join-Path $env:GITHUB_WORKSPACE ('appcontainer-' + [Guid]::NewGuid().ToString('N'))
         Write-Host "CHECK backend=$backend shell=$($entry.Key)"
