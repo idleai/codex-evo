@@ -36,6 +36,26 @@ public static class AppContainerCheck {
     private struct Luid { public uint Low; public int High; }
     [StructLayout(LayoutKind.Sequential)]
     private struct TokenPrivileges { public uint Count; public Luid Luid; public uint Attributes; }
+    [StructLayout(LayoutKind.Sequential)]
+    private struct UnicodeString { public ushort Length, MaximumLength; public IntPtr Buffer; }
+    [StructLayout(LayoutKind.Sequential)]
+    private struct ObjectAttributes {
+        public uint Length;
+        public IntPtr Root, Name;
+        public uint Attributes;
+        public IntPtr SecurityDescriptor, SecurityQualityOfService;
+    }
+    [StructLayout(LayoutKind.Sequential)]
+    private struct IoStatus { public IntPtr Status; public UIntPtr Information; }
+    [DllImport("ntdll.dll")]
+    private static extern int NtOpenFile(out IntPtr handle, uint access,
+        ref ObjectAttributes attributes, out IoStatus status, uint share, uint options);
+    [DllImport("ntdll.dll")]
+    private static extern int NtOpenDirectoryObject(out IntPtr handle, uint access,
+        ref ObjectAttributes attributes);
+    [DllImport("ntdll.dll")]
+    private static extern int NtQuerySecurityObject(IntPtr handle, uint information,
+        [Out] byte[] buffer, uint size, out uint needed);
     [DllImport("advapi32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
     private static extern bool LookupPrivilegeValue(string system, string name, out Luid luid);
     [DllImport("advapi32.dll", SetLastError = true)]
@@ -108,6 +128,46 @@ public static class AppContainerCheck {
             if (groups.Count != 1) throw new Exception("Expected one native logon SID");
             return new SecurityIdentifier(groups.First.Sid);
         } finally { Marshal.FreeHGlobal(buffer); }
+    }
+
+    private static void InspectSystemObject(string path, uint access, bool directory, bool describeAcl) {
+        var buffer = Marshal.StringToHGlobalUni(path);
+        var name = Marshal.AllocHGlobal(Marshal.SizeOf<UnicodeString>());
+        IntPtr handle = IntPtr.Zero;
+        try {
+            Marshal.StructureToPtr(new UnicodeString {
+                Length = (ushort)(path.Length * 2), MaximumLength = (ushort)((path.Length + 1) * 2), Buffer = buffer
+            }, name, false);
+            var attributes = new ObjectAttributes {
+                Length = (uint)Marshal.SizeOf<ObjectAttributes>(), Name = name, Attributes = 0x40
+            };
+            IoStatus io;
+            int status = directory ? NtOpenDirectoryObject(out handle, access, ref attributes)
+                : NtOpenFile(out handle, access, ref attributes, out io, 7, 0);
+            Console.WriteLine("OBJECT " + path + " ACCESS=0x" + access.ToString("X8") + " STATUS=0x" + status.ToString("X8"));
+            if (status < 0 || !describeAcl) return;
+            uint needed;
+            NtQuerySecurityObject(handle, 4, null, 0, out needed);
+            if (needed == 0 || needed > 65536) {
+                Console.WriteLine("OBJECT DACL size=" + needed);
+                return;
+            }
+            var descriptor = new byte[needed];
+            status = NtQuerySecurityObject(handle, 4, descriptor, needed, out needed);
+            Console.WriteLine("OBJECT DACL STATUS=0x" + status.ToString("X8"));
+            if (status >= 0)
+                Console.WriteLine("OBJECT DACL " + new RawSecurityDescriptor(descriptor, 0).GetSddlForm(AccessControlSections.Access));
+        } finally {
+            if (handle != IntPtr.Zero) CloseHandle(handle);
+            Marshal.FreeHGlobal(name);
+            Marshal.FreeHGlobal(buffer);
+        }
+    }
+
+    public static void InspectSystemObjects() {
+        foreach (var path in new [] { @"\Device\KsecDD", @"\Device\CNG" })
+            InspectSystemObject(path, 0x20000, false, true);
+        InspectSystemObject(@"\KnownDlls", 0x20000, true, true);
     }
 
     public static void InspectTokenCreation() {
@@ -263,6 +323,13 @@ public static class AppContainerCheck {
                             } finally {
                                 Marshal.FreeHGlobal(defaultAclInfo);
                                 Marshal.FreeHGlobal(defaultAclBuffer);
+                            }
+                            if (backend.Contains("restricted-code")) {
+                                WindowsIdentity.RunImpersonated(token, () => {
+                                    foreach (var path in new [] { @"\Device\KsecDD", @"\Device\CNG" })
+                                        InspectSystemObject(path, 0xC0000000, false, false);
+                                    InspectSystemObject(@"\KnownDlls", 1, true, false);
+                                });
                             }
                             startup.Startup.Size = (uint)Marshal.SizeOf<StartupInfo>();
                             startup.Attributes = IntPtr.Zero;
@@ -443,6 +510,7 @@ public static class AppContainerCheck {
 '@
 Add-Type -TypeDefinition $source
 [AppContainerCheck]::DescribeKernelSupport()
+[AppContainerCheck]::InspectSystemObjects()
 [AppContainerCheck]::InspectTokenCreation()
 $failed = $false
 $shells = @{
