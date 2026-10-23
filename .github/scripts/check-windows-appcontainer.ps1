@@ -32,6 +32,15 @@ public static class AppContainerCheck {
     private struct SidAndAttributes { public IntPtr Sid; public uint Attributes; }
     [StructLayout(LayoutKind.Sequential)]
     private struct TokenGroups { public uint Count; public SidAndAttributes First; }
+    [StructLayout(LayoutKind.Sequential)]
+    private struct Luid { public uint Low; public int High; }
+    [StructLayout(LayoutKind.Sequential)]
+    private struct TokenPrivileges { public uint Count; public Luid Luid; public uint Attributes; }
+    [DllImport("advapi32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+    private static extern bool LookupPrivilegeValue(string system, string name, out Luid luid);
+    [DllImport("advapi32.dll", SetLastError = true)]
+    private static extern bool AdjustTokenPrivileges(SafeAccessTokenHandle token, bool disableAll,
+        ref TokenPrivileges state, uint length, IntPtr previous, IntPtr returned);
     [DllImport("advapi32.dll", SetLastError = true)]
     private static extern bool GetTokenInformation(IntPtr token, int kind,
         IntPtr buffer, uint size, out uint required);
@@ -209,6 +218,14 @@ public static class AppContainerCheck {
                             0, IntPtr.Zero, 0, IntPtr.Zero, (uint)restrictions.Count, restrictions.ToArray(), out token))
                             throw new Win32Exception(Marshal.GetLastWin32Error(), "create full restricted token");
                         using (token) {
+                            Luid traverse;
+                            if (!LookupPrivilegeValue(null, "SeChangeNotifyPrivilege", out traverse))
+                                throw new Win32Exception(Marshal.GetLastWin32Error(), "lookup traversal privilege");
+                            var privileges = new TokenPrivileges { Count = 1, Luid = traverse, Attributes = 2 };
+                            if (!AdjustTokenPrivileges(token, false, ref privileges, 0, IntPtr.Zero, IntPtr.Zero))
+                                throw new Win32Exception(Marshal.GetLastWin32Error(), "enable traversal privilege");
+                            int privilegeError = Marshal.GetLastWin32Error();
+                            if (privilegeError != 0) throw new Win32Exception(privilegeError, "assign traversal privilege");
                             if (backend.Contains("low-integrity")) {
                                 var lowSid = new SecurityIdentifier("S-1-16-4096");
                                 var lowBytes = new byte[lowSid.BinaryLength];
@@ -316,6 +333,15 @@ public static class AppContainerCheck {
             acl.AddAccessRule(new FileSystemAccessRule(package, FileSystemRights.ReadAndExecute,
                 inheritance, PropagationFlags.None, AccessControlType.Allow));
             new DirectoryInfo(root).SetAccessControl(acl);
+            if (backend.Contains("ancestor-metadata")) {
+                for (var parent = Directory.GetParent(root); parent != null; parent = parent.Parent) {
+                    var parentAcl = parent.GetAccessControl();
+                    parentAcl.AddAccessRule(new FileSystemAccessRule(package,
+                        FileSystemRights.ReadAttributes | FileSystemRights.Traverse | FileSystemRights.ReadPermissions | FileSystemRights.Synchronize,
+                        InheritanceFlags.None, PropagationFlags.None, AccessControlType.Allow));
+                    parent.SetAccessControl(parentAcl);
+                }
+            }
             string workspace = Path.Combine(root, "workspace"), outside = Path.Combine(root, "outside");
             Directory.CreateDirectory(workspace);
             Directory.CreateDirectory(outside);
@@ -323,7 +349,8 @@ public static class AppContainerCheck {
             writeAcl.AddAccessRule(new FileSystemAccessRule(package, FileSystemRights.Modify,
                 inheritance, PropagationFlags.None, AccessControlType.Allow));
             if (backend.Contains("parent-guard")) {
-                writeAcl.AddAccessRule(new FileSystemAccessRule(new SecurityIdentifier(WellKnownSidType.WorldSid, null),
+                var guard = backend.Contains("all-app-guard") ? new SecurityIdentifier("S-1-15-2-1") : new SecurityIdentifier(WellKnownSidType.WorldSid, null);
+                writeAcl.AddAccessRule(new FileSystemAccessRule(guard,
                     FileSystemRights.DeleteSubdirectoriesAndFiles, InheritanceFlags.ContainerInherit,
                     PropagationFlags.None, AccessControlType.Deny));
             }
@@ -346,6 +373,11 @@ public static class AppContainerCheck {
             var deniedAcl = new DirectoryInfo(protectedDir).GetAccessControl();
             deniedAcl.AddAccessRule(new FileSystemAccessRule(package, FileSystemRights.Write | FileSystemRights.Delete,
                 inheritance, PropagationFlags.None, AccessControlType.Deny));
+            if (backend.Contains("all-app-guard")) {
+                deniedAcl.AddAccessRule(new FileSystemAccessRule(new SecurityIdentifier("S-1-15-2-1"),
+                    FileSystemRights.Write | FileSystemRights.Delete,
+                    inheritance, PropagationFlags.None, AccessControlType.Deny));
+            }
             new DirectoryInfo(protectedDir).SetAccessControl(deniedAcl);
             string writableFile = Path.Combine(workspace, "delete.txt"), outsideFile = Path.Combine(outside, "delete.txt");
             File.WriteAllText(writableFile, "workspace");
@@ -381,6 +413,14 @@ public static class AppContainerCheck {
                 throw new Exception(backend + " compatibility or deletion boundary check failed for " + shellName);
         } finally {
             if (sid != IntPtr.Zero) {
+                if (backend.Contains("ancestor-metadata")) {
+                    var package = new SecurityIdentifier(sid);
+                    for (var parent = Directory.GetParent(root); parent != null; parent = parent.Parent) {
+                        var parentAcl = parent.GetAccessControl();
+                        parentAcl.PurgeAccessRules(package);
+                        parent.SetAccessControl(parentAcl);
+                    }
+                }
                 if (backend.StartsWith("appcontainer")) { FreeSid(sid); DeleteAppContainerProfile(profile); }
                 else Marshal.FreeHGlobal(sid);
             }
@@ -398,7 +438,7 @@ $shells = @{
     powershell = (Join-Path $env:SystemRoot 'System32/WindowsPowerShell/v1.0/powershell.exe')
     pwsh = (Get-Command pwsh).Source
 }
-foreach ($backend in @('appcontainer-parent-guard', 'full-restricted-users-logon', 'full-restricted-users-logon-inherit-console', 'full-restricted-users-logon-no-lua', 'full-restricted-world-logon', 'write-restricted-logon', 'write-restricted-logon-low-integrity-parent-guard-inherit-console', 'write-restricted-world-logon-low-integrity-parent-guard-inherit-console')) {
+foreach ($backend in @('appcontainer-parent-guard-all-app-guard-ancestor-metadata', 'full-restricted-users-logon', 'full-restricted-users-logon-inherit-console', 'full-restricted-users-logon-no-lua', 'full-restricted-world-logon', 'write-restricted-logon', 'write-restricted-logon-low-integrity-parent-guard-inherit-console', 'write-restricted-world-logon-low-integrity-parent-guard-inherit-console')) {
     foreach ($entry in $shells.GetEnumerator()) {
         $root = Join-Path $env:GITHUB_WORKSPACE ('appcontainer-' + [Guid]::NewGuid().ToString('N'))
         Write-Host "CHECK backend=$backend shell=$($entry.Key)"
