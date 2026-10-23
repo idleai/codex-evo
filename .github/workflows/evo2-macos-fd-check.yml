@@ -11,14 +11,61 @@ jobs:
       matrix:
         os: [macos-15, macos-15-intel]
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 10
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
         with:
           persist-credentials: false
+      - name: Make space while preserving selected Xcode
+        shell: bash
+        run: |
+          set -euo pipefail
+          df -h /
+          developer_path="$(xcode-select --print-path)"
+          sdk_path="$(xcrun --sdk macosx --show-sdk-path)"
+          sudo python3 - "$developer_path" "$sdk_path" <<'PY'
+          from pathlib import Path
+          import shutil
+          import sys
+
+          applications = Path("/Applications")
+          selected = {
+              parent
+              for path in sys.argv[1:]
+              for parent in Path(path).resolve(strict=True).parents
+              if parent.parent == applications and parent.suffix == ".app"
+          }
+          if not selected:
+              raise RuntimeError("Cannot locate the selected Xcode application")
+          for candidate in applications.glob("Xcode*.app"):
+              if candidate.resolve() in selected:
+                  continue
+              print(f"Removing unused Xcode: {candidate}", flush=True)
+              if candidate.is_symlink():
+                  candidate.unlink()
+              elif candidate.is_dir():
+                  shutil.rmtree(candidate)
+          PY
+          xcrun --sdk macosx --show-sdk-path
+          df -h /
       - name: Exercise the current rollout metadata implementation
+        continue-on-error: true
         shell: bash
         run: |
           set -euo pipefail
           rustc --edition=2024 .github/scripts/macos-acl-probe/main.rs -o "$RUNNER_TEMP/acl_probe"
           "$RUNNER_TEMP/acl_probe"
+      - name: Install test tools
+        uses: taiki-e/install-action@4cef1412cce204788f482e778a0b9187f9626a29
+        with:
+          tool: just@1.51.0,cargo-nextest@0.9.143
+      - name: Run the failing rollout regression with a backtrace
+        working-directory: codex-rs
+        env:
+          CARGO_PROFILE_DEV_DEBUG: "0"
+          CARGO_PROFILE_TEST_DEBUG: "0"
+          CARGO_INCREMENTAL: "0"
+          CARGO_BUILD_JOBS: "3"
+          CARGO_NET_GIT_FETCH_WITH_CLI: "true"
+          RUST_LIB_BACKTRACE: "1"
+        run: just test -p codex-rollout -E 'test(worker_does_not_leak_temps_for_deletion_protected_rollouts)'
