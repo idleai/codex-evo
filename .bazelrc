@@ -114,6 +114,10 @@ common:ci --build_metadata=VISIBILITY=PUBLIC
 # Disable disk cache in CI since we have a remote one and aren't using persistent workers.
 common:ci --disk_cache=
 
+# Bound parallel links and test processes to the capacity of hosted runners.
+common:ci-local --jobs=4
+common:ci-local --local_test_jobs=4
+
 # Shared config for the main Bazel CI workflow.
 common:ci-bazel --config=ci
 common:ci-bazel --build_metadata=TAG_workflow=bazel

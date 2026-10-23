@@ -62,6 +62,29 @@ class RunBazelWithBuildBuddyTest(unittest.TestCase):
             "buildbuddy-generic",
         )
 
+    def test_keyless_github_build_keeps_explicit_limits_after_local_defaults(
+        self,
+    ) -> None:
+        self.assertEqual(
+            run_bazel_with_buildbuddy.bazel_args_with_remote_config(
+                [
+                    "build",
+                    "--config=ci-linux",
+                    "--jobs=6",
+                    "--",
+                    "//codex-rs/cli:codex",
+                ],
+                {"GITHUB_ACTIONS": "true"},
+            ),
+            [
+                "build",
+                "--config=ci-local",
+                "--jobs=6",
+                "--",
+                "//codex-rs/cli:codex",
+            ],
+        )
+
     def test_upstream_push_selects_openai_rbe_before_target_separator(self) -> None:
         with TemporaryDirectory() as temp_dir:
             env = self.github_env(temp_dir, event_name="push")
@@ -195,6 +218,7 @@ class RunBazelWithBuildBuddyTest(unittest.TestCase):
                 "--output_user_root=/tmp/bazel-output",
                 "--noexperimental_remote_repo_contents_cache",
                 "build",
+                "--config=ci-local",
                 "//codex-rs/...",
             ],
         )
@@ -210,6 +234,7 @@ class RunBazelWithBuildBuddyTest(unittest.TestCase):
                 "--output_user_root=/tmp/bazel-output",
                 "--experimental_remote_repo_contents_cache",
                 "build",
+                "--config=ci-local",
                 "//codex-rs/...",
             ],
         )
