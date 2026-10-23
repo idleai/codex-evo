@@ -28,6 +28,24 @@ pub(super) async fn spawn_command_under_sandbox(
     use std::process::Stdio;
 
     #[cfg(target_os = "linux")]
+    let env = {
+        let mut env = env;
+        // The child clears its environment but still needs Bazel's bundled sandbox resource.
+        for key in [
+            "CARGO_BIN_EXE_bwrap",
+            "RUNFILES_DIR",
+            "RUNFILES_MANIFEST_FILE",
+            "TEST_SRCDIR",
+            "TEST_WORKSPACE",
+        ] {
+            if let Ok(value) = std::env::var(key) {
+                env.entry(key.to_string()).or_insert(value);
+            }
+        }
+        env
+    };
+
+    #[cfg(target_os = "linux")]
     let codex_linux_sandbox_exe = Some(
         core_test_support::find_codex_linux_sandbox_exe()
             .map_err(|err| io::Error::new(io::ErrorKind::NotFound, err))?,
