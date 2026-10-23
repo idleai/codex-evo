@@ -1952,8 +1952,14 @@ impl TestAppServerBuilder {
 
     /// Builds a server and completes its standard initialization handshake.
     pub async fn build_initialized(self) -> anyhow::Result<TestAppServer> {
-        self.build_initialized_with_timeout(DEFAULT_REQUEST_TIMEOUT)
-            .await
+        // The remote Windows executor performs capability discovery during
+        // initialization, including cold Wine startup on Linux hosts.
+        let timeout = if core_test_support::is_wine_exec_test_environment() {
+            Duration::from_secs(/*secs*/ 120)
+        } else {
+            DEFAULT_REQUEST_TIMEOUT
+        };
+        self.build_initialized_with_timeout(timeout).await
     }
 
     /// Builds and initializes a server while preserving a suite-specific timeout.

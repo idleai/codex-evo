@@ -362,7 +362,9 @@ async fn tool_result_history_keeps_originating_model_across_switch_and_replay() 
     )
     .await;
     let mut png = std::io::Cursor::new(Vec::new());
-    image::DynamicImage::new_rgba8(/*w*/ 2048, /*h*/ 2048)
+    // Cross the high-detail width limit without making this history test spend
+    // most of its event timeout resizing a multi-megapixel image in debug builds.
+    image::DynamicImage::new_rgba8(/*w*/ 4096, /*h*/ 32)
         .write_to(&mut png, image::ImageFormat::Png)?;
     let text = "diagnostic line\n".repeat(500);
     let content_items = vec![
@@ -441,7 +443,7 @@ async fn tool_result_history_keeps_originating_model_across_switch_and_replay() 
         assert_eq!(request_turn_id(request), turn_id);
     }
     for (index, (call_id, limit, dimensions)) in
-        [("call-a", 100, (1600, 1600)), ("call-b", 400, (2048, 2048))]
+        [("call-a", 100, (2048, 16)), ("call-b", 400, (4096, 32))]
             .into_iter()
             .enumerate()
     {
