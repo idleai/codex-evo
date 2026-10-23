@@ -30,6 +30,11 @@ public static class AppContainerCheck {
     }
     [StructLayout(LayoutKind.Sequential)]
     private struct SidAndAttributes { public IntPtr Sid; public uint Attributes; }
+    [StructLayout(LayoutKind.Sequential)]
+    private struct TokenGroups { public uint Count; public SidAndAttributes First; }
+    [DllImport("advapi32.dll", SetLastError = true)]
+    private static extern bool GetTokenInformation(IntPtr token, int kind,
+        IntPtr buffer, uint size, out uint required);
     [DllImport("advapi32.dll", SetLastError = true)]
     private static extern bool OpenProcessToken(IntPtr process, uint access, out SafeAccessTokenHandle token);
     [DllImport("kernel32.dll")]
@@ -79,6 +84,53 @@ public static class AppContainerCheck {
     [DllImport("kernel32.dll")]
     private static extern bool CloseHandle(IntPtr handle);
 
+    private static SecurityIdentifier LogonSid(IntPtr token) {
+        uint needed;
+        GetTokenInformation(token, 28, IntPtr.Zero, 0, out needed);
+        if (needed == 0) throw new Win32Exception(Marshal.GetLastWin32Error(), "query logon SID size");
+        var buffer = Marshal.AllocHGlobal((int)needed);
+        try {
+            if (!GetTokenInformation(token, 28, buffer, needed, out needed))
+                throw new Win32Exception(Marshal.GetLastWin32Error(), "query logon SID");
+            var groups = Marshal.PtrToStructure<TokenGroups>(buffer);
+            if (groups.Count != 1) throw new Exception("Expected one native logon SID");
+            return new SecurityIdentifier(groups.First.Sid);
+        } finally { Marshal.FreeHGlobal(buffer); }
+    }
+
+    public static void InspectTokenCreation() {
+        using (var identity = WindowsIdentity.GetCurrent()) {
+            var logon = LogonSid(identity.AccessToken.DangerousGetHandle());
+            Console.WriteLine("NATIVE LOGON=" + logon.Value);
+            foreach (var systemSid in new [] { "", "S-1-1-0", "S-1-15-2-1", "S-1-15-2-2", "S-1-5-32-545" }) {
+                foreach (uint flags in new uint[] { 1, 5, 9, 13 }) {
+                    var sids = new List<SecurityIdentifier> {
+                        new SecurityIdentifier("S-1-5-21-10-20-30-40"), logon
+                    };
+                    if (systemSid.Length != 0) sids.Add(new SecurityIdentifier(systemSid));
+                    var entries = new SidAndAttributes[sids.Count];
+                    try {
+                        for (int i = 0; i < sids.Count; i++) {
+                            var bytes = new byte[sids[i].BinaryLength];
+                            sids[i].GetBinaryForm(bytes, 0);
+                            entries[i].Sid = Marshal.AllocHGlobal(bytes.Length);
+                            Marshal.Copy(bytes, 0, entries[i].Sid, bytes.Length);
+                        }
+                        SafeAccessTokenHandle token;
+                        bool ok = CreateRestrictedToken(identity.AccessToken.DangerousGetHandle(), flags,
+                            0, IntPtr.Zero, 0, IntPtr.Zero, (uint)entries.Length, entries, out token);
+                        int error = ok ? 0 : Marshal.GetLastWin32Error();
+                        using (token) {
+                            Console.WriteLine("TOKEN MATRIX flags=" + flags + " system=" + systemSid + " ok=" + ok + " error=" + error);
+                        }
+                    } finally {
+                        foreach (var entry in entries) Marshal.FreeHGlobal(entry.Sid);
+                    }
+                }
+            }
+        }
+    }
+
     private static uint Start(IntPtr sid, string application, string command, string cwd, string backend) {
         IntPtr attributes = IntPtr.Zero, capabilities = IntPtr.Zero;
         bool initialized = false;
@@ -104,7 +156,7 @@ public static class AppContainerCheck {
                     false, 0x08080000, IntPtr.Zero, cwd, ref startup, out process))
                     throw new Win32Exception(Marshal.GetLastWin32Error(), "launch " + application);
             } else {
-                var systemReadSid = new SecurityIdentifier("S-1-15-2-1");
+                var systemReadSid = new SecurityIdentifier(backend.Contains("users") ? "S-1-5-32-545" : "S-1-15-2-1");
                 var bytes = new byte[systemReadSid.BinaryLength];
                 systemReadSid.GetBinaryForm(bytes, 0);
                 var systemRead = Marshal.AllocHGlobal(bytes.Length);
@@ -115,17 +167,14 @@ public static class AppContainerCheck {
                         new SidAndAttributes { Sid = sid },
                         new SidAndAttributes { Sid = systemRead }
                     };
-                    if (backend == "full-restricted-logon") {
+                    if (backend.Contains("logon")) {
                         using (var identity = WindowsIdentity.GetCurrent()) {
-                            foreach (SecurityIdentifier group in identity.Groups) {
-                                if (!group.Value.StartsWith("S-1-5-5-")) continue;
-                                var logonBytes = new byte[group.BinaryLength];
-                                group.GetBinaryForm(logonBytes, 0);
-                                logon = Marshal.AllocHGlobal(logonBytes.Length);
-                                Marshal.Copy(logonBytes, 0, logon, logonBytes.Length);
-                                restrictions.Add(new SidAndAttributes { Sid = logon });
-                                break;
-                            }
+                            var group = LogonSid(identity.AccessToken.DangerousGetHandle());
+                            var logonBytes = new byte[group.BinaryLength];
+                            group.GetBinaryForm(logonBytes, 0);
+                            logon = Marshal.AllocHGlobal(logonBytes.Length);
+                            Marshal.Copy(logonBytes, 0, logon, logonBytes.Length);
+                            restrictions.Add(new SidAndAttributes { Sid = logon });
                         }
                         if (logon == IntPtr.Zero) throw new Exception("Missing logon SID");
                     }
@@ -134,7 +183,8 @@ public static class AppContainerCheck {
                         throw new Win32Exception(Marshal.GetLastWin32Error(), "open process token");
                     using (original) {
                         SafeAccessTokenHandle token;
-                        if (!CreateRestrictedToken(original.DangerousGetHandle(), 0x5,
+                        uint flags = backend.Contains("no-lua") ? 1u : 5u;
+                        if (!CreateRestrictedToken(original.DangerousGetHandle(), flags,
                             0, IntPtr.Zero, 0, IntPtr.Zero, (uint)restrictions.Count, restrictions.ToArray(), out token))
                             throw new Win32Exception(Marshal.GetLastWin32Error(), "create full restricted token");
                         using (token) {
@@ -260,13 +310,14 @@ public static class AppContainerCheck {
 '@
 Add-Type -TypeDefinition $source
 [AppContainerCheck]::DescribeKernelSupport()
+[AppContainerCheck]::InspectTokenCreation()
 $failed = $false
 $shells = @{
     cmd = (Join-Path $env:SystemRoot 'System32/cmd.exe')
     powershell = (Join-Path $env:SystemRoot 'System32/WindowsPowerShell/v1.0/powershell.exe')
     pwsh = (Get-Command pwsh).Source
 }
-foreach ($backend in @('appcontainer', 'full-restricted', 'full-restricted-logon')) {
+foreach ($backend in @('appcontainer', 'full-restricted', 'full-restricted-logon', 'full-restricted-no-lua', 'full-restricted-users-logon')) {
     foreach ($entry in $shells.GetEnumerator()) {
         $root = Join-Path $env:GITHUB_WORKSPACE ('appcontainer-' + [Guid]::NewGuid().ToString('N'))
         Write-Host "CHECK backend=$backend shell=$($entry.Key)"
