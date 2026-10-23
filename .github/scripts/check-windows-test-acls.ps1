@@ -65,7 +65,7 @@ public static class FixtureAclCheck {
         } finally { Marshal.FreeHGlobal(buffer); }
     }
 
-    public static void Run(string root, bool privateAcl, uint flags) {
+    public static void Run(string root, bool privateAcl, uint flags, bool includeUser) {
         Directory.CreateDirectory(root);
         try {
             using (var identity = WindowsIdentity.GetCurrent()) {
@@ -85,6 +85,7 @@ public static class FixtureAclCheck {
                 }
                 Console.WriteLine("privateAcl=" + privateAcl);
                 Console.WriteLine("flags=" + flags);
+                Console.WriteLine("includeUser=" + includeUser);
                 Console.WriteLine("root=" + root);
                 Console.WriteLine("root SDDL=" + new DirectoryInfo(root).GetAccessControl().GetSecurityDescriptorSddlForm(AccessControlSections.All));
                 var workspace = Path.Combine(root, "workspace");
@@ -107,12 +108,21 @@ public static class FixtureAclCheck {
                 var outsideFile = Path.Combine(outside, "delete.txt");
                 File.WriteAllText(writableFile, "workspace");
                 File.WriteAllText(outsideFile, "outside");
+                var privateFile = Path.Combine(root, "private-read.txt");
+                File.WriteAllText(privateFile, "private read");
+                var privateFileAcl = new FileSecurity();
+                privateFileAcl.SetAccessRuleProtection(true, false);
+                privateFileAcl.AddAccessRule(new FileSystemAccessRule(identity.User,
+                    FileSystemRights.FullControl, AccessControlType.Allow));
+                new FileInfo(privateFile).SetAccessControl(privateFileAcl);
                 foreach (var path in new [] { workspace, outside, protectedDir }) {
                     Console.WriteLine(path + " SDDL=" + new DirectoryInfo(path).GetAccessControl().GetSecurityDescriptorSddlForm(AccessControlSections.All));
                 }
                 var logon = LogonSid(identity.AccessToken.DangerousGetHandle());
                 Console.WriteLine("logon=" + logon.Value);
-                var sids = new [] { capability, logon, everyone };
+                var sids = includeUser
+                    ? new [] { capability, identity.User, logon, everyone }
+                    : new [] { capability, logon, everyone };
                 var entries = new SidAndAttributes[sids.Length];
                 SafeAccessTokenHandle token;
                 try {
@@ -122,7 +132,7 @@ public static class FixtureAclCheck {
                         entries[i].Sid = Marshal.AllocHGlobal(bytes.Length);
                         Marshal.Copy(bytes, 0, entries[i].Sid, bytes.Length);
                     }
-                    // Match the legacy backend: disable privileges, LUA token, write restrictions.
+                    // Compare the backend SID sets with and without write-only restrictions.
                     if (!CreateRestrictedToken(identity.AccessToken.DangerousGetHandle(), flags,
                         0, IntPtr.Zero, 0, IntPtr.Zero, (uint)entries.Length, entries, out token)) {
                         throw new Win32Exception(Marshal.GetLastWin32Error());
@@ -138,6 +148,12 @@ public static class FixtureAclCheck {
                         using (var impersonated = WindowsIdentity.GetCurrent()) {
                             Console.WriteLine("impersonated restricting SIDs:");
                             PrintRestrictingSids(impersonated.AccessToken.DangerousGetHandle());
+                        }
+                        foreach (var path in new [] { privateFile, Path.Combine(Environment.SystemDirectory, "cmd.exe") }) {
+                            try {
+                                using (var stream = File.OpenRead(path)) { stream.ReadByte(); }
+                                Console.WriteLine("read " + path);
+                            } catch (Exception error) { Console.WriteLine("read denied " + path + ": " + error.Message); }
                         }
                         foreach (var path in new [] { writableFile, outsideFile }) {
                             try { File.WriteAllText(path, "write attempt"); Console.WriteLine("wrote " + path); }
@@ -163,11 +179,12 @@ public static class FixtureAclCheck {
 Add-Type -TypeDefinition $source
 Get-Volume | Select-Object DriveLetter, FileSystemType | Format-Table
 $root = Join-Path $env:GITHUB_WORKSPACE ('codex-rs/.tmp-acl-' + [Guid]::NewGuid().ToString('N'))
-foreach ($flags in @(0xD, 0x9, 0x1)) {
-    [FixtureAclCheck]::Run($root + '-inherited-' + $flags, $false, $flags)
-    [FixtureAclCheck]::Run($root + '-private-' + $flags, $true, $flags)
+foreach ($flags in @(0xD, 0x5)) {
+    [FixtureAclCheck]::Run($root + '-legacy-' + $flags, $true, $flags, $false)
+    [FixtureAclCheck]::Run($root + '-with-user-' + $flags, $true, $flags, $true)
 }
 $ntfsRoot = Join-Path $env:SystemRoot ('Temp/codex-acl-' + [Guid]::NewGuid().ToString('N'))
-foreach ($flags in @(0xD, 0x1)) {
-    [FixtureAclCheck]::Run($ntfsRoot + '-private-' + $flags, $true, $flags)
+foreach ($flags in @(0xD, 0x5)) {
+    [FixtureAclCheck]::Run($ntfsRoot + '-legacy-' + $flags, $true, $flags, $false)
+    [FixtureAclCheck]::Run($ntfsRoot + '-with-user-' + $flags, $true, $flags, $true)
 }
