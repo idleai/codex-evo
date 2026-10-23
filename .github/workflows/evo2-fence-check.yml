@@ -1,0 +1,12 @@
+name: Check hosted runner DNS compatibility
+
+on:
+  push:
+    branches: [evo2/fence-check]
+
+permissions:
+  contents: read
+
+jobs:
+  blob-size-policy:
+    uses: ./.github/workflows/blob-size-policy.yml
