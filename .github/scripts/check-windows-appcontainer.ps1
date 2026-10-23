@@ -134,6 +134,21 @@ public static class AppContainerCheck {
         }
     }
 
+    private static void LabelTemporaryDirectoryLow(string path) {
+        var start = new System.Diagnostics.ProcessStartInfo("icacls.exe") {
+            UseShellExecute = false, RedirectStandardOutput = true, RedirectStandardError = true
+        };
+        start.ArgumentList.Add(path);
+        start.ArgumentList.Add("/setintegritylevel");
+        start.ArgumentList.Add("(OI)(CI)L");
+        using (var process = System.Diagnostics.Process.Start(start)) {
+            var output = process.StandardOutput.ReadToEnd();
+            var error = process.StandardError.ReadToEnd();
+            process.WaitForExit();
+            if (process.ExitCode != 0) throw new Exception("Temporary label failed: " + output + error);
+        }
+    }
+
     private static uint Start(IntPtr sid, string application, string command, string cwd, string backend) {
         IntPtr attributes = IntPtr.Zero, capabilities = IntPtr.Zero;
         bool initialized = false;
@@ -168,9 +183,10 @@ public static class AppContainerCheck {
                 try {
                     Marshal.Copy(bytes, 0, systemRead, bytes.Length);
                     var restrictions = new List<SidAndAttributes> {
-                        new SidAndAttributes { Sid = sid },
-                        new SidAndAttributes { Sid = systemRead }
+                        new SidAndAttributes { Sid = sid }
                     };
+                    if (backend.Contains("users") || backend.Contains("world"))
+                        restrictions.Add(new SidAndAttributes { Sid = systemRead });
                     if (backend.Contains("logon")) {
                         using (var identity = WindowsIdentity.GetCurrent()) {
                             var group = LogonSid(identity.AccessToken.DangerousGetHandle());
@@ -188,10 +204,25 @@ public static class AppContainerCheck {
                     using (original) {
                         SafeAccessTokenHandle token;
                         uint flags = backend.Contains("no-lua") ? 1u : 5u;
+                        if (backend.StartsWith("write-restricted")) flags |= 8u;
                         if (!CreateRestrictedToken(original.DangerousGetHandle(), flags,
                             0, IntPtr.Zero, 0, IntPtr.Zero, (uint)restrictions.Count, restrictions.ToArray(), out token))
                             throw new Win32Exception(Marshal.GetLastWin32Error(), "create full restricted token");
                         using (token) {
+                            if (backend.Contains("low-integrity")) {
+                                var lowSid = new SecurityIdentifier("S-1-16-4096");
+                                var lowBytes = new byte[lowSid.BinaryLength];
+                                lowSid.GetBinaryForm(lowBytes, 0);
+                                int labelSize = Marshal.SizeOf<SidAndAttributes>();
+                                var label = Marshal.AllocHGlobal(labelSize + lowBytes.Length);
+                                try {
+                                    var lowSidPointer = IntPtr.Add(label, labelSize);
+                                    Marshal.Copy(lowBytes, 0, lowSidPointer, lowBytes.Length);
+                                    Marshal.StructureToPtr(new SidAndAttributes { Sid = lowSidPointer, Attributes = 0x20 }, label, false);
+                                    if (!SetTokenInformation(token, 25, label, (uint)(labelSize + lowBytes.Length)))
+                                        throw new Win32Exception(Marshal.GetLastWin32Error(), "lower process integrity");
+                                } finally { Marshal.FreeHGlobal(label); }
+                            }
                             var defaultAcl = new RawAcl(2, 1);
                             defaultAcl.InsertAce(0, new CommonAce(AceFlags.None, AceQualifier.AccessAllowed,
                                 0x10000000, new SecurityIdentifier(logon), false, null));
@@ -297,6 +328,19 @@ public static class AppContainerCheck {
                     PropagationFlags.None, AccessControlType.Deny));
             }
             new DirectoryInfo(workspace).SetAccessControl(writeAcl);
+            string otherLowRoot = Path.Combine(root, "other-low-workspace");
+            Directory.CreateDirectory(otherLowRoot);
+            if (backend.Contains("low-integrity")) {
+                LabelTemporaryDirectoryLow(workspace);
+                LabelTemporaryDirectoryLow(otherLowRoot);
+                var otherAcl = new DirectoryInfo(otherLowRoot).GetAccessControl();
+                otherAcl.AddAccessRule(new FileSystemAccessRule(new SecurityIdentifier(WellKnownSidType.WorldSid, null),
+                    FileSystemRights.DeleteSubdirectoriesAndFiles, InheritanceFlags.ContainerInherit,
+                    PropagationFlags.None, AccessControlType.Deny));
+                new DirectoryInfo(otherLowRoot).SetAccessControl(otherAcl);
+            }
+            string otherLowFile = Path.Combine(otherLowRoot, "delete.txt");
+            File.WriteAllText(otherLowFile, "another workspace");
             var protectedDir = Path.Combine(workspace, ".git");
             Directory.CreateDirectory(protectedDir);
             var deniedAcl = new DirectoryInfo(protectedDir).GetAccessControl();
@@ -316,13 +360,24 @@ public static class AppContainerCheck {
             }
             string output = Path.Combine(workspace, "output.txt");
             string inner = shellName == "cmd" ? "\"" + script + "\"" : "\"" + shell + "\" -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File \"" + script + "\"";
+            if (shellName == "cmd") {
+                File.AppendAllText(script, "echo DELETE-OTHER-LOW\r\ndel \"" + otherLowFile + "\"\r\nexit /b 0\r\n");
+            } else {
+                File.AppendAllText(script, "Write-Output 'DELETE-OTHER-LOW'\ntry { [IO.File]::Delete('" + otherLowFile.Replace("'", "''") + "') } catch { Write-Output $_.Exception.Message }\n");
+            }
+            if (backend.Contains("low-integrity")) {
+                string privateTemp = Path.Combine(workspace, "temp");
+                Directory.CreateDirectory(privateTemp);
+                inner = "set \"TEMP=" + privateTemp + "\" && set \"TMP=" + privateTemp + "\" && " + inner;
+            }
             string cmd = Path.Combine(Environment.SystemDirectory, "cmd.exe");
             uint exit = Start(sid, cmd, "\"" + cmd + "\" /d /s /c \"" + inner + " >\"" + output + "\" 2>&1\"", workspace, backend);
             string log = File.Exists(output) ? File.ReadAllText(output) : "NO OUTPUT FILE";
             Console.WriteLine("BACKEND=" + backend + " SHELL=" + shellName + " EXIT=" + exit + "\n" + log);
             bool writableDeleted = !File.Exists(writableFile), outsideKept = File.Exists(outsideFile), protectedKept = Directory.Exists(protectedDir);
-            Console.WriteLine("RESULT writableDeleted=" + writableDeleted + " outsideKept=" + outsideKept + " protectedKept=" + protectedKept);
-            if (exit != 0 || !log.Contains("private read succeeded") || !log.Contains("wrote") || !log.Contains("child process succeeded") || !log.Contains("shell succeeded") || !writableDeleted || !outsideKept || !protectedKept)
+            bool otherLowKept = File.Exists(otherLowFile), cwdCorrect = log.Contains("CWD=" + workspace, StringComparison.OrdinalIgnoreCase);
+            Console.WriteLine("RESULT writableDeleted=" + writableDeleted + " outsideKept=" + outsideKept + " protectedKept=" + protectedKept + " otherLowKept=" + otherLowKept + " cwdCorrect=" + cwdCorrect);
+            if (exit != 0 || !log.Contains("private read succeeded") || !log.Contains("wrote") || !log.Contains("child process succeeded") || !log.Contains("shell succeeded") || !writableDeleted || !outsideKept || !protectedKept || !otherLowKept || !cwdCorrect)
                 throw new Exception(backend + " compatibility or deletion boundary check failed for " + shellName);
         } finally {
             if (sid != IntPtr.Zero) {
@@ -343,7 +398,7 @@ $shells = @{
     powershell = (Join-Path $env:SystemRoot 'System32/WindowsPowerShell/v1.0/powershell.exe')
     pwsh = (Get-Command pwsh).Source
 }
-foreach ($backend in @('appcontainer-parent-guard', 'full-restricted-users-logon', 'full-restricted-users-logon-inherit-console', 'full-restricted-users-logon-no-lua', 'full-restricted-world-logon')) {
+foreach ($backend in @('appcontainer-parent-guard', 'full-restricted-users-logon', 'full-restricted-users-logon-inherit-console', 'full-restricted-users-logon-no-lua', 'full-restricted-world-logon', 'write-restricted-logon', 'write-restricted-logon-low-integrity-parent-guard-inherit-console', 'write-restricted-world-logon-low-integrity-parent-guard-inherit-console')) {
     foreach ($entry in $shells.GetEnumerator()) {
         $root = Join-Path $env:GITHUB_WORKSPACE ('appcontainer-' + [Guid]::NewGuid().ToString('N'))
         Write-Host "CHECK backend=$backend shell=$($entry.Key)"
