@@ -33,6 +33,21 @@ runs:
           sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
         fi
 
+    - name: Allow high descriptor tests (macOS)
+      if: runner.os == 'macOS' && runner.environment == 'github-hosted'
+      shell: bash
+      run: |
+        # The PTY fallback test opens descriptors beyond Darwin's OPEN_MAX.
+        # Raising RLIMIT_NOFILE alone cannot exceed this separate kernel cap.
+        current_max_files="$(sysctl -n kern.maxfiles)"
+        current_max_files_per_process="$(sysctl -n kern.maxfilesperproc)"
+        if (( current_max_files < 32768 )); then
+          sudo sysctl -w kern.maxfiles=32768
+        fi
+        if (( current_max_files_per_process < 16384 )); then
+          sudo sysctl -w kern.maxfilesperproc=16384
+        fi
+
     - name: Configure CI build paths
       id: configure_ci_build_paths
       shell: bash

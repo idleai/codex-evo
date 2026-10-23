@@ -45,6 +45,9 @@ common:macos --strategy=CcConfigureMakeRule=remote,sandboxed,local
 common:windows --test_env=SYSTEMROOT
 common:windows --test_env=COMSPEC
 common:windows --test_env=WINDIR
+# MXC launch requests validate the host profile location before encoding it.
+common:windows --test_env=SYSTEMDRIVE
+common:windows --test_env=LOCALAPPDATA
 # Rust's libtest harness runs test bodies on std-spawned threads. The default
 # 2 MiB stack can be too small for large async test futures on Windows CI; see
 # https://github.com/openai/codex/pull/19067 for the motivating failure.
@@ -124,7 +127,7 @@ common:ci-bazel --build_metadata=TAG_workflow=bazel
 
 # Shared config for Bazel-backed Rust linting.
 build:clippy --aspects=@rules_rust//rust:defs.bzl%rust_clippy_aspect
-build:clippy --output_groups=+clippy_checks
+build:clippy --output_groups=clippy_checks
 build:clippy --@rules_rust//rust/settings:clippy.toml=//codex-rs:clippy.toml
 # Keep this deny-list in sync with `codex-rs/Cargo.toml` `[workspace.lints.clippy]`.
 # Cargo applies those lint levels to member crates that opt into `[lints] workspace = true`
