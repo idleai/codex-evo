@@ -1,4 +1,4 @@
-name: Windows executor and transport check
+name: Windows executor, transport and CLI check
 on:
   push:
     branches: [evo2/windows-runtime-check]
@@ -19,7 +19,7 @@ jobs:
         with:
           target: x86_64-pc-windows-gnullvm
           cache-scope: bazel-test
-      - name: Run executor and transport tests on Windows
+      - name: Run executor, transport and CLI tests on Windows
         shell: bash
         env:
           BUILDBUDDY_API_KEY: ${{ secrets.BUILDBUDDY_API_KEY }}
@@ -36,4 +36,5 @@ jobs:
             --test_output=errors \
             -- \
             //codex-rs/exec-server:exec-server-unit-tests \
-            //codex-rs/app-server-transport:app-server-transport-unit-tests
+            //codex-rs/app-server-transport:app-server-transport-unit-tests \
+            //codex-rs/cli:codex-bin-unit-tests
