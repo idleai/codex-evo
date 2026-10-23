@@ -88,13 +88,8 @@ print_bazel_test_log_tails() {
   local testlogs_dir
 
   local -a bazel_info_args=(info)
-  if [[ -n "${BUILDBUDDY_API_KEY:-}" ]]; then
-    # `bazel info` needs the same CI config as the failed test invocation so
-    # platform-specific output roots match. On Windows, omitting `ci-windows`
-    # would point at `local_windows-fastbuild` even when the test ran with the
-    # MSVC host platform under `local_windows_msvc-fastbuild`.
-    bazel_info_args+=("--config=${ci_config}")
-  fi
+  # Keep the failed invocation's CI settings when resolving its output root.
+  bazel_info_args+=("--config=${ci_config}")
 
   # Only pass flags that affect Bazel's output-root selection or repository
   # lookup. Test/build-only flags such as execution logs or remote download
@@ -116,8 +111,8 @@ print_bazel_test_log_tails() {
   while IFS= read -r target; do
     failed_targets+=("$target")
   done < <(
-    grep -E '^(FAIL: //|ERROR: .* Testing //)' "$console_log" \
-      | sed -E 's#^FAIL: (//[^ ]+).*#\1#; s#^ERROR: .* Testing (//[^ ]+) failed:.*#\1#' \
+    grep -E '^((FAIL|TIMEOUT): //|ERROR: .* Testing //)' "$console_log" \
+      | sed -E 's#^(FAIL|TIMEOUT): (//[^ ]+).*#\2#; s#^ERROR: .* Testing (//[^ ]+) failed:.*#\1#' \
       | sort -u
   )
 
@@ -255,10 +250,14 @@ if [[ ${#bazel_args[@]} -eq 0 || ${#bazel_targets[@]} -eq 0 ]]; then
   exit 1
 fi
 
-if [[ "${RUNNER_OS:-}" == "Windows" && $windows_cross_compile -eq 1 && -z "${BUILDBUDDY_API_KEY:-}" ]]; then
-  # Windows cross-compilation depends on authenticated RBE. Preserve the local
-  # Windows build shape when credentials are unavailable.
-  ci_config=ci-windows
+if [[ -z "${BUILDBUDDY_API_KEY:-}" ]]; then
+  # Local builds still need CI cache and test settings. Select configurations
+  # that do not require remote execution or its Linux execution platform.
+  if [[ "${RUNNER_OS:-}" == "Windows" ]]; then
+    ci_config=ci-windows
+  else
+    ci_config=ci-bazel
+  fi
 fi
 
 post_config_bazel_args=()
@@ -399,10 +398,10 @@ trap 'rm -f "$bazel_console_log"' EXIT
 
 bazel_run_args=(
   "${bazel_args[@]}"
+  "--config=${ci_config}"
 )
 if [[ -n "${BUILDBUDDY_API_KEY:-}" ]]; then
   echo "BuildBuddy API key is available; using remote Bazel configuration."
-  bazel_run_args+=("--config=${ci_config}")
 else
   echo "BuildBuddy API key is not available; using local Bazel configuration."
 fi
