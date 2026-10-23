@@ -25,13 +25,41 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          # macOS
+          # Separate native targets so test binaries fit on hosted disks.
           - os: macos-15
             target: aarch64-apple-darwin
+            shard: 1
+            shard_count: 4
+          - os: macos-15
+            target: aarch64-apple-darwin
+            shard: 2
+            shard_count: 4
+          - os: macos-15
+            target: aarch64-apple-darwin
+            shard: 3
+            shard_count: 4
+          - os: macos-15
+            target: aarch64-apple-darwin
+            shard: 4
+            shard_count: 4
           - os: macos-15-intel
             target: x86_64-apple-darwin
+            shard: 1
+            shard_count: 4
+          - os: macos-15-intel
+            target: x86_64-apple-darwin
+            shard: 2
+            shard_count: 4
+          - os: macos-15-intel
+            target: x86_64-apple-darwin
+            shard: 3
+            shard_count: 4
+          - os: macos-15-intel
+            target: x86_64-apple-darwin
+            shard: 4
+            shard_count: 4
 
-          # Separate Linux targets so local test binaries fit on hosted disks.
+          # Linux
           - os: ubuntu-24.04
             target: x86_64-unknown-linux-gnu
             platform: //:local_linux
@@ -142,13 +170,16 @@ jobs:
               | LC_ALL=C sort > "${bazel_targets_file}"
             # Reuse relative Windows timings for native labels to keep the
             # largest integration test binaries on separate hosts.
-            sed 's/-test-windows-cross\t/-test\t/' .github/scripts/windows_bazel_test_durations.tsv > "${target_weights_file}"
+            sed $'s/-test-windows-cross\t/-test\t/' .github/scripts/windows_bazel_test_durations.tsv > "${target_weights_file}"
             python3 .github/scripts/select_windows_bazel_targets.py \
               --durations "${target_weights_file}" \
               --shard "${BAZEL_TEST_SHARD}" \
               --shard-count "${BAZEL_TEST_SHARD_COUNT}" \
               < "${bazel_targets_file}" > "${selected_targets_file}"
-            mapfile -t bazel_targets < "${selected_targets_file}"
+            bazel_targets=()
+            while IFS= read -r bazel_target; do
+              bazel_targets+=("${bazel_target}")
+            done < "${selected_targets_file}"
           fi
 
           bazel_wrapper_args=(
@@ -164,9 +195,13 @@ jobs:
           if [[ -n "${BAZEL_TEST_SHARD}" ]]; then
             bazel_test_args+=(
               --skip_incompatible_explicit_targets
+              "--build_metadata=TAG_test_shard=${BAZEL_TEST_SHARD}"
+            )
+          fi
+          if [[ -n "${BAZEL_TEST_PLATFORM}" ]]; then
+            bazel_test_args+=(
               "--platforms=${BAZEL_TEST_PLATFORM}"
               --extra_toolchains=//:linux_musl_tests_on_gnu_host_toolchain
-              "--build_metadata=TAG_linux_test_shard=${BAZEL_TEST_SHARD}"
             )
           fi
           ./.github/scripts/run-bazel-ci.sh \

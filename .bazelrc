@@ -120,6 +120,11 @@ common:ci --disk_cache=
 # Bound parallel links and test processes to the capacity of hosted runners.
 common:ci-local --jobs=4
 common:ci-local --local_test_jobs=4
+# Match Cargo's release build-tool profile so local schema generators and
+# procedural macros fit hosted-runner time and disk limits.
+build:ci-local --@rules_rust//rust/settings:extra_exec_rustc_flag=-Copt-level=0
+build:ci-local --@rules_rust//rust/settings:extra_exec_rustc_flag=-Ccodegen-units=16
+build:ci-local --@rules_rust//rust/settings:extra_exec_rustc_flag=-Cdebug-assertions=no
 
 # Shared config for the main Bazel CI workflow.
 common:ci-bazel --config=ci
