@@ -22,6 +22,31 @@ jobs:
         with:
           target: x86_64-apple-darwin
           cache-scope: bazel-test
+      - name: Inspect and configure runner hostname lookup
+        shell: bash
+        run: |
+          sudo python3 - <<'PY'
+          import socket
+          import time
+          from pathlib import Path
+
+          hostname = socket.gethostname()
+          assert hostname and not any(character.isspace() for character in hostname)
+          started = time.monotonic()
+          try:
+              resolved = socket.getaddrinfo(hostname, None, flags=socket.AI_CANONNAME)
+              print(f"Hostname lookup before hosts entry: {time.monotonic() - started:.3f}s {resolved}", flush=True)
+          except OSError as error:
+              print(f"Hostname lookup before hosts entry: {time.monotonic() - started:.3f}s {error}", flush=True)
+          hosts = Path('/etc/hosts')
+          aliases = {name.lower().rstrip('.') for line in hosts.read_text().splitlines() for name in line.split('#', 1)[0].split()[1:]}
+          if hostname.lower().rstrip('.') not in aliases:
+              with hosts.open('a') as stream:
+                  stream.write(f'\n127.0.0.1 {hostname}\n')
+          started = time.monotonic()
+          resolved = socket.getaddrinfo(hostname, None, flags=socket.AI_CANONNAME)
+          print(f"Hostname lookup after hosts entry: {time.monotonic() - started:.3f}s {resolved}", flush=True)
+          PY
       - name: Inspect the copy-permission regressions
         shell: bash
         env:
