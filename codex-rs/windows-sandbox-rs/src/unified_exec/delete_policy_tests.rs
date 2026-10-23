@@ -1,4 +1,5 @@
 use super::*;
+use pretty_assertions::assert_eq;
 
 #[test]
 fn elevated_workspace_write_delete_is_limited_to_writable_roots() {
