@@ -22,14 +22,36 @@ public static class FixtureAclCheck {
         uint privilegeCount, IntPtr privileges, uint restrictCount,
         [In] SidAndAttributes[] restricted, out SafeAccessTokenHandle token);
 
+    [DllImport("advapi32.dll", SetLastError = true)]
+    private static extern bool GetTokenInformation(IntPtr token, int kind,
+        IntPtr buffer, uint size, out uint required);
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct TokenGroups {
+        public uint Count;
+        public SidAndAttributes First;
+    }
+
+    private static SecurityIdentifier LogonSid(IntPtr token) {
+        uint needed;
+        GetTokenInformation(token, 28, IntPtr.Zero, 0, out needed);
+        var buffer = Marshal.AllocHGlobal((int)needed);
+        try {
+            if (!GetTokenInformation(token, 28, buffer, needed, out needed)) {
+                throw new Win32Exception(Marshal.GetLastWin32Error());
+            }
+            var groups = Marshal.PtrToStructure<TokenGroups>(buffer);
+            if (groups.Count != 1) throw new Exception("Expected one native logon SID");
+            return new SecurityIdentifier(groups.First.Sid);
+        } finally { Marshal.FreeHGlobal(buffer); }
+    }
+
     public static void Run(string root, bool privateAcl) {
         Directory.CreateDirectory(root);
         try {
             using (var identity = WindowsIdentity.GetCurrent()) {
                 var capability = new SecurityIdentifier("S-1-5-21-10-20-30-40");
                 var everyone = new SecurityIdentifier(WellKnownSidType.WorldSid, null);
-                var logon = identity.Groups.Cast<SecurityIdentifier>()
-                    .Single(sid => sid.Value.StartsWith("S-1-5-5-"));
                 var inheritance = InheritanceFlags.ContainerInherit | InheritanceFlags.ObjectInherit;
                 if (privateAcl) {
                     var acl = new DirectorySecurity();
@@ -68,6 +90,8 @@ public static class FixtureAclCheck {
                 foreach (var path in new [] { workspace, outside, protectedDir }) {
                     Console.WriteLine(path + " SDDL=" + new DirectoryInfo(path).GetAccessControl().GetSecurityDescriptorSddlForm(AccessControlSections.All));
                 }
+                var logon = LogonSid(identity.AccessToken.DangerousGetHandle());
+                Console.WriteLine("logon=" + logon.Value);
                 var sids = new [] { capability, logon, everyone };
                 var entries = new SidAndAttributes[sids.Length];
                 SafeAccessTokenHandle token;
