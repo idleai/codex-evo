@@ -3922,33 +3922,55 @@ mod tests {
 
     #[tokio::test]
     async fn mcp_http_probe_falls_back_to_get_when_head_times_out() {
-        let listener = TcpListener::bind("127.0.0.1:0").expect("bind test listener");
-        let addr = listener.local_addr().expect("listener address");
-        let server = std::thread::spawn(move || {
-            let (mut head_stream, _) = listener.accept().expect("accept HEAD probe request");
-            let head = std::thread::spawn(move || {
-                let mut request = [0; 1024];
-                let _ = head_stream.read(&mut request);
-                std::thread::sleep(Duration::from_millis(50));
-            });
+        use tokio::io::AsyncBufReadExt;
+        use tokio::io::AsyncWriteExt;
+        use tokio::io::BufReader;
 
-            let (mut get_stream, _) = listener.accept().expect("accept GET probe request");
-            let mut request = [0; 1024];
-            let _ = get_stream.read(&mut request);
-            get_stream
-                .write_all(
-                    b"HTTP/1.1 405 Method Not Allowed\r\nContent-Length: 0\r\nConnection: close\r\n\r\n",
-                )
-                .expect("write response");
-            head.join().expect("HEAD holder should finish");
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("bind test listener");
+        let addr = listener.local_addr().expect("listener address");
+        let probe = tokio::spawn(async move {
+            mcp_http_probe_url_with_timeout(&format!("http://{addr}/mcp"), Duration::from_secs(3))
+                .await
         });
 
-        let status = mcp_http_probe_url_with_timeout(
-            &format!("http://{addr}/mcp"),
-            Duration::from_millis(10),
-        )
-        .await;
-        server.join().expect("probe server thread should finish");
+        let (head_stream, _) = tokio::time::timeout(Duration::from_secs(10), listener.accept())
+            .await
+            .expect("HEAD probe should connect")
+            .expect("accept HEAD probe request");
+        let mut head_stream = BufReader::new(head_stream);
+        let mut request = String::new();
+        head_stream
+            .read_line(&mut request)
+            .await
+            .expect("read HEAD request");
+        assert_eq!(request, "HEAD /mcp HTTP/1.1\r\n");
+
+        // Expire HEAD only after it arrives, then let GET use normal socket timing.
+        tokio::time::pause();
+        tokio::time::advance(Duration::from_secs(4)).await;
+        tokio::time::resume();
+
+        let (get_stream, _) = tokio::time::timeout(Duration::from_secs(10), listener.accept())
+            .await
+            .expect("GET fallback should connect")
+            .expect("accept GET probe request");
+        let mut get_stream = BufReader::new(get_stream);
+        request.clear();
+        get_stream
+            .read_line(&mut request)
+            .await
+            .expect("read GET request");
+        assert_eq!(request, "GET /mcp HTTP/1.1\r\n");
+        get_stream
+            .get_mut()
+            .write_all(
+                b"HTTP/1.1 405 Method Not Allowed\r\nContent-Length: 0\r\nConnection: close\r\n\r\n",
+            )
+            .await
+            .expect("write response");
+        let status = probe.await.expect("probe task should finish");
 
         assert_eq!(status, Ok("HTTP 405".to_string()));
     }
