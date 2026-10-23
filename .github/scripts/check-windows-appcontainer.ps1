@@ -261,6 +261,23 @@ public static class AppContainerCheck {
         }
     }
 
+    public static void InspectLimitedHostSetup() {
+        using (var identity = WindowsIdentity.GetCurrent()) {
+            SafeAccessTokenHandle token;
+            if (!CreateRestrictedToken(identity.AccessToken.DangerousGetHandle(), 5,
+                0, IntPtr.Zero, 0, IntPtr.Zero, 0, null, out token))
+                throw new Win32Exception(Marshal.GetLastWin32Error(), "create limited host token");
+            using (token) {
+                WindowsIdentity.RunImpersonated(token, () => {
+                    foreach (var path in new [] { Path.GetPathRoot(Environment.SystemDirectory), Path.GetPathRoot(Environment.CurrentDirectory) }) {
+                        Console.WriteLine("LIMITED HOST WRITE_DAC " + path);
+                        InspectSystemObject(@"\??\" + path, 0x40000, false, false);
+                    }
+                });
+            }
+        }
+    }
+
     private static void LabelTemporaryDirectoryLow(string path) {
         var start = new System.Diagnostics.ProcessStartInfo("icacls.exe") {
             UseShellExecute = false, RedirectStandardOutput = true, RedirectStandardError = true
@@ -460,6 +477,7 @@ public static class AppContainerCheck {
         string profile = "CodexDeletionProbe" + Guid.NewGuid().ToString("N");
         IntPtr sid = IntPtr.Zero;
         Directory.CreateDirectory(root);
+        string privateFile = root + "-private.txt";
         try {
             if (backend.StartsWith("appcontainer")) {
                 int result = CreateAppContainerProfile(profile, profile, "Temporary sandbox check", IntPtr.Zero, 0, out sid);
@@ -575,6 +593,14 @@ public static class AppContainerCheck {
             File.WriteAllText(outsideFile, "outside");
             string readFile = Path.Combine(root, "read.txt");
             File.WriteAllText(readFile, "private read succeeded");
+            File.WriteAllText(privateFile, "host-private read succeeded");
+            var privateAcl = new FileSecurity();
+            privateAcl.SetAccessRuleProtection(true, false);
+            privateAcl.AddAccessRule(new FileSystemAccessRule(WindowsIdentity.GetCurrent().User,
+                FileSystemRights.FullControl, AccessControlType.Allow));
+            if (backend.Contains("private-read-grant"))
+                privateAcl.AddAccessRule(new FileSystemAccessRule(package, FileSystemRights.ReadAndExecute, AccessControlType.Allow));
+            new FileInfo(privateFile).SetAccessControl(privateAcl);
             string script = Path.Combine(root, shellName == "cmd" ? "probe.cmd" : "probe.ps1");
             if (shellName == "cmd") {
                 File.WriteAllText(script, "@echo off\r\necho CWD=%CD%\r\ntype \"" + readFile + "\"\r\necho WRITE\r\necho wrote>\"" + writableFile + "\"\r\ntype \"" + writableFile + "\"\r\necho DELETE-ALLOWED\r\ndel \"" + writableFile + "\"\r\necho DELETE-OUTSIDE\r\ndel \"" + outsideFile + "\"\r\necho DELETE-PROTECTED\r\nrmdir \"" + protectedDir + "\"\r\ncmd /d /c echo child process succeeded\r\necho shell succeeded\r\n");
@@ -590,7 +616,8 @@ public static class AppContainerCheck {
             }
             if (shellName == "cmd") {
                 // Insert the additional checks before the successful exit in the command script.
-                string extra = "echo READ-PROTECTED\r\ntype \"" + protectedFile + "\"\r\ntype \"" + nestedFile + "\"\r\n"
+                string extra = "echo READ-HOST-PRIVATE\r\ntype \"" + privateFile + "\"\r\n"
+                    + "echo READ-PROTECTED\r\ntype \"" + protectedFile + "\"\r\ntype \"" + nestedFile + "\"\r\n"
                     + "echo DELETE-PROTECTED-FILE\r\ndel \"" + protectedFile + "\"\r\n"
                     + "echo RENAME-PROTECTED-FILE\r\nmove \"" + protectedFile + "\" \"" + protectedFile + ".moved\"\r\n"
                     + "echo WRITE-PROTECTED-FILE\r\necho changed>\"" + protectedFile + "\"\r\n"
@@ -603,7 +630,8 @@ public static class AppContainerCheck {
                 File.WriteAllText(script, File.ReadAllText(script).Replace("exit /b 0\r\n", extra + "exit /b 0\r\n"));
             } else {
                 Func<string, string> quote = value => "'" + value.Replace("'", "''") + "'";
-                File.AppendAllText(script, "Write-Output 'READ-PROTECTED'\n[IO.File]::ReadAllText(" + quote(protectedFile) + ")\n[IO.File]::ReadAllText(" + quote(nestedFile) + ")\n"
+                File.AppendAllText(script, "Write-Output 'READ-HOST-PRIVATE'\ntry { [IO.File]::ReadAllText(" + quote(privateFile) + ") } catch { Write-Output $_.Exception.Message }\n"
+                    + "Write-Output 'READ-PROTECTED'\n[IO.File]::ReadAllText(" + quote(protectedFile) + ")\n[IO.File]::ReadAllText(" + quote(nestedFile) + ")\n"
                     + "Write-Output 'DELETE-PROTECTED-FILE'\ntry { [IO.File]::Delete(" + quote(protectedFile) + ") } catch { Write-Output $_.Exception.Message }\n"
                     + "Write-Output 'RENAME-PROTECTED-FILE'\ntry { [IO.File]::Move(" + quote(protectedFile) + ", " + quote(protectedFile + ".moved") + ") } catch { Write-Output $_.Exception.Message }\n"
                     + "Write-Output 'WRITE-PROTECTED-FILE'\ntry { [IO.File]::WriteAllText(" + quote(protectedFile) + ", 'changed') } catch { Write-Output $_.Exception.Message }\n"
@@ -634,6 +662,8 @@ public static class AppContainerCheck {
             Console.WriteLine("BACKEND=" + backend + " SHELL=" + shellName + " EXIT=" + exit + "\n" + log);
             bool writableDeleted = !File.Exists(writableFile), outsideKept = File.Exists(outsideFile), protectedKept = Directory.Exists(protectedDir);
             bool otherLowKept = File.Exists(otherLowFile), cwdCorrect = log.Contains("CWD=" + workspace, StringComparison.OrdinalIgnoreCase);
+            bool privateReadWorked = log.Contains("host-private read succeeded");
+            Console.WriteLine("PRIVATE READ=" + privateReadWorked);
             bool protectedFileKept = File.Exists(protectedFile) && File.ReadAllText(protectedFile) == "protected file contents";
             bool nestedFileKept = File.Exists(nestedFile) && File.ReadAllText(nestedFile) == "protected nested contents";
             bool nestedCreationDenied = !File.Exists(Path.Combine(nestedDir, "new.txt"));
@@ -642,7 +672,7 @@ public static class AppContainerCheck {
             Console.WriteLine("EXTENDED protectedFileKept=" + protectedFileKept + " nestedFileKept=" + nestedFileKept
                 + " nestedCreationDenied=" + nestedCreationDenied + " protectedParentKept=" + protectedParentKept + " allowedRenameWorked=" + allowedRenameWorked);
             Console.WriteLine("RESULT writableDeleted=" + writableDeleted + " outsideKept=" + outsideKept + " protectedKept=" + protectedKept + " otherLowKept=" + otherLowKept + " cwdCorrect=" + cwdCorrect);
-            if (!protectedFileKept || !nestedFileKept || !nestedCreationDenied || !protectedParentKept || !allowedRenameWorked)
+            if (!privateReadWorked || !protectedFileKept || !nestedFileKept || !nestedCreationDenied || !protectedParentKept || !allowedRenameWorked)
                 throw new Exception(backend + " extended file boundary check failed for " + shellName);
             if (exit != 0 || !log.Contains("private read succeeded") || !log.Contains("wrote") || !log.Contains("child process succeeded") || !log.Contains("shell succeeded") || !writableDeleted || !outsideKept || !protectedKept || !otherLowKept || !cwdCorrect)
                 throw new Exception(backend + " compatibility or deletion boundary check failed for " + shellName);
@@ -660,6 +690,7 @@ public static class AppContainerCheck {
                 else Marshal.FreeHGlobal(sid);
             }
             Directory.Delete(root, true);
+            if (File.Exists(privateFile)) File.Delete(privateFile);
         }
     }
 }
@@ -668,13 +699,14 @@ Add-Type -TypeDefinition $source
 [AppContainerCheck]::DescribeKernelSupport()
 [AppContainerCheck]::InspectSystemObjects()
 [AppContainerCheck]::InspectTokenCreation()
+[AppContainerCheck]::InspectLimitedHostSetup()
 $failed = $false
 $shells = @{
     cmd = (Join-Path $env:SystemRoot 'System32/cmd.exe')
     powershell = (Join-Path $env:SystemRoot 'System32/WindowsPowerShell/v1.0/powershell.exe')
     pwsh = (Get-Command pwsh).Source
 }
-foreach ($backend in @('appcontainer-parent-guard-all-app-guard-ancestor-metadata', 'appcontainer-parent-guard-all-app-guard-ancestor-metadata-protected-handles', 'appcontainer-parent-guard-all-app-guard-ancestor-metadata-protected-handles-no-inherited-write')) {
+foreach ($backend in @('appcontainer-parent-guard-all-app-guard-ancestor-metadata-protected-handles-no-inherited-write', 'appcontainer-parent-guard-all-app-guard-ancestor-metadata-protected-handles-no-inherited-write-private-read-grant')) {
     foreach ($entry in $shells.GetEnumerator()) {
         $root = Join-Path $env:GITHUB_WORKSPACE ('appcontainer-' + [Guid]::NewGuid().ToString('N'))
         Write-Host "CHECK backend=$backend shell=$($entry.Key)"
