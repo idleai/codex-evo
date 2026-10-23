@@ -115,6 +115,8 @@ public static class AppContainerCheck {
     private static extern bool TerminateProcess(IntPtr process, uint code);
     [DllImport("kernel32.dll")]
     private static extern bool CloseHandle(IntPtr handle);
+    [DllImport("kernel32.dll", SetLastError = true)]
+    private static extern uint ResumeThread(IntPtr thread);
 
     private static SecurityIdentifier LogonSid(IntPtr token) {
         uint needed;
@@ -168,6 +170,36 @@ public static class AppContainerCheck {
         foreach (var path in new [] { @"\Device\KsecDD", @"\Device\CNG" })
             InspectSystemObject(path, 0x20000, false, true);
         InspectSystemObject(@"\KnownDlls", 0x20000, true, true);
+    }
+
+    private static void InspectAppContainerProcess(IntPtr process, string cwd) {
+        SafeAccessTokenHandle token;
+        if (!OpenProcessToken(process, 0xA, out token))
+            throw new Win32Exception(Marshal.GetLastWin32Error(), "open child token");
+        using (token) {
+            foreach (int kind in new [] { 29, 31 }) {
+                uint needed;
+                GetTokenInformation(token.DangerousGetHandle(), kind, IntPtr.Zero, 0, out needed);
+                var buffer = Marshal.AllocHGlobal((int)needed);
+                try {
+                    if (!GetTokenInformation(token.DangerousGetHandle(), kind, buffer, needed, out needed))
+                        throw new Win32Exception(Marshal.GetLastWin32Error(), "query child token " + kind);
+                    Console.WriteLine("CHILD TOKEN kind=" + kind + " value=" + (kind == 29
+                        ? Marshal.ReadInt32(buffer).ToString()
+                        : new SecurityIdentifier(Marshal.ReadIntPtr(buffer)).Value));
+                } finally { Marshal.FreeHGlobal(buffer); }
+            }
+            using (var identity = new WindowsIdentity(token.DangerousGetHandle())) {
+                Console.WriteLine("CHILD USER=" + identity.User.Value);
+                foreach (var group in identity.Groups) Console.WriteLine("CHILD GROUP=" + group.Value);
+            }
+            WindowsIdentity.RunImpersonated(token, () => {
+                InspectSystemObject(@"\??\" + cwd, 0x40, false, false);
+                InspectSystemObject(@"\??\" + Path.Combine(cwd, ".git"), 0x10000, false, false);
+                InspectSystemObject(@"\??\" + Path.Combine(cwd, "delete.txt"), 0x10000, false, false);
+                InspectSystemObject(@"\??\" + Path.Combine(Directory.GetParent(cwd).FullName, "outside", "delete.txt"), 0x10000, false, false);
+            });
+        }
     }
 
     public static void InspectTokenCreation() {
@@ -241,8 +273,11 @@ public static class AppContainerCheck {
                     throw new Win32Exception(Marshal.GetLastWin32Error(), "set AppContainer identity");
                 startup.Attributes = attributes;
                 if (!CreateProcess(application, new StringBuilder(command), IntPtr.Zero, IntPtr.Zero,
-                    false, 0x08080000, IntPtr.Zero, cwd, ref startup, out process))
+                    false, 0x08080004, IntPtr.Zero, cwd, ref startup, out process))
                     throw new Win32Exception(Marshal.GetLastWin32Error(), "launch " + application);
+                try { InspectAppContainerProcess(process.Process, cwd); }
+                catch (Exception error) { Console.WriteLine("CHILD INSPECTION " + error); }
+                finally { ResumeThread(process.Thread); }
             } else {
                 var systemReadSid = new SecurityIdentifier(backend.Contains("world") ? "S-1-1-0" : "S-1-5-32-545");
                 var bytes = new byte[systemReadSid.BinaryLength];
@@ -491,6 +526,10 @@ public static class AppContainerCheck {
                 inner = "set \"TEMP=" + privateTemp + "\" && set \"TMP=" + privateTemp + "\" && " + inner;
             }
             string cmd = Path.Combine(Environment.SystemDirectory, "cmd.exe");
+            if (backend.StartsWith("appcontainer")) {
+                foreach (var path in new [] { root, workspace, protectedDir })
+                    Console.WriteLine("DIRECTORY ACL " + path + " " + new DirectoryInfo(path).GetAccessControl().GetSecurityDescriptorSddlForm(AccessControlSections.Access));
+            }
             uint exit = Start(sid, cmd, "\"" + cmd + "\" /d /s /c \"" + inner + " >\"" + output + "\" 2>&1\"", workspace, backend);
             string log = File.Exists(output) ? File.ReadAllText(output) : "NO OUTPUT FILE";
             Console.WriteLine("BACKEND=" + backend + " SHELL=" + shellName + " EXIT=" + exit + "\n" + log);
