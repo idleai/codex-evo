@@ -46,7 +46,26 @@ public static class FixtureAclCheck {
         } finally { Marshal.FreeHGlobal(buffer); }
     }
 
-    public static void Run(string root, bool privateAcl) {
+    private static void PrintRestrictingSids(IntPtr token) {
+        uint needed;
+        GetTokenInformation(token, 11, IntPtr.Zero, 0, out needed);
+        var buffer = Marshal.AllocHGlobal((int)needed);
+        try {
+            if (!GetTokenInformation(token, 11, buffer, needed, out needed)) {
+                throw new Win32Exception(Marshal.GetLastWin32Error());
+            }
+            var count = Marshal.ReadInt32(buffer);
+            var offset = (int)Marshal.OffsetOf<TokenGroups>("First");
+            var stride = Marshal.SizeOf<SidAndAttributes>();
+            Console.WriteLine("restrictingCount=" + count);
+            for (int i = 0; i < count; i++) {
+                var group = Marshal.PtrToStructure<SidAndAttributes>(IntPtr.Add(buffer, offset + i * stride));
+                Console.WriteLine("restrictingSid=" + new SecurityIdentifier(group.Sid).Value);
+            }
+        } finally { Marshal.FreeHGlobal(buffer); }
+    }
+
+    public static void Run(string root, bool privateAcl, uint flags) {
         Directory.CreateDirectory(root);
         try {
             using (var identity = WindowsIdentity.GetCurrent()) {
@@ -65,6 +84,7 @@ public static class FixtureAclCheck {
                     new DirectoryInfo(root).SetAccessControl(acl);
                 }
                 Console.WriteLine("privateAcl=" + privateAcl);
+                Console.WriteLine("flags=" + flags);
                 Console.WriteLine("root=" + root);
                 Console.WriteLine("root SDDL=" + new DirectoryInfo(root).GetAccessControl().GetSecurityDescriptorSddlForm(AccessControlSections.All));
                 var workspace = Path.Combine(root, "workspace");
@@ -103,7 +123,7 @@ public static class FixtureAclCheck {
                         Marshal.Copy(bytes, 0, entries[i].Sid, bytes.Length);
                     }
                     // Match the legacy backend: disable privileges, LUA token, write restrictions.
-                    if (!CreateRestrictedToken(identity.AccessToken.DangerousGetHandle(), 0xD,
+                    if (!CreateRestrictedToken(identity.AccessToken.DangerousGetHandle(), flags,
                         0, IntPtr.Zero, 0, IntPtr.Zero, (uint)entries.Length, entries, out token)) {
                         throw new Win32Exception(Marshal.GetLastWin32Error());
                     }
@@ -113,7 +133,16 @@ public static class FixtureAclCheck {
                     }
                 }
                 using (token) {
+                    PrintRestrictingSids(token.DangerousGetHandle());
                     WindowsIdentity.RunImpersonated(token, () => {
+                        using (var impersonated = WindowsIdentity.GetCurrent()) {
+                            Console.WriteLine("impersonated restricting SIDs:");
+                            PrintRestrictingSids(impersonated.AccessToken.DangerousGetHandle());
+                        }
+                        foreach (var path in new [] { writableFile, outsideFile }) {
+                            try { File.WriteAllText(path, "write attempt"); Console.WriteLine("wrote " + path); }
+                            catch (Exception error) { Console.WriteLine("write denied " + path + ": " + error.Message); }
+                        }
                         foreach (var path in new [] { writableFile, outsideFile }) {
                             try { File.Delete(path); Console.WriteLine("deleted " + path); }
                             catch (Exception error) { Console.WriteLine("denied " + path + ": " + error.Message); }
@@ -133,5 +162,7 @@ public static class FixtureAclCheck {
 '@
 Add-Type -TypeDefinition $source
 $root = Join-Path $env:GITHUB_WORKSPACE ('codex-rs/.tmp-acl-' + [Guid]::NewGuid().ToString('N'))
-[FixtureAclCheck]::Run($root + '-inherited', $false)
-[FixtureAclCheck]::Run($root + '-private', $true)
+foreach ($flags in @(0xD, 0x9, 0x1)) {
+    [FixtureAclCheck]::Run($root + '-inherited-' + $flags, $false, $flags)
+    [FixtureAclCheck]::Run($root + '-private-' + $flags, $true, $flags)
+}
