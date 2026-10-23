@@ -4,6 +4,11 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 
+[[bin]]
+name = "codex-exec-server-test-helper"
+path = "src/bin/test_helper.rs"
+test = false
+
 [lib]
 doctest = false
 
@@ -70,6 +75,7 @@ tokio = { workspace = true, features = [
 tokio-util = { workspace = true, features = ["io", "rt"] }
 tokio-tungstenite = { workspace = true }
 tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
 url = { workspace = true }
 uuid = { workspace = true, features = ["v4"] }
 
@@ -83,6 +89,7 @@ rustix = { workspace = true, features = ["fs"] }
 tempfile = { workspace = true }
 
 [target.'cfg(windows)'.dependencies]
+codex-windows-sandbox = { workspace = true }
 codex-mxc-sandbox = { workspace = true }
 which = { workspace = true }
 windows-sys = { workspace = true, features = [
@@ -97,7 +104,6 @@ windows-sys = { workspace = true, features = [
 [dev-dependencies]
 anyhow = { workspace = true }
 codex-exec-server-test-support = { workspace = true }
-codex-test-binary-support = { workspace = true }
 codex-utils-cargo-bin = { workspace = true }
 codex-windows-sandbox-test-support = { workspace = true }
 ctor = { workspace = true }
@@ -111,5 +117,4 @@ tempfile = { workspace = true }
 test-case = "3.3.1"
 tokio = { workspace = true, features = ["test-util"] }
 tracing-opentelemetry = { workspace = true }
-tracing-subscriber = { workspace = true }
 wiremock = { workspace = true }
