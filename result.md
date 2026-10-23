@@ -93,13 +93,13 @@ and daemon selections were unchanged.
 The source release tag is `codex-evo-v0.164.0-alpha.12-idle.1`, pointing to the
 exact build commit above.
 
-| Artifact | SHA-256 |
-| --- | --- |
-| `bin/codex` | `7eaf3121ef571cd3d7a35b9986a8ffa5fd86e316921069fdfad12840570633d0` |
+| Artifact                   | SHA-256                                                            |
+| -------------------------- | ------------------------------------------------------------------ |
+| `bin/codex`                | `7eaf3121ef571cd3d7a35b9986a8ffa5fd86e316921069fdfad12840570633d0` |
 | `bin/codex-code-mode-host` | `202e03b7b54938d63d914a9f5bef9c6545086cfd33e7612d8690a74cf30308ae` |
-| `codex-package.json` | `9c82f9abbb0234440e4f9566d8c1234f9df9c0658223ba8bd4c470d3d792f496` |
-| `codex-path/rg` | `e62198eb19b136b88c330af83647b5a962cb99b6b1f066758568f12de1974849` |
-| `codex-resources/bwrap` | `c102c5f893faed17ed053ce6ceb9fe0bb03069b991a6f0390e54d82c85f1bca0` |
+| `codex-package.json`       | `9c82f9abbb0234440e4f9566d8c1234f9df9c0658223ba8bd4c470d3d792f496` |
+| `codex-path/rg`            | `e62198eb19b136b88c330af83647b5a962cb99b6b1f066758568f12de1974849` |
+| `codex-resources/bwrap`    | `c102c5f893faed17ed053ce6ceb9fe0bb03069b991a6f0390e54d82c85f1bca0` |
 
 ## Upstream refresh: 0.162.0-alpha.20 / idle.1
 
