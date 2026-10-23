@@ -11,6 +11,7 @@ use codex_protocol::protocol::Op;
 use codex_protocol::protocol::ReviewDecision;
 use codex_protocol::user_input::UserInput;
 use core_test_support::responses;
+use core_test_support::skip_if_wine_exec;
 use core_test_support::test_codex::test_codex;
 use core_test_support::wait_for_event;
 use pretty_assertions::assert_eq;
@@ -32,13 +33,18 @@ enum Approval {
 }
 
 #[test_case(Execution::Frozen, Approval::Prompt; "approval_keeps_sandbox")]
-#[test_case(Execution::Ordinary, Approval::Prompt; "ordinary_approval_retry")]
+#[test_case(Execution::Ordinary, Approval::ExplicitEscalation; "ordinary_explicit_approval")]
 #[test_case(Execution::Frozen, Approval::AllowRule; "allow_rule_keeps_sandbox")]
 #[test_case(Execution::Ordinary, Approval::AllowRule; "ordinary_allow_rule")]
 #[test_case(Execution::Frozen, Approval::ExplicitEscalation; "explicit_escalation_rejected")]
 #[test_case(Execution::Frozen, Approval::Never; "denial_without_approval")]
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn execution_permission_ceiling(execution: Execution, approval: Approval) -> Result<()> {
+    skip_if_wine_exec!(
+        Ok(()),
+        "Wine does not emulate Windows restricted-token and ACL sandbox semantics"
+    );
+
     let server = responses::start_mock_server().await;
     let mut builder = test_codex()
         .with_model("gpt-5.2")
@@ -61,6 +67,7 @@ async fn execution_permission_ceiling(execution: Execution, approval: Approval) 
                 Approval::Never => AskForApproval::Never,
             });
             config.approvals_reviewer = ApprovalsReviewer::User;
+            config.set_windows_sandbox_enabled(/*value*/ true);
             config
                 .permissions
                 .set_permission_profile(PermissionProfile::read_only())
@@ -112,11 +119,14 @@ async fn execution_permission_ceiling(execution: Execution, approval: Approval) 
         }]))
         .await?;
     let mut approvals = 0;
+    let mut command_finished = false;
     loop {
         match wait_for_event(&agent.thread, |event| {
             matches!(
                 event,
-                EventMsg::ExecApprovalRequest(_) | EventMsg::TurnComplete(_)
+                EventMsg::ExecApprovalRequest(_)
+                    | EventMsg::ExecCommandEnd(_)
+                    | EventMsg::TurnComplete(_)
             )
         })
         .await
@@ -133,14 +143,34 @@ async fn execution_permission_ceiling(execution: Execution, approval: Approval) 
                     })
                     .await?;
             }
+            EventMsg::ExecCommandEnd(event) => {
+                command_finished |= event.call_id == "write";
+            }
             EventMsg::TurnComplete(_) => break,
             _ => unreachable!("event filter"),
         }
     }
-    assert_eq!(approvals, usize::from(matches!(approval, Approval::Prompt)));
+    assert_eq!(
+        approvals,
+        usize::from(
+            matches!(approval, Approval::Prompt)
+                || matches!(
+                    (execution, approval),
+                    (Execution::Ordinary, Approval::ExplicitEscalation)
+                )
+        )
+    );
     let output = requests.requests()[1]
         .function_call_output("write")
         .to_string();
+    // A yielded process can finish after the model's turn; inspect its final filesystem state.
+    if output.contains("Process running with session ID ") && !command_finished {
+        wait_for_event(
+            &agent.thread,
+            |event| matches!(event, EventMsg::ExecCommandEnd(event) if event.call_id == "write"),
+        )
+        .await;
+    }
     let written = fixture
         .fs()
         .get_metadata(
@@ -154,7 +184,10 @@ async fn execution_permission_ceiling(execution: Execution, approval: Approval) 
         matches!(execution, Execution::Ordinary),
         "{output}"
     );
-    if matches!(approval, Approval::ExplicitEscalation) {
+    if matches!(
+        (execution, approval),
+        (Execution::Frozen, Approval::ExplicitEscalation)
+    ) {
         assert!(output.contains("cannot be escalated"), "{output}");
     }
     agent.thread.shutdown_and_wait().await?;

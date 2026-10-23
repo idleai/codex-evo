@@ -27,6 +27,7 @@ async fn detached_runner_does_not_approve_its_pending_command() -> Result<()> {
         "prefix_rule(pattern=[\"mkdir\"], decision=\"prompt\")\n",
     )?;
     let mut owner = TestAppServer::builder()
+        .without_auto_env()
         .with_codex_home(home.path())
         .build_initialized()
         .await?;
