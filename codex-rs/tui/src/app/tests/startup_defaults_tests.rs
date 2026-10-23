@@ -664,9 +664,7 @@ async fn fresh_startup_falls_back_only_for_unsupported_config_read() -> Result<(
         )
         .await?;
         let bootstrap = server.bootstrap(&config).await?;
-        run_until_thread_start(server, config, bootstrap, &requests)
-            .await
-            .map_err(|error| color_eyre::eyre::eyre!("startup request wait failed: {error:#}"))?;
+        run_until_thread_start(server, config, bootstrap, &requests).await?;
         let starts = recorded_params(&requests, "thread/start");
         assert_eq!(starts.len(), 1);
         assert_eq!(
@@ -676,11 +674,7 @@ async fn fresh_startup_falls_back_only_for_unsupported_config_read() -> Result<(
             ),
             (&serde_json::Value::Null, &serde_json::Value::Null)
         );
-        tokio::time::timeout(Duration::from_secs(/*secs*/ 15), proxy)
-            .await
-            .map_err(|error| {
-                color_eyre::eyre::eyre!("startup proxy shutdown wait failed: {error:#}")
-            })???;
+        tokio::time::timeout(Duration::from_secs(/*secs*/ 15), proxy).await???;
     }
     Ok(())
 }
@@ -718,9 +712,7 @@ async fn startup_reads_server_defaults_before_starting_thread() -> Result<()> {
     )
     .await?;
     let bootstrap = server.bootstrap(&config).await?;
-    run_until_thread_start(server, config, bootstrap, &requests)
-        .await
-        .map_err(|error| color_eyre::eyre::eyre!("startup request wait failed: {error:#}"))?;
+    run_until_thread_start(server, config, bootstrap, &requests).await?;
     {
         let recorded = requests.lock().expect("request recorder lock");
         let read = recorded
@@ -742,11 +734,7 @@ async fn startup_reads_server_defaults_before_starting_thread() -> Result<()> {
         ),
         (&serde_json::Value::Null, &serde_json::Value::Null),
     );
-    tokio::time::timeout(Duration::from_secs(/*secs*/ 15), proxy)
-        .await
-        .map_err(|error| {
-            color_eyre::eyre::eyre!("startup proxy shutdown wait failed: {error:#}")
-        })???;
+    tokio::time::timeout(Duration::from_secs(/*secs*/ 15), proxy).await???;
     Ok(())
 }
 

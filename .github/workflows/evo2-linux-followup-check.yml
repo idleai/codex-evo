@@ -1,4 +1,4 @@
-name: Check remaining Linux and Wine fixtures
+name: Repeat Linux TUI lifecycle regressions
 
 on:
   push:
@@ -26,7 +26,7 @@ jobs:
         with:
           target: ${{ matrix.target }}
           cache-scope: bazel-test
-      - name: Check brokered shell completion with the standard event deadline
+      - name: Repeat MCP shutdown, notification timer and startup fallback checks
         if: always() && !cancelled()
         shell: bash
         env:
@@ -41,22 +41,5 @@ jobs:
             --print-failed-action-summary --print-failed-test-logs --remote-download-toplevel -- \
             test --lockfile_mode=error --test_sharding_strategy=disabled \
             --flaky_test_attempts=1 --test_output=all \
-            --test_arg=brokered_shell_snapshot_fallback --test_arg=brokered_posix_startup_preserves_application_env --test_arg=agent_started_proxy_denies_brokered_provider_alias "${target_args[@]}" -- \
-            //codex-rs/core:core-all-test
-      - name: Repeat notification timer and startup fallback checks
-        if: always() && !cancelled()
-        shell: bash
-        env:
-          BUILDBUDDY_API_KEY: ${{ secrets.BUILDBUDDY_API_KEY }}
-          TEST_TARGET: ${{ matrix.target }}
-        run: |
-          target_args=()
-          if [[ "$TEST_TARGET" == *musl ]]; then
-            target_args+=(--platforms=@rules_rs//rs/platforms:x86_64-unknown-linux-musl --extra_toolchains=//:linux_musl_tests_on_gnu_host_toolchain)
-          fi
-          ./.github/scripts/run-bazel-ci.sh \
-            --print-failed-action-summary --print-failed-test-logs --remote-download-toplevel -- \
-            test --lockfile_mode=error --test_sharding_strategy=disabled \
-            --flaky_test_attempts=1 --test_output=all \
-            --test_arg=notification_test_delay_rejects_cancelled_and_rescheduled_timers --test_arg=fresh_startup_falls_back_only_for_unsupported_config_read --runs_per_test=100 --local_test_jobs=4 "${target_args[@]}" -- \
+            --test_arg=dropping_server_releases_backend_with_an_open_mcp_session --test_arg=notification_test_delay_rejects_cancelled_and_rescheduled_timers --test_arg=fresh_startup_falls_back_only_for_unsupported_config_read --runs_per_test=100 --local_test_jobs=4 "${target_args[@]}" -- \
             //codex-rs/tui:tui-unit-tests
