@@ -1,0 +1,39 @@
+name: Windows sandbox deletion check
+on:
+  push:
+    branches: [evo2/windows-alpha12-check]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  deletion:
+    name: Check elevated and legacy deletion boundaries
+    runs-on: windows-2025
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/prepare-bazel-ci
+        with:
+          target: x86_64-pc-windows-msvc
+          cache-scope: windows-deletion-check
+      - name: Run both backend deletion tests
+        shell: bash
+        run: |
+          ./.github/scripts/run-bazel-ci.sh \
+            --print-failed-action-summary \
+            --print-failed-test-logs \
+            --windows-msvc-host-platform \
+            -- \
+            test \
+            --config=ci-windows-msvc \
+            --platforms=//:windows_x86_64_msvc \
+            --lockfile_mode=error \
+            --test_sharding_strategy=disabled \
+            --test_arg=workspace_write_delete_is_limited_to_writable_roots \
+            --test_output=all \
+            --test_arg=--test-threads=1 \
+            --test_arg=--nocapture \
+            -- \
+            //codex-rs/windows-sandbox-rs:windows-sandbox-rs-unit-tests
