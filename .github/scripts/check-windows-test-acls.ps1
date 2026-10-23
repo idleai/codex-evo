@@ -161,8 +161,13 @@ public static class FixtureAclCheck {
 }
 '@
 Add-Type -TypeDefinition $source
+Get-Volume | Select-Object DriveLetter, FileSystemType | Format-Table
 $root = Join-Path $env:GITHUB_WORKSPACE ('codex-rs/.tmp-acl-' + [Guid]::NewGuid().ToString('N'))
 foreach ($flags in @(0xD, 0x9, 0x1)) {
     [FixtureAclCheck]::Run($root + '-inherited-' + $flags, $false, $flags)
     [FixtureAclCheck]::Run($root + '-private-' + $flags, $true, $flags)
+}
+$ntfsRoot = Join-Path $env:SystemRoot ('Temp/codex-acl-' + [Guid]::NewGuid().ToString('N'))
+foreach ($flags in @(0xD, 0x1)) {
+    [FixtureAclCheck]::Run($ntfsRoot + '-private-' + $flags, $true, $flags)
 }
