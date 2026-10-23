@@ -525,6 +525,27 @@ public static class AppContainerCheck {
                     inheritance, PropagationFlags.None, AccessControlType.Deny));
             }
             new DirectoryInfo(protectedDir).SetAccessControl(deniedAcl);
+            string protectedFile = Path.Combine(workspace, "readonly.txt");
+            string nestedParent = Path.Combine(workspace, "nested");
+            string nestedDir = Path.Combine(nestedParent, ".codex");
+            Directory.CreateDirectory(nestedDir);
+            string nestedFile = Path.Combine(nestedDir, "config.toml");
+            File.WriteAllText(protectedFile, "protected file contents");
+            File.WriteAllText(nestedFile, "protected nested contents");
+            var protectedFileAcl = new FileInfo(protectedFile).GetAccessControl();
+            protectedFileAcl.AddAccessRule(new FileSystemAccessRule(package,
+                FileSystemRights.Write | FileSystemRights.Delete, AccessControlType.Deny));
+            protectedFileAcl.AddAccessRule(new FileSystemAccessRule(new SecurityIdentifier("S-1-15-2-1"),
+                FileSystemRights.Write | FileSystemRights.Delete, AccessControlType.Deny));
+            new FileInfo(protectedFile).SetAccessControl(protectedFileAcl);
+            var nestedAcl = new DirectoryInfo(nestedDir).GetAccessControl();
+            nestedAcl.AddAccessRule(new FileSystemAccessRule(package, FileSystemRights.Write | FileSystemRights.Delete,
+                inheritance, PropagationFlags.None, AccessControlType.Deny));
+            nestedAcl.AddAccessRule(new FileSystemAccessRule(new SecurityIdentifier("S-1-15-2-1"),
+                FileSystemRights.Write | FileSystemRights.Delete,
+                inheritance, PropagationFlags.None, AccessControlType.Deny));
+            new DirectoryInfo(nestedDir).SetAccessControl(nestedAcl);
+            string freshFile = Path.Combine(workspace, "fresh.txt"), renamedFile = Path.Combine(workspace, "renamed.txt");
             string writableFile = Path.Combine(workspace, "delete.txt"), outsideFile = Path.Combine(outside, "delete.txt");
             File.WriteAllText(writableFile, "workspace");
             File.WriteAllText(outsideFile, "outside");
@@ -543,6 +564,32 @@ public static class AppContainerCheck {
             } else {
                 File.AppendAllText(script, "Write-Output 'DELETE-OTHER-LOW'\ntry { [IO.File]::Delete('" + otherLowFile.Replace("'", "''") + "') } catch { Write-Output $_.Exception.Message }\n");
             }
+            if (shellName == "cmd") {
+                // Insert the additional checks before the successful exit in the command script.
+                string extra = "echo READ-PROTECTED\r\ntype \"" + protectedFile + "\"\r\ntype \"" + nestedFile + "\"\r\n"
+                    + "echo DELETE-PROTECTED-FILE\r\ndel \"" + protectedFile + "\"\r\n"
+                    + "echo RENAME-PROTECTED-FILE\r\nmove \"" + protectedFile + "\" \"" + protectedFile + ".moved\"\r\n"
+                    + "echo WRITE-PROTECTED-FILE\r\necho changed>\"" + protectedFile + "\"\r\n"
+                    + "echo DELETE-PROTECTED-CONTENT\r\ndel \"" + nestedFile + "\"\r\n"
+                    + "echo WRITE-PROTECTED-CONTENT\r\necho changed>\"" + nestedFile + "\"\r\n"
+                    + "echo CREATE-PROTECTED-CONTENT\r\necho changed>\"" + Path.Combine(nestedDir, "new.txt") + "\"\r\n"
+                    + "echo RENAME-PROTECTED-PARENT\r\nmove \"" + nestedParent + "\" \"" + nestedParent + "-moved\"\r\n"
+                    + "echo CREATE-ALLOWED\r\necho fresh>\"" + freshFile + "\"\r\n"
+                    + "echo RENAME-ALLOWED\r\nmove \"" + freshFile + "\" \"" + renamedFile + "\"\r\ntype \"" + renamedFile + "\"\r\n";
+                File.WriteAllText(script, File.ReadAllText(script).Replace("exit /b 0\r\n", extra + "exit /b 0\r\n"));
+            } else {
+                Func<string, string> quote = value => "'" + value.Replace("'", "''") + "'";
+                File.AppendAllText(script, "Write-Output 'READ-PROTECTED'\n[IO.File]::ReadAllText(" + quote(protectedFile) + ")\n[IO.File]::ReadAllText(" + quote(nestedFile) + ")\n"
+                    + "Write-Output 'DELETE-PROTECTED-FILE'\ntry { [IO.File]::Delete(" + quote(protectedFile) + ") } catch { Write-Output $_.Exception.Message }\n"
+                    + "Write-Output 'RENAME-PROTECTED-FILE'\ntry { [IO.File]::Move(" + quote(protectedFile) + ", " + quote(protectedFile + ".moved") + ") } catch { Write-Output $_.Exception.Message }\n"
+                    + "Write-Output 'WRITE-PROTECTED-FILE'\ntry { [IO.File]::WriteAllText(" + quote(protectedFile) + ", 'changed') } catch { Write-Output $_.Exception.Message }\n"
+                    + "Write-Output 'DELETE-PROTECTED-CONTENT'\ntry { [IO.File]::Delete(" + quote(nestedFile) + ") } catch { Write-Output $_.Exception.Message }\n"
+                    + "Write-Output 'WRITE-PROTECTED-CONTENT'\ntry { [IO.File]::WriteAllText(" + quote(nestedFile) + ", 'changed') } catch { Write-Output $_.Exception.Message }\n"
+                    + "Write-Output 'CREATE-PROTECTED-CONTENT'\ntry { [IO.File]::WriteAllText(" + quote(Path.Combine(nestedDir, "new.txt")) + ", 'changed') } catch { Write-Output $_.Exception.Message }\n"
+                    + "Write-Output 'RENAME-PROTECTED-PARENT'\ntry { [IO.Directory]::Move(" + quote(nestedParent) + ", " + quote(nestedParent + "-moved") + ") } catch { Write-Output $_.Exception.Message }\n"
+                    + "Write-Output 'CREATE-ALLOWED'\n[IO.File]::WriteAllText(" + quote(freshFile) + ", 'fresh')\n"
+                    + "Write-Output 'RENAME-ALLOWED'\n[IO.File]::Move(" + quote(freshFile) + ", " + quote(renamedFile) + ")\n[IO.File]::ReadAllText(" + quote(renamedFile) + ")\n");
+            }
             if (backend.Contains("low-integrity")) {
                 string privateTemp = Path.Combine(workspace, "temp");
                 Directory.CreateDirectory(privateTemp);
@@ -554,14 +601,25 @@ public static class AppContainerCheck {
                     Console.WriteLine("DIRECTORY ACL " + path + " " + new DirectoryInfo(path).GetAccessControl().GetSecurityDescriptorSddlForm(AccessControlSections.Access));
             }
             uint exit;
-            using (var protectedHandle = backend.Contains("protected-handles") ? HoldProtectedPath(protectedDir) : null) {
+            using (var protectedHandle = backend.Contains("protected-handles") ? HoldProtectedPath(protectedDir) : null)
+            using (var protectedFileHandle = backend.Contains("protected-handles") ? HoldProtectedPath(protectedFile) : null)
+            using (var nestedHandle = backend.Contains("protected-handles") ? HoldProtectedPath(nestedDir) : null) {
                 exit = Start(sid, cmd, "\"" + cmd + "\" /d /s /c \"" + inner + " >\"" + output + "\" 2>&1\"", workspace, backend);
             }
             string log = File.Exists(output) ? File.ReadAllText(output) : "NO OUTPUT FILE";
             Console.WriteLine("BACKEND=" + backend + " SHELL=" + shellName + " EXIT=" + exit + "\n" + log);
             bool writableDeleted = !File.Exists(writableFile), outsideKept = File.Exists(outsideFile), protectedKept = Directory.Exists(protectedDir);
             bool otherLowKept = File.Exists(otherLowFile), cwdCorrect = log.Contains("CWD=" + workspace, StringComparison.OrdinalIgnoreCase);
+            bool protectedFileKept = File.Exists(protectedFile) && File.ReadAllText(protectedFile) == "protected file contents";
+            bool nestedFileKept = File.Exists(nestedFile) && File.ReadAllText(nestedFile) == "protected nested contents";
+            bool nestedCreationDenied = !File.Exists(Path.Combine(nestedDir, "new.txt"));
+            bool protectedParentKept = Directory.Exists(nestedParent) && !Directory.Exists(nestedParent + "-moved");
+            bool allowedRenameWorked = !File.Exists(freshFile) && File.Exists(renamedFile) && File.ReadAllText(renamedFile).Trim() == "fresh";
+            Console.WriteLine("EXTENDED protectedFileKept=" + protectedFileKept + " nestedFileKept=" + nestedFileKept
+                + " nestedCreationDenied=" + nestedCreationDenied + " protectedParentKept=" + protectedParentKept + " allowedRenameWorked=" + allowedRenameWorked);
             Console.WriteLine("RESULT writableDeleted=" + writableDeleted + " outsideKept=" + outsideKept + " protectedKept=" + protectedKept + " otherLowKept=" + otherLowKept + " cwdCorrect=" + cwdCorrect);
+            if (!protectedFileKept || !nestedFileKept || !nestedCreationDenied || !protectedParentKept || !allowedRenameWorked)
+                throw new Exception(backend + " extended file boundary check failed for " + shellName);
             if (exit != 0 || !log.Contains("private read succeeded") || !log.Contains("wrote") || !log.Contains("child process succeeded") || !log.Contains("shell succeeded") || !writableDeleted || !outsideKept || !protectedKept || !otherLowKept || !cwdCorrect)
                 throw new Exception(backend + " compatibility or deletion boundary check failed for " + shellName);
         } finally {
