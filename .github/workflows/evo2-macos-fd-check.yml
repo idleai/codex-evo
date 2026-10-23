@@ -1,0 +1,51 @@
+name: Inspect macOS descriptor limits
+on:
+  push:
+    branches: [evo2/macos-fd-check]
+permissions:
+  contents: read
+jobs:
+  inspect:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-15, macos-15-intel]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 10
+    steps:
+      - name: Inspect and raise descriptor limits
+        shell: bash
+        run: |
+          set -euo pipefail
+          sysctl kern.maxfiles kern.maxfilesperproc
+          cat > "$RUNNER_TEMP/descriptor_probe.py" <<'PY'
+          import os
+          import resource
+          import sys
+
+          soft, hard = resource.getrlimit(resource.RLIMIT_NOFILE)
+          print("inherited limits:", soft, hard, flush=True)
+          resource.setrlimit(resource.RLIMIT_NOFILE, (max(soft, 16384), hard))
+          descriptors = []
+          try:
+              while not descriptors or descriptors[-1] < 10240:
+                  descriptors.append(os.open("/dev/null", os.O_RDONLY))
+              print("reached descriptor:", descriptors[-1], flush=True)
+          except OSError as error:
+              print("allocation failed:", error, "last descriptor:", descriptors[-1], flush=True)
+              if sys.argv[1] == "required":
+                  raise
+          finally:
+              for descriptor in descriptors:
+                  os.close(descriptor)
+          PY
+          python3 "$RUNNER_TEMP/descriptor_probe.py" inspect
+          current_max_files="$(sysctl -n kern.maxfiles)"
+          current_max_files_per_process="$(sysctl -n kern.maxfilesperproc)"
+          if (( current_max_files < 32768 )); then
+            sudo sysctl -w kern.maxfiles=32768
+          fi
+          if (( current_max_files_per_process < 16384 )); then
+            sudo sysctl -w kern.maxfilesperproc=16384
+          fi
+          python3 "$RUNNER_TEMP/descriptor_probe.py" required
