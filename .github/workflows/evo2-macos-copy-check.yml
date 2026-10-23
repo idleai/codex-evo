@@ -1,0 +1,41 @@
+name: Inspect macOS copy permissions
+
+on:
+  push:
+    branches: [evo2/macos-copy-check]
+
+permissions:
+  contents: read
+
+jobs:
+  inspect:
+    runs-on: macos-15-intel
+    timeout-minutes: 90
+    environment:
+      name: bazel
+      deployment: false
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/prepare-bazel-ci
+        with:
+          target: x86_64-apple-darwin
+          cache-scope: bazel-test
+      - name: Inspect the copy-permission regressions
+        shell: bash
+        env:
+          BUILDBUDDY_API_KEY: ${{ secrets.BUILDBUDDY_API_KEY }}
+        run: |
+          ./.github/scripts/run-bazel-ci.sh \
+            --print-failed-action-summary \
+            --print-failed-test-logs \
+            --remote-download-toplevel \
+            -- \
+            test \
+            --lockfile_mode=error \
+            --test_sharding_strategy=disabled \
+            --test_output=all \
+            --test_filter=copy_file_uses_each_environments_permissions \
+            -- \
+            //codex-rs/ext/multi-env-copy-file:multi-env-copy-file-copy_file-test

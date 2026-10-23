@@ -442,6 +442,7 @@ async fn copy_file_uses_each_environments_permissions(use_grants: bool) -> Resul
     if use_grants {
         for scope in [PermissionGrantScope::Turn, PermissionGrantScope::Session] {
             let event = wait_for_event(&test.codex, |event| {
+                eprintln!("COPY GRANT EVENT: {event:?}");
                 matches!(
                     event,
                     EventMsg::RequestPermissions(_) | EventMsg::TurnComplete(_)
@@ -464,6 +465,7 @@ async fn copy_file_uses_each_environments_permissions(use_grants: bool) -> Resul
         }
     }
     wait_for_event(&test.codex, |event| {
+        eprintln!("COPY COMPLETION EVENT: {event:?}");
         matches!(event, EventMsg::TurnComplete(_))
     })
     .await;
