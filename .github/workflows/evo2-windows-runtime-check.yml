@@ -1,0 +1,39 @@
+name: Windows executor and transport check
+on:
+  push:
+    branches: [evo2/windows-runtime-check]
+permissions:
+  contents: read
+jobs:
+  runtime:
+    runs-on: windows-2025
+    timeout-minutes: 90
+    environment:
+      name: bazel
+      deployment: false
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/prepare-bazel-ci
+        with:
+          target: x86_64-pc-windows-gnullvm
+          cache-scope: bazel-test
+      - name: Run executor and transport tests on Windows
+        shell: bash
+        env:
+          BUILDBUDDY_API_KEY: ${{ secrets.BUILDBUDDY_API_KEY }}
+        run: |
+          ./.github/scripts/run-bazel-ci.sh \
+            --print-failed-action-summary \
+            --print-failed-test-logs \
+            --windows-cross-compile \
+            --remote-download-toplevel \
+            -- \
+            test \
+            --lockfile_mode=error \
+            --test_sharding_strategy=disabled \
+            --test_output=errors \
+            -- \
+            //codex-rs/exec-server:exec-server-unit-tests \
+            //codex-rs/app-server-transport:app-server-transport-unit-tests
