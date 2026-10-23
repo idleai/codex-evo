@@ -1,0 +1,20 @@
+name: Inspect Windows test ACLs
+
+on:
+  push:
+    branches: [evo2/windows-acl-check]
+
+permissions:
+  contents: read
+
+jobs:
+  inspect:
+    runs-on: windows-2025
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          persist-credentials: false
+      - name: Compare inherited and private fixture permissions
+        shell: pwsh
+        run: ./.github/scripts/check-windows-test-acls.ps1
