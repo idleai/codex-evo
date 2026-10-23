@@ -219,6 +219,9 @@ public static class AppContainerCheck {
             WindowsIdentity.RunImpersonated(token, () => {
                 InspectSystemObject(@"\??\" + cwd, 0x40, false, false);
                 InspectSystemObject(@"\??\" + Path.Combine(cwd, ".git"), 0x10000, false, false);
+                InspectSystemObject(@"\??\" + Path.Combine(cwd, "readonly.txt"), 2, false, false);
+                InspectSystemObject(@"\??\" + Path.Combine(cwd, "nested", ".codex"), 2, false, false);
+                InspectSystemObject(@"\??\" + Path.Combine(cwd, "nested", ".codex", "config.toml"), 0x10000, false, false);
                 InspectSystemObject(@"\??\" + Path.Combine(cwd, "delete.txt"), 0x10000, false, false);
                 InspectSystemObject(@"\??\" + Path.Combine(Directory.GetParent(cwd).FullName, "outside", "delete.txt"), 0x10000, false, false);
             });
@@ -545,6 +548,27 @@ public static class AppContainerCheck {
                 FileSystemRights.Write | FileSystemRights.Delete,
                 inheritance, PropagationFlags.None, AccessControlType.Deny));
             new DirectoryInfo(nestedDir).SetAccessControl(nestedAcl);
+            if (backend.Contains("no-inherited-write")) {
+                foreach (string path in new [] { protectedDir, nestedDir }) {
+                    var readOnlyAcl = new DirectorySecurity();
+                    readOnlyAcl.SetAccessRuleProtection(true, false);
+                    readOnlyAcl.AddAccessRule(new FileSystemAccessRule(WindowsIdentity.GetCurrent().User,
+                        FileSystemRights.FullControl, inheritance, PropagationFlags.None, AccessControlType.Allow));
+                    readOnlyAcl.AddAccessRule(new FileSystemAccessRule(new SecurityIdentifier(WellKnownSidType.WorldSid, null),
+                        FileSystemRights.FullControl, inheritance, PropagationFlags.None, AccessControlType.Allow));
+                    readOnlyAcl.AddAccessRule(new FileSystemAccessRule(package, FileSystemRights.ReadAndExecute,
+                        inheritance, PropagationFlags.None, AccessControlType.Allow));
+                    new DirectoryInfo(path).SetAccessControl(readOnlyAcl);
+                }
+                var readOnlyFileAcl = new FileSecurity();
+                readOnlyFileAcl.SetAccessRuleProtection(true, false);
+                readOnlyFileAcl.AddAccessRule(new FileSystemAccessRule(WindowsIdentity.GetCurrent().User,
+                    FileSystemRights.FullControl, AccessControlType.Allow));
+                readOnlyFileAcl.AddAccessRule(new FileSystemAccessRule(new SecurityIdentifier(WellKnownSidType.WorldSid, null),
+                    FileSystemRights.FullControl, AccessControlType.Allow));
+                readOnlyFileAcl.AddAccessRule(new FileSystemAccessRule(package, FileSystemRights.ReadAndExecute, AccessControlType.Allow));
+                new FileInfo(protectedFile).SetAccessControl(readOnlyFileAcl);
+            }
             string freshFile = Path.Combine(workspace, "fresh.txt"), renamedFile = Path.Combine(workspace, "renamed.txt");
             string writableFile = Path.Combine(workspace, "delete.txt"), outsideFile = Path.Combine(outside, "delete.txt");
             File.WriteAllText(writableFile, "workspace");
@@ -597,7 +621,7 @@ public static class AppContainerCheck {
             }
             string cmd = Path.Combine(Environment.SystemDirectory, "cmd.exe");
             if (backend.StartsWith("appcontainer")) {
-                foreach (var path in new [] { root, workspace, protectedDir })
+                foreach (var path in new [] { root, workspace, protectedDir, nestedDir })
                     Console.WriteLine("DIRECTORY ACL " + path + " " + new DirectoryInfo(path).GetAccessControl().GetSecurityDescriptorSddlForm(AccessControlSections.Access));
             }
             uint exit;
@@ -650,7 +674,7 @@ $shells = @{
     powershell = (Join-Path $env:SystemRoot 'System32/WindowsPowerShell/v1.0/powershell.exe')
     pwsh = (Get-Command pwsh).Source
 }
-foreach ($backend in @('appcontainer-parent-guard-all-app-guard-ancestor-metadata', 'appcontainer-parent-guard-all-app-guard-ancestor-metadata-protected-handles')) {
+foreach ($backend in @('appcontainer-parent-guard-all-app-guard-ancestor-metadata', 'appcontainer-parent-guard-all-app-guard-ancestor-metadata-protected-handles', 'appcontainer-parent-guard-all-app-guard-ancestor-metadata-protected-handles-no-inherited-write')) {
     foreach ($entry in $shells.GetEnumerator()) {
         $root = Join-Path $env:GITHUB_WORKSPACE ('appcontainer-' + [Guid]::NewGuid().ToString('N'))
         Write-Host "CHECK backend=$backend shell=$($entry.Key)"
