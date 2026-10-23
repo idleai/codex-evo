@@ -48,6 +48,34 @@ runs:
           sudo sysctl -w kern.maxfilesperproc=16384
         fi
 
+    - name: Resolve both local hostname address families (macOS)
+      if: runner.os == 'macOS' && runner.environment == 'github-hosted'
+      shell: bash
+      run: |
+        sudo python3 - <<'PYHOST'
+        import socket
+        import subprocess
+        import time
+        from pathlib import Path
+
+        hostname = socket.gethostname()
+        assert hostname and not any(character.isspace() for character in hostname)
+        hosts = Path('/etc/hosts')
+        records = [line.split('#', 1)[0].split() for line in hosts.read_text().splitlines()]
+        with hosts.open('a') as stream:
+            for address in ['127.0.0.1', '::1']:
+                if not any(record and record[0] == address and hostname.lower().rstrip('.') in [alias.lower().rstrip('.') for alias in record[1:]] for record in records):
+                    stream.write(f'\n{address} {hostname}\n')
+        subprocess.run(['dscacheutil', '-flushcache'], check=True)
+        subprocess.run(['killall', '-HUP', 'mDNSResponder'], check=True)
+        started = time.monotonic()
+        resolved = socket.getaddrinfo(hostname, None, flags=socket.AI_CANONNAME)
+        elapsed = time.monotonic() - started
+        print(f'Hostname lookup after both local address entries: {elapsed:.3f}s {resolved}', flush=True)
+        if elapsed >= 1:
+            raise RuntimeError(f'Hostname resolution is still slow: {elapsed:.3f}s')
+        PYHOST
+
     - name: Configure CI build paths
       id: configure_ci_build_paths
       shell: bash
