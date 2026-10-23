@@ -248,7 +248,7 @@ public static class AppContainerCheck {
                 var bytes = new byte[systemReadSid.BinaryLength];
                 systemReadSid.GetBinaryForm(bytes, 0);
                 var systemRead = Marshal.AllocHGlobal(bytes.Length);
-                IntPtr logon = IntPtr.Zero, restrictedCode = IntPtr.Zero;
+                IntPtr logon = IntPtr.Zero, restrictedCode = IntPtr.Zero, applicationGroup = IntPtr.Zero;
                 try {
                     Marshal.Copy(bytes, 0, systemRead, bytes.Length);
                     var restrictions = new List<SidAndAttributes> {
@@ -263,6 +263,14 @@ public static class AppContainerCheck {
                         restrictedCode = Marshal.AllocHGlobal(groupBytes.Length);
                         Marshal.Copy(groupBytes, 0, restrictedCode, groupBytes.Length);
                         restrictions.Add(new SidAndAttributes { Sid = restrictedCode });
+                    }
+                    if (backend.Contains("application-group")) {
+                        var group = new SecurityIdentifier(backend.Contains("restricted-application-group") ? "S-1-15-2-2" : "S-1-15-2-1");
+                        var groupBytes = new byte[group.BinaryLength];
+                        group.GetBinaryForm(groupBytes, 0);
+                        applicationGroup = Marshal.AllocHGlobal(groupBytes.Length);
+                        Marshal.Copy(groupBytes, 0, applicationGroup, groupBytes.Length);
+                        restrictions.Add(new SidAndAttributes { Sid = applicationGroup });
                     }
                     if (backend.Contains("logon")) {
                         using (var identity = WindowsIdentity.GetCurrent()) {
@@ -343,6 +351,7 @@ public static class AppContainerCheck {
                     Marshal.FreeHGlobal(systemRead);
                     Marshal.FreeHGlobal(logon);
                     Marshal.FreeHGlobal(restrictedCode);
+                    Marshal.FreeHGlobal(applicationGroup);
                 }
             }
             try {
@@ -518,7 +527,7 @@ $shells = @{
     powershell = (Join-Path $env:SystemRoot 'System32/WindowsPowerShell/v1.0/powershell.exe')
     pwsh = (Get-Command pwsh).Source
 }
-foreach ($backend in @('appcontainer-parent-guard-all-app-guard-ancestor-metadata', 'full-restricted-users-logon', 'full-restricted-users-logon-inherit-console', 'full-restricted-users-logon-no-lua', 'full-restricted-world-logon', 'write-restricted-logon', 'write-restricted-logon-low-integrity-parent-guard-inherit-console', 'write-restricted-world-logon-low-integrity-parent-guard-inherit-console', 'full-restricted-users-restricted-code-logon-parent-guard', 'full-restricted-users-restricted-code-logon-low-integrity-parent-guard', 'write-restricted-code-logon-low-integrity-parent-guard-inherit-console')) {
+foreach ($backend in @('appcontainer-parent-guard-all-app-guard-ancestor-metadata', 'full-restricted-users-logon', 'full-restricted-users-logon-inherit-console', 'full-restricted-users-logon-no-lua', 'full-restricted-world-logon', 'write-restricted-logon', 'write-restricted-logon-low-integrity-parent-guard-inherit-console', 'write-restricted-world-logon-low-integrity-parent-guard-inherit-console', 'full-restricted-users-restricted-code-logon-parent-guard', 'full-restricted-users-restricted-code-logon-low-integrity-parent-guard', 'write-restricted-code-logon-low-integrity-parent-guard-inherit-console', 'full-restricted-users-restricted-code-application-group-logon-parent-guard', 'full-restricted-users-restricted-code-restricted-application-group-logon-parent-guard')) {
     foreach ($entry in $shells.GetEnumerator()) {
         $root = Join-Path $env:GITHUB_WORKSPACE ('appcontainer-' + [Guid]::NewGuid().ToString('N'))
         Write-Host "CHECK backend=$backend shell=$($entry.Key)"
