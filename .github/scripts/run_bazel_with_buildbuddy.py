@@ -142,9 +142,20 @@ def bazel_args_with_remote_config(
     if config is None:
         configured_args = bazel_args_without_remote_execution(args)
         if env.get("GITHUB_ACTIONS") == "true":
+            local_args = ["--config=ci-local"]
+            if env.get("RUNNER_ENVIRONMENT") == "self-hosted":
+                for env_name, option in (
+                    ("CODEX_BAZEL_JOBS", "--jobs"),
+                    ("CODEX_BAZEL_TEST_JOBS", "--local_test_jobs"),
+                ):
+                    value = env.get(env_name)
+                    if value:
+                        if not value.isdecimal() or int(value) < 1:
+                            raise ValueError(f"{env_name} must be a positive integer")
+                        local_args.append(f"{option}={value}")
             configured_args = [
                 *configured_args[: command_idx + 1],
-                "--config=ci-local",
+                *local_args,
                 *configured_args[command_idx + 1 :],
             ]
     else:
@@ -174,6 +185,7 @@ def bazel_args_with_remote_config(
         for env_name, option_prefix in (
             ("BAZEL_REPO_CONTENTS_CACHE", "--repo_contents_cache="),
             ("BAZEL_REPOSITORY_CACHE", "--repository_cache="),
+            ("BAZEL_DISK_CACHE", "--disk_cache="),
         )
         if env.get(env_name)
         and not any(

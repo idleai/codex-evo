@@ -73,6 +73,11 @@ runs:
           "$tmp"
         )
         mkdir -p "${build_dirs[@]}"
+        if [[ "${RUNNER_ENVIRONMENT:-}" == "self-hosted" ]]; then
+          # Retain compiled outputs on persistent runners even without RBE.
+          mkdir -p "$CI_BUILD_ROOT/bazel-disk-cache"
+          echo "BAZEL_DISK_CACHE=$CI_BUILD_ROOT/bazel-disk-cache" >> "$GITHUB_ENV"
+        fi
         echo "bazel-output-base=$bazel_output_base" >> "$GITHUB_OUTPUT"
         echo "cargo-target-dir=$cargo_target_dir" >> "$GITHUB_OUTPUT"
 

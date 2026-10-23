@@ -85,6 +85,51 @@ class RunBazelWithBuildBuddyTest(unittest.TestCase):
             ],
         )
 
+    def test_persistent_runner_uses_cache_and_keeps_explicit_job_limit(self) -> None:
+        env = {
+            "GITHUB_ACTIONS": "true",
+            "RUNNER_ENVIRONMENT": "self-hosted",
+            "CODEX_BAZEL_JOBS": "12",
+            "CODEX_BAZEL_TEST_JOBS": "2",
+            "BAZEL_DISK_CACHE": "/cache/actions",
+        }
+        args = ["test", "--config=ci-bazel", "--jobs=6", "--", "//codex-rs/cli:all"]
+        self.assertEqual(
+            run_bazel_with_buildbuddy.bazel_args_with_remote_config(args, env),
+            [
+                "test",
+                "--config=ci-local",
+                "--jobs=12",
+                "--local_test_jobs=2",
+                "--config=ci-bazel",
+                "--jobs=6",
+                "--disk_cache=/cache/actions",
+                "--",
+                "//codex-rs/cli:all",
+            ],
+        )
+        env["RUNNER_ENVIRONMENT"] = "github-hosted"
+        del env["BAZEL_DISK_CACHE"]
+        self.assertEqual(
+            run_bazel_with_buildbuddy.bazel_args_with_remote_config(args, env),
+            ["test", "--config=ci-local", *args[1:]],
+        )
+
+    def test_persistent_runner_rejects_invalid_job_limit(self) -> None:
+        for value in ("0", "-1", "unlimited"):
+            with (
+                self.subTest(value=value),
+                self.assertRaisesRegex(ValueError, "positive integer"),
+            ):
+                run_bazel_with_buildbuddy.bazel_args_with_remote_config(
+                    ["test", "//codex-rs/cli:all"],
+                    {
+                        "GITHUB_ACTIONS": "true",
+                        "RUNNER_ENVIRONMENT": "self-hosted",
+                        "CODEX_BAZEL_JOBS": value,
+                    },
+                )
+
     def test_upstream_push_selects_openai_rbe_before_target_separator(self) -> None:
         with TemporaryDirectory() as temp_dir:
             env = self.github_env(temp_dir, event_name="push")

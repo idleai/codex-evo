@@ -101,7 +101,7 @@ jobs:
             shard: 4
             shard_count: 4
 
-    runs-on: ${{ matrix.os }}
+    runs-on: ${{ matrix.os == 'ubuntu-24.04' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && vars.CODEX_LINUX_RUNNER || matrix.os }}
 
     # Configure a human readable name for each job
     name: Bazel test on ${{ matrix.os }} for ${{ matrix.target }}${{ matrix.shard_count > 1 && format(' shard {0}/{1}', matrix.shard, matrix.shard_count) || '' }}
@@ -447,7 +447,7 @@ jobs:
             target: aarch64-apple-darwin
           - os: windows-2025
             target: x86_64-pc-windows-gnullvm
-    runs-on: ${{ matrix.os }}
+    runs-on: ${{ matrix.os == 'ubuntu-24.04' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && vars.CODEX_LINUX_RUNNER || matrix.os }}
     name: Bazel clippy on ${{ matrix.os }} for ${{ matrix.target }}
     environment:
       name: bazel
@@ -550,7 +550,7 @@ jobs:
             target: aarch64-apple-darwin
           - os: windows-2025
             target: x86_64-pc-windows-gnullvm
-    runs-on: ${{ matrix.os }}
+    runs-on: ${{ matrix.os == 'ubuntu-24.04' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && vars.CODEX_LINUX_RUNNER || matrix.os }}
     name: Verify release build on ${{ matrix.os }} for ${{ matrix.target }}
     environment:
       name: bazel

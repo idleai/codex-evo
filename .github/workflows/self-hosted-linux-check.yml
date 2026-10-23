@@ -1,0 +1,46 @@
+name: Self-hosted Linux check
+
+on:
+  push:
+    branches: [ci/self-hosted-linux]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    if: ${{ vars.CODEX_LINUX_PILOT_RUNNER != '' }}
+    runs-on: ${{ vars.CODEX_LINUX_PILOT_RUNNER }}
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+      - name: Check runner resources
+        shell: bash
+        run: |
+          test "$RUNNER_ENVIRONMENT" = self-hosted
+          test "$RUNNER_OS" = Linux
+          nproc
+          free -h
+          df -h /mnt/ci-cache
+          mountpoint -q /mnt/ci-cache
+      - name: Prepare Bazel CI
+        uses: ./.github/actions/prepare-bazel-ci
+        with:
+          target: x86_64-unknown-linux-gnu
+          cache-scope: self-hosted-check
+      - name: Check CI helpers
+        run: just test-github-scripts
+      - name: Compile and test on the local runner
+        run: |
+          test -n "$BAZEL_DISK_CACHE"
+          ./.github/scripts/run-bazel-ci.sh -- test -- //codex-rs/utils/absolute-path:absolute-path-test
+      - name: Check cache reuse
+        run: |
+          ./.github/scripts/run-bazel-ci.sh -- test -- //codex-rs/utils/absolute-path:absolute-path-test
+          du -sh "$BAZEL_DISK_CACHE"
+      - name: Check for a clean worktree
+        if: always() && !cancelled()
+        uses: ./.github/actions/check-clean-worktree
