@@ -3,6 +3,11 @@ load("//:defs.bzl", "codex_rust_crate")
 codex_rust_crate(
     name = "exec",
     crate_name = "codex_exec",
+    extra_binaries = [
+        "//codex-rs/bwrap:bwrap",
+        "//codex-rs/cli:codex",
+        "//codex-rs/linux-sandbox:codex-linux-sandbox",
+    ],
     test_shard_counts = {
         "exec-all-test": 8,
     },
