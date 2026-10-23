@@ -123,12 +123,20 @@ public static class AppContainerCheck {
         IntPtr security, uint creation, uint flags, IntPtr template);
 
     private static SafeFileHandle HoldProtectedPath(string path) {
-        // Keep read and write sharing; deletion and rename require delete sharing.
-        var handle = CreateFile(path, 0x80, 3, IntPtr.Zero, 3, 0x02000000, IntPtr.Zero);
+        // Metadata-only handles do not participate in file sharing checks.
+        // Request read access, keeping read/write sharing but withholding delete sharing.
+        var handle = CreateFile(path, 0x80000000, 3, IntPtr.Zero, 3, 0x02000000, IntPtr.Zero);
         if (handle.IsInvalid) {
             int error = Marshal.GetLastWin32Error();
             handle.Dispose();
             throw new Win32Exception(error, "hold protected path " + path);
+        }
+        using (var deletion = CreateFile(path, 0x10000, 7, IntPtr.Zero, 3, 0x02000000, IntPtr.Zero)) {
+            int error = Marshal.GetLastWin32Error();
+            if (!deletion.IsInvalid || error != 32) {
+                handle.Dispose();
+                throw new Exception("protected handle did not reject DELETE with a sharing violation: " + error);
+            }
         }
         return handle;
     }
