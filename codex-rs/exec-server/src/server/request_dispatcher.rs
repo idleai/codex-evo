@@ -177,6 +177,12 @@ impl RequestDispatcher {
         queued_at: Instant,
     ) -> RequestTaskResult {
         let started_at = Instant::now();
+        eprintln!(
+            "COPY DIAGNOSTIC RPC START: pid={} method={} id={:?}",
+            std::process::id(),
+            request.method,
+            request.id
+        );
         let Some((method, route)) = self.router.request_route(request.method.as_str()) else {
             let method = "unknown";
             self.telemetry
@@ -251,6 +257,11 @@ impl RequestDispatcher {
                 }
             };
             let result = request_result(&message);
+            eprintln!(
+                "COPY DIAGNOSTIC RPC END: pid={} method={method} result={result} elapsed={:?}",
+                std::process::id(),
+                started_at.elapsed()
+            );
             let response_sent = match message {
                 Some(message) => {
                     let response_sent = tokio::select! {

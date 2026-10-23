@@ -423,6 +423,27 @@ async fn copy_file_uses_each_environments_permissions(use_grants: bool) -> Resul
         ]),
     ]);
     let mock = mount_sse_sequence(&server, responses).await;
+    let diagnostic_mock = mock.clone();
+    tokio::spawn(async move {
+        for _ in 0..4 {
+            tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+            eprintln!(
+                "COPY DIAGNOSTIC: grants={use_grants}, model requests={}",
+                diagnostic_mock.requests().len()
+            );
+        }
+        if let Ok(output) = tokio::process::Command::new("ps")
+            .args(["-axo", "pid,ppid,state,comm"])
+            .output()
+            .await
+        {
+            for line in String::from_utf8_lossy(&output.stdout).lines() {
+                if line.contains("codex") || line.contains("sandbox") {
+                    eprintln!("COPY DIAGNOSTIC PROCESS: {line}");
+                }
+            }
+        }
+    });
     test.codex
         .start_or_steer_turn(
             TurnInputRequest::user_input(vec![UserInput::Text {

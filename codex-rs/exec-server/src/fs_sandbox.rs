@@ -88,7 +88,9 @@ impl FileSystemSandboxRunner {
         request: FsHelperRequest,
     ) -> Result<FsHelperPayload, JSONRPCErrorError> {
         let command = self.sandbox_command(sandbox)?;
+        eprintln!("COPY DIAGNOSTIC FS: before integrity checks");
         crate::run_integrity_checks(&command).await;
+        eprintln!("COPY DIAGNOSTIC FS: after integrity checks");
         let request_json = serde_json::to_vec(&request).map_err(json_error)?;
         run_command(command, request_json).await
     }
@@ -397,6 +399,7 @@ async fn run_command(
     request_json: Vec<u8>,
 ) -> Result<FsHelperPayload, JSONRPCErrorError> {
     let mut child = spawn_command(command, ChildStdin::Piped)?;
+    eprintln!("COPY DIAGNOSTIC FS: helper pid={:?}", child.id());
     let mut stdin = child
         .stdin
         .take()
@@ -407,6 +410,7 @@ async fn run_command(
     #[cfg(windows)]
     request_json.push(b'\n');
     stdin.write_all(&request_json).await.map_err(io_error)?;
+    eprintln!("COPY DIAGNOSTIC FS: request written");
 
     #[cfg(windows)]
     let response = {
@@ -426,10 +430,12 @@ async fn run_command(
     let response = {
         stdin.shutdown().await.map_err(io_error)?;
         drop(stdin);
+        eprintln!("COPY DIAGNOSTIC FS: waiting for helper output");
         wait_for_helper_output(child).await?.stdout
     };
 
     let response = serde_json::from_slice(&response).map_err(json_error)?;
+    eprintln!("COPY DIAGNOSTIC FS: decoded helper response");
     match response {
         FsHelperResponse::Ok(payload) => Ok(payload),
         FsHelperResponse::Error(error) => Err(error),

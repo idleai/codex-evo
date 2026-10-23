@@ -36,6 +36,7 @@ jobs:
             --lockfile_mode=error \
             --test_sharding_strategy=disabled \
             --test_output=all \
-            --test_filter=copy_file_uses_each_environments_permissions \
+            --test_arg=copy_file_uses_each_environments_permissions \
+            --test_arg=--test-threads=1 \
             -- \
             //codex-rs/ext/multi-env-copy-file:multi-env-copy-file-copy_file-test
