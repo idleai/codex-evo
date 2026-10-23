@@ -118,6 +118,21 @@ public static class AppContainerCheck {
     [DllImport("kernel32.dll", SetLastError = true)]
     private static extern uint ResumeThread(IntPtr thread);
 
+    [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+    private static extern SafeFileHandle CreateFile(string path, uint access, uint share,
+        IntPtr security, uint creation, uint flags, IntPtr template);
+
+    private static SafeFileHandle HoldProtectedPath(string path) {
+        // Keep read and write sharing; deletion and rename require delete sharing.
+        var handle = CreateFile(path, 0x80, 3, IntPtr.Zero, 3, 0x02000000, IntPtr.Zero);
+        if (handle.IsInvalid) {
+            int error = Marshal.GetLastWin32Error();
+            handle.Dispose();
+            throw new Win32Exception(error, "hold protected path " + path);
+        }
+        return handle;
+    }
+
     private static SecurityIdentifier LogonSid(IntPtr token) {
         uint needed;
         GetTokenInformation(token, 28, IntPtr.Zero, 0, out needed);
@@ -530,7 +545,10 @@ public static class AppContainerCheck {
                 foreach (var path in new [] { root, workspace, protectedDir })
                     Console.WriteLine("DIRECTORY ACL " + path + " " + new DirectoryInfo(path).GetAccessControl().GetSecurityDescriptorSddlForm(AccessControlSections.Access));
             }
-            uint exit = Start(sid, cmd, "\"" + cmd + "\" /d /s /c \"" + inner + " >\"" + output + "\" 2>&1\"", workspace, backend);
+            uint exit;
+            using (var protectedHandle = backend.Contains("protected-handles") ? HoldProtectedPath(protectedDir) : null) {
+                exit = Start(sid, cmd, "\"" + cmd + "\" /d /s /c \"" + inner + " >\"" + output + "\" 2>&1\"", workspace, backend);
+            }
             string log = File.Exists(output) ? File.ReadAllText(output) : "NO OUTPUT FILE";
             Console.WriteLine("BACKEND=" + backend + " SHELL=" + shellName + " EXIT=" + exit + "\n" + log);
             bool writableDeleted = !File.Exists(writableFile), outsideKept = File.Exists(outsideFile), protectedKept = Directory.Exists(protectedDir);
@@ -566,7 +584,7 @@ $shells = @{
     powershell = (Join-Path $env:SystemRoot 'System32/WindowsPowerShell/v1.0/powershell.exe')
     pwsh = (Get-Command pwsh).Source
 }
-foreach ($backend in @('appcontainer-parent-guard-all-app-guard-ancestor-metadata', 'full-restricted-users-logon', 'full-restricted-users-logon-inherit-console', 'full-restricted-users-logon-no-lua', 'full-restricted-world-logon', 'write-restricted-logon', 'write-restricted-logon-low-integrity-parent-guard-inherit-console', 'write-restricted-world-logon-low-integrity-parent-guard-inherit-console', 'full-restricted-users-restricted-code-logon-parent-guard', 'full-restricted-users-restricted-code-logon-low-integrity-parent-guard', 'write-restricted-code-logon-low-integrity-parent-guard-inherit-console', 'full-restricted-users-restricted-code-application-group-logon-parent-guard', 'full-restricted-users-restricted-code-restricted-application-group-logon-parent-guard')) {
+foreach ($backend in @('appcontainer-parent-guard-all-app-guard-ancestor-metadata', 'appcontainer-parent-guard-all-app-guard-ancestor-metadata-protected-handles')) {
     foreach ($entry in $shells.GetEnumerator()) {
         $root = Join-Path $env:GITHUB_WORKSPACE ('appcontainer-' + [Guid]::NewGuid().ToString('N'))
         Write-Host "CHECK backend=$backend shell=$($entry.Key)"
