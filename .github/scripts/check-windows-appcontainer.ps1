@@ -36,6 +36,9 @@ public static class AppContainerCheck {
     private static extern bool GetTokenInformation(IntPtr token, int kind,
         IntPtr buffer, uint size, out uint required);
     [DllImport("advapi32.dll", SetLastError = true)]
+    private static extern bool SetTokenInformation(SafeAccessTokenHandle token, int kind,
+        IntPtr buffer, uint size);
+    [DllImport("advapi32.dll", SetLastError = true)]
     private static extern bool OpenProcessToken(IntPtr process, uint access, out SafeAccessTokenHandle token);
     [DllImport("kernel32.dll")]
     private static extern IntPtr GetCurrentProcess();
@@ -137,8 +140,9 @@ public static class AppContainerCheck {
         try {
             var startup = new StartupInfoEx();
             startup.Startup.Size = (uint)Marshal.SizeOf<StartupInfoEx>();
+            startup.Startup.Desktop = @"winsta0\default";
             ProcessInfo process;
-            if (backend == "appcontainer") {
+            if (backend.StartsWith("appcontainer")) {
                 IntPtr size = IntPtr.Zero;
                 InitializeProcThreadAttributeList(IntPtr.Zero, 1, 0, ref size);
                 attributes = Marshal.AllocHGlobal(size);
@@ -156,7 +160,7 @@ public static class AppContainerCheck {
                     false, 0x08080000, IntPtr.Zero, cwd, ref startup, out process))
                     throw new Win32Exception(Marshal.GetLastWin32Error(), "launch " + application);
             } else {
-                var systemReadSid = new SecurityIdentifier(backend.Contains("users") ? "S-1-5-32-545" : "S-1-15-2-1");
+                var systemReadSid = new SecurityIdentifier(backend.Contains("world") ? "S-1-1-0" : "S-1-5-32-545");
                 var bytes = new byte[systemReadSid.BinaryLength];
                 systemReadSid.GetBinaryForm(bytes, 0);
                 var systemRead = Marshal.AllocHGlobal(bytes.Length);
@@ -188,10 +192,27 @@ public static class AppContainerCheck {
                             0, IntPtr.Zero, 0, IntPtr.Zero, (uint)restrictions.Count, restrictions.ToArray(), out token))
                             throw new Win32Exception(Marshal.GetLastWin32Error(), "create full restricted token");
                         using (token) {
+                            var defaultAcl = new RawAcl(2, 1);
+                            defaultAcl.InsertAce(0, new CommonAce(AceFlags.None, AceQualifier.AccessAllowed,
+                                0x10000000, new SecurityIdentifier(logon), false, null));
+                            var defaultAclBytes = new byte[defaultAcl.BinaryLength];
+                            defaultAcl.GetBinaryForm(defaultAclBytes, 0);
+                            var defaultAclBuffer = Marshal.AllocHGlobal(defaultAclBytes.Length);
+                            var defaultAclInfo = Marshal.AllocHGlobal(IntPtr.Size);
+                            try {
+                                Marshal.Copy(defaultAclBytes, 0, defaultAclBuffer, defaultAclBytes.Length);
+                                Marshal.WriteIntPtr(defaultAclInfo, defaultAclBuffer);
+                                if (!SetTokenInformation(token, 6, defaultAclInfo, (uint)IntPtr.Size))
+                                    throw new Win32Exception(Marshal.GetLastWin32Error(), "set logon default DACL");
+                            } finally {
+                                Marshal.FreeHGlobal(defaultAclInfo);
+                                Marshal.FreeHGlobal(defaultAclBuffer);
+                            }
                             startup.Startup.Size = (uint)Marshal.SizeOf<StartupInfo>();
                             startup.Attributes = IntPtr.Zero;
+                            uint creationFlags = backend.Contains("inherit-console") ? 0u : 0x08000000u;
                             if (!CreateProcessAsUser(token, application, new StringBuilder(command), IntPtr.Zero,
-                                IntPtr.Zero, false, 0x08000000, IntPtr.Zero, cwd, ref startup, out process))
+                                IntPtr.Zero, false, creationFlags, IntPtr.Zero, cwd, ref startup, out process))
                                 throw new Win32Exception(Marshal.GetLastWin32Error(), "launch full restricted token");
                         }
                     }
@@ -243,7 +264,7 @@ public static class AppContainerCheck {
         IntPtr sid = IntPtr.Zero;
         Directory.CreateDirectory(root);
         try {
-            if (backend == "appcontainer") {
+            if (backend.StartsWith("appcontainer")) {
                 int result = CreateAppContainerProfile(profile, profile, "Temporary sandbox check", IntPtr.Zero, 0, out sid);
                 if (result < 0) Marshal.ThrowExceptionForHR(result);
             } else {
@@ -270,6 +291,11 @@ public static class AppContainerCheck {
             var writeAcl = new DirectoryInfo(workspace).GetAccessControl();
             writeAcl.AddAccessRule(new FileSystemAccessRule(package, FileSystemRights.Modify,
                 inheritance, PropagationFlags.None, AccessControlType.Allow));
+            if (backend.Contains("parent-guard")) {
+                writeAcl.AddAccessRule(new FileSystemAccessRule(new SecurityIdentifier(WellKnownSidType.WorldSid, null),
+                    FileSystemRights.DeleteSubdirectoriesAndFiles, InheritanceFlags.ContainerInherit,
+                    PropagationFlags.None, AccessControlType.Deny));
+            }
             new DirectoryInfo(workspace).SetAccessControl(writeAcl);
             var protectedDir = Path.Combine(workspace, ".git");
             Directory.CreateDirectory(protectedDir);
@@ -300,7 +326,7 @@ public static class AppContainerCheck {
                 throw new Exception(backend + " compatibility or deletion boundary check failed for " + shellName);
         } finally {
             if (sid != IntPtr.Zero) {
-                if (backend == "appcontainer") { FreeSid(sid); DeleteAppContainerProfile(profile); }
+                if (backend.StartsWith("appcontainer")) { FreeSid(sid); DeleteAppContainerProfile(profile); }
                 else Marshal.FreeHGlobal(sid);
             }
             Directory.Delete(root, true);
@@ -317,7 +343,7 @@ $shells = @{
     powershell = (Join-Path $env:SystemRoot 'System32/WindowsPowerShell/v1.0/powershell.exe')
     pwsh = (Get-Command pwsh).Source
 }
-foreach ($backend in @('appcontainer', 'full-restricted', 'full-restricted-logon', 'full-restricted-no-lua', 'full-restricted-users-logon')) {
+foreach ($backend in @('appcontainer-parent-guard', 'full-restricted-users-logon', 'full-restricted-users-logon-inherit-console', 'full-restricted-users-logon-no-lua', 'full-restricted-world-logon')) {
     foreach ($entry in $shells.GetEnumerator()) {
         $root = Join-Path $env:GITHUB_WORKSPACE ('appcontainer-' + [Guid]::NewGuid().ToString('N'))
         Write-Host "CHECK backend=$backend shell=$($entry.Key)"
