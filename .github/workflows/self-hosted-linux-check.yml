@@ -26,6 +26,8 @@ jobs:
           free -h
           df -h /mnt/ci-cache
           mountpoint -q /mnt/ci-cache
+          test "$CODEX_BAZEL_JOBS" -ge 1
+          test "$CODEX_BAZEL_TEST_JOBS" -ge 1
       - name: Prepare Bazel CI
         uses: ./.github/actions/prepare-bazel-ci
         with:
@@ -36,10 +38,10 @@ jobs:
       - name: Compile and test on the local runner
         run: |
           test -n "$BAZEL_DISK_CACHE"
-          ./.github/scripts/run-bazel-ci.sh -- test -- //codex-rs/utils/absolute-path:absolute-path-test
+          ./.github/scripts/run-bazel-ci.sh -- test -- //codex-rs/utils/absolute-path:absolute-path-unit-tests
       - name: Check cache reuse
         run: |
-          ./.github/scripts/run-bazel-ci.sh -- test -- //codex-rs/utils/absolute-path:absolute-path-test
+          ./.github/scripts/run-bazel-ci.sh -- test -- //codex-rs/utils/absolute-path:absolute-path-unit-tests
           du -sh "$BAZEL_DISK_CACHE"
       - name: Check for a clean worktree
         if: always() && !cancelled()
