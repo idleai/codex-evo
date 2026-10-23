@@ -65,25 +65,26 @@ public static class FixtureAclCheck {
         } finally { Marshal.FreeHGlobal(buffer); }
     }
 
-    public static void Run(string root, bool privateAcl, uint flags, bool includeUser) {
+    public static void Run(string root, uint flags, bool includeUser, bool includeEveryone, bool worldFullControl) {
         Directory.CreateDirectory(root);
         try {
             using (var identity = WindowsIdentity.GetCurrent()) {
                 var capability = new SecurityIdentifier("S-1-5-21-10-20-30-40");
                 var everyone = new SecurityIdentifier(WellKnownSidType.WorldSid, null);
                 var inheritance = InheritanceFlags.ContainerInherit | InheritanceFlags.ObjectInherit;
-                if (privateAcl) {
+                {
                     var acl = new DirectorySecurity();
                     acl.SetAccessRuleProtection(true, false);
                     acl.AddAccessRule(new FileSystemAccessRule(identity.User,
                         FileSystemRights.FullControl, inheritance,
                         PropagationFlags.None, AccessControlType.Allow));
                     acl.AddAccessRule(new FileSystemAccessRule(everyone,
-                        FileSystemRights.ReadAndExecute, inheritance,
+                        worldFullControl ? FileSystemRights.FullControl : FileSystemRights.ReadAndExecute, inheritance,
                         PropagationFlags.None, AccessControlType.Allow));
                     new DirectoryInfo(root).SetAccessControl(acl);
                 }
-                Console.WriteLine("privateAcl=" + privateAcl);
+                Console.WriteLine("worldFullControl=" + worldFullControl);
+                Console.WriteLine("includeEveryone=" + includeEveryone);
                 Console.WriteLine("flags=" + flags);
                 Console.WriteLine("includeUser=" + includeUser);
                 Console.WriteLine("root=" + root);
@@ -120,9 +121,10 @@ public static class FixtureAclCheck {
                 }
                 var logon = LogonSid(identity.AccessToken.DangerousGetHandle());
                 Console.WriteLine("logon=" + logon.Value);
-                var sids = includeUser
-                    ? new [] { capability, identity.User, logon, everyone }
-                    : new [] { capability, logon, everyone };
+                var sids = new [] { capability, logon }
+                    .Concat(includeUser ? new [] { identity.User } : Array.Empty<SecurityIdentifier>())
+                    .Concat(includeEveryone ? new [] { everyone } : Array.Empty<SecurityIdentifier>())
+                    .ToArray();
                 var entries = new SidAndAttributes[sids.Length];
                 SafeAccessTokenHandle token;
                 try {
@@ -178,13 +180,17 @@ public static class FixtureAclCheck {
 '@
 Add-Type -TypeDefinition $source
 Get-Volume | Select-Object DriveLetter, FileSystemType | Format-Table
-$root = Join-Path $env:GITHUB_WORKSPACE ('codex-rs/.tmp-acl-' + [Guid]::NewGuid().ToString('N'))
-foreach ($flags in @(0xD, 0x5)) {
-    [FixtureAclCheck]::Run($root + '-legacy-' + $flags, $true, $flags, $false)
-    [FixtureAclCheck]::Run($root + '-with-user-' + $flags, $true, $flags, $true)
-}
-$ntfsRoot = Join-Path $env:SystemRoot ('Temp/codex-acl-' + [Guid]::NewGuid().ToString('N'))
-foreach ($flags in @(0xD, 0x5)) {
-    [FixtureAclCheck]::Run($ntfsRoot + '-legacy-' + $flags, $true, $flags, $false)
-    [FixtureAclCheck]::Run($ntfsRoot + '-with-user-' + $flags, $true, $flags, $true)
+$roots = @(
+    (Join-Path $env:GITHUB_WORKSPACE ('codex-rs/.tmp-acl-' + [Guid]::NewGuid().ToString('N'))),
+    (Join-Path $env:SystemRoot ('Temp/codex-acl-' + [Guid]::NewGuid().ToString('N')))
+)
+foreach ($root in $roots) {
+    foreach ($includeUser in @($false, $true)) {
+        foreach ($includeEveryone in @($false, $true)) {
+            foreach ($worldFullControl in @($false, $true)) {
+                $fixture = $root + '-' + $includeUser + '-' + $includeEveryone + '-' + $worldFullControl
+                [FixtureAclCheck]::Run($fixture, 0xD, $includeUser, $includeEveryone, $worldFullControl)
+            }
+        }
+    }
 }
