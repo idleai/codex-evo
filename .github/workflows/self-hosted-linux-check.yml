@@ -38,10 +38,13 @@ jobs:
       - name: Compile and test on the local runner
         run: |
           test -n "$BAZEL_DISK_CACHE"
-          ./.github/scripts/run-bazel-ci.sh -- test -- //codex-rs/utils/absolute-path:absolute-path-unit-tests
+          ./.github/scripts/run-bazel-ci.sh -- test --test_output=all -- //codex-rs/utils/absolute-path:absolute-path-unit-tests
       - name: Check cache reuse
         run: |
-          ./.github/scripts/run-bazel-ci.sh -- test -- //codex-rs/utils/absolute-path:absolute-path-unit-tests
+          ./.github/scripts/run_bazel_with_buildbuddy.py \
+            --output_base="$RUNNER_TEMP/bazel-cache-check" \
+            test --config=ci-bazel --nocache_test_results --test_output=all \
+            -- //codex-rs/utils/absolute-path:absolute-path-unit-tests
           du -sh "$BAZEL_DISK_CACHE"
       - name: Check for a clean worktree
         if: always() && !cancelled()

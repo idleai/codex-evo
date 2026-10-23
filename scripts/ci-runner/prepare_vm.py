@@ -68,9 +68,15 @@ set -euo pipefail
 mountpoint -q /mnt/ci-cache
 install -d -o runner -g runner /mnt/ci-cache/home-cache /mnt/ci-cache/cargo /mnt/ci-cache/rustup /mnt/ci-cache/toolcache /mnt/ci-cache/work
 install -d -o runner -g runner /home/runner/actions-runner
-ln -s /mnt/ci-cache/home-cache /home/runner/.cache
-ln -s /mnt/ci-cache/cargo /home/runner/.cargo
-ln -s /mnt/ci-cache/rustup /home/runner/.rustup
+for mapping in .cache:home-cache .cargo:cargo .rustup:rustup; do
+  source=/home/runner/${{mapping%%:*}}
+  destination=/mnt/ci-cache/${{mapping#*:}}
+  if [[ -d "$source" && ! -L "$source" ]]; then
+    cp -a "$source/." "$destination/"
+    rm -rf -- "$source"
+  fi
+  ln -sfn "$destination" "$source"
+done
 curl --fail --location --retry 3 {shlex.quote(download)} -o /tmp/runner.tar.gz
 printf '%s  %s\\n' {RUNNER_SHA256} /tmp/runner.tar.gz | sha256sum --check --status
 tar -xzf /tmp/runner.tar.gz -C /home/runner/actions-runner
