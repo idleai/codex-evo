@@ -11,6 +11,13 @@ use pretty_assertions::assert_eq;
 async fn follow_control_click_preserves_draft_caret_and_composer_geometry() -> Result<()> {
     let mut app = crate::app::test_support::make_test_app().await;
     app.local_settings.tui.animations = false;
+    app.chat_widget.apply_config_preference(
+        crate::config_panel::ConfigPreference::Toggle {
+            setting: crate::config_panel::ConfigToggle::Animations,
+            enabled: false,
+        },
+        &app.local_settings.tui,
+    );
     let mut server = Box::pin(crate::start_embedded_app_server_for_picker(&app.config)).await?;
     let mut tui = crate::tui::test_support::make_test_tui()?;
     tui.set_owned_screen(/*owned*/ true)?;
