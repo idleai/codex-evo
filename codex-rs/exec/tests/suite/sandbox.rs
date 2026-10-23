@@ -524,11 +524,10 @@ where
     if std::env::var(IN_SANDBOX_ENV_VAR).is_err() {
         let exe = std::env::current_exe()?;
         let mut cmds = vec![exe.to_string_lossy().into_owned(), "--exact".into()];
-        let mut stdio_policy = StdioPolicy::RedirectForShellTool;
+        let stdio_policy = StdioPolicy::RedirectForShellTool;
         // Allow for us to pass forward --nocapture / use the right stdio policy.
         if std::env::args().any(|a| a == "--nocapture") {
             cmds.push("--nocapture".into());
-            stdio_policy = StdioPolicy::Inherit;
         }
         cmds.push(test_selector.into());
 
@@ -536,7 +535,8 @@ where
         let command_cwd =
             AbsolutePathBuf::current_dir().expect("should be able to get current dir");
         let sandbox_cwd = command_cwd.clone();
-        let mut child = spawn_command_under_sandbox(
+        eprintln!("sandbox test child command: {cmds:?}");
+        let child = spawn_command_under_sandbox(
             cmds,
             command_cwd,
             permission_profile,
@@ -546,8 +546,9 @@ where
         )
         .await?;
 
-        let status = child.wait().await?;
-        Ok(Some(status))
+        let output = child.wait_with_output().await?;
+        eprintln!("sandbox test child: {output:?}");
+        Ok(Some(output.status))
     } else {
         // Child branch: run the provided body.
         child_body().await;

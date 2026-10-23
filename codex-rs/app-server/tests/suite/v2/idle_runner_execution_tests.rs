@@ -64,6 +64,7 @@ async fn code_mode_runner_exposes_commands_and_rechecks_nested_permissions() -> 
         .with_model("gpt-6-astra")
         .write(home.path())?;
     let mut owner = TestAppServer::builder()
+        .without_auto_env()
         .with_codex_home(home.path())
         .build_initialized()
         .await?;
@@ -116,6 +117,7 @@ async fn native_sandbox_blocks_paths_network_and_per_call_escalation() -> Result
     ]).await;
     MockResponsesConfig::new(&server.uri()).write(home.path())?;
     let mut owner = TestAppServer::builder()
+        .without_auto_env()
         .with_codex_home(home.path())
         .build_initialized()
         .await?;
@@ -166,6 +168,7 @@ async fn runner_finishes_after_client_detach_and_reloads_its_saved_scope() -> Re
         .with_root_config("thread_unload_delay_secs = 0")
         .write(home.path())?;
     let mut owner = TestAppServer::builder()
+        .without_auto_env()
         .with_codex_home(home.path())
         .build_initialized()
         .await?;
@@ -230,6 +233,7 @@ async fn revoking_live_access_stops_the_running_command(revocation: Revocation) 
     ).await;
     MockResponsesConfig::new(&server.uri()).write(home.path())?;
     let mut owner = TestAppServer::builder()
+        .without_auto_env()
         .with_codex_home(home.path())
         .build_initialized()
         .await?;

@@ -1,3 +1,5 @@
+//! Runner sessions execute on the selected daemon, so these fixtures select its local executor.
+
 use anyhow::Context;
 use anyhow::Result;
 use app_test_support::MockResponsesConfig;
@@ -131,6 +133,7 @@ async fn runner_rpc_rejects_override_routes_and_keeps_binding_after_restart_and_
         .with_root_config("thread_unload_delay_secs = 0")
         .write(home.path())?;
     let mut owner = TestAppServer::builder()
+        .without_auto_env()
         .with_codex_home(home.path())
         .build_initialized()
         .await?;
@@ -185,6 +188,7 @@ async fn runner_rpc_rejects_override_routes_and_keeps_binding_after_restart_and_
     drop(remote);
     assert!(owner.shutdown_gracefully().await?.success());
     let mut owner = TestAppServer::builder()
+        .without_auto_env()
         .with_codex_home(home.path())
         .build_initialized()
         .await?;
