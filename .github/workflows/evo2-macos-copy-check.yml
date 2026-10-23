@@ -10,7 +10,7 @@ permissions:
 jobs:
   inspect:
     runs-on: macos-15-intel
-    timeout-minutes: 90
+    timeout-minutes: 5
     environment:
       name: bazel
       deployment: false
@@ -18,50 +18,46 @@ jobs:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
         with:
           persist-credentials: false
-      - uses: ./.github/actions/prepare-bazel-ci
-        with:
-          target: x86_64-apple-darwin
-          cache-scope: bazel-test
-      - name: Inspect and configure runner hostname lookup
+      - name: Measure runner hostname resolution alternatives
         shell: bash
         run: |
-          sudo python3 - <<'PY'
+          sudo python3 - <<'PYPROBE'
           import socket
+          import subprocess
           import time
           from pathlib import Path
 
-          hostname = socket.gethostname()
-          assert hostname and not any(character.isspace() for character in hostname)
-          started = time.monotonic()
-          try:
-              resolved = socket.getaddrinfo(hostname, None, flags=socket.AI_CANONNAME)
-              print(f"Hostname lookup before hosts entry: {time.monotonic() - started:.3f}s {resolved}", flush=True)
-          except OSError as error:
-              print(f"Hostname lookup before hosts entry: {time.monotonic() - started:.3f}s {error}", flush=True)
-          hosts = Path('/etc/hosts')
-          aliases = {name.lower().rstrip('.') for line in hosts.read_text().splitlines() for name in line.split('#', 1)[0].split()[1:]}
-          if hostname.lower().rstrip('.') not in aliases:
+          def measure(label):
+              hostname = socket.gethostname()
+              print(f"{label}: hostname={hostname!r}", flush=True)
+              for family in [socket.AF_INET, socket.AF_INET6, socket.AF_UNSPEC]:
+                  started = time.monotonic()
+                  try:
+                      result = socket.getaddrinfo(hostname, None, family=family, flags=socket.AI_CANONNAME)
+                  except OSError as error:
+                      result = str(error)
+                  elapsed = time.monotonic() - started
+                  print(f"{label}: family={family} elapsed={elapsed:.3f}s result={result}", flush=True)
+              return elapsed
+
+          def add_local_alias(hostname):
+              assert hostname and not any(character.isspace() for character in hostname)
+              hosts = Path('/etc/hosts')
+              records = [line.split('#', 1)[0].split() for line in hosts.read_text().splitlines()]
               with hosts.open('a') as stream:
-                  stream.write(f'\n127.0.0.1 {hostname}\n')
-          started = time.monotonic()
-          resolved = socket.getaddrinfo(hostname, None, flags=socket.AI_CANONNAME)
-          print(f"Hostname lookup after hosts entry: {time.monotonic() - started:.3f}s {resolved}", flush=True)
-          PY
-      - name: Inspect the copy-permission regressions
-        shell: bash
-        env:
-          BUILDBUDDY_API_KEY: ${{ secrets.BUILDBUDDY_API_KEY }}
-        run: |
-          ./.github/scripts/run-bazel-ci.sh \
-            --print-failed-action-summary \
-            --print-failed-test-logs \
-            --remote-download-toplevel \
-            -- \
-            test \
-            --lockfile_mode=error \
-            --test_sharding_strategy=disabled \
-            --test_output=all \
-            --test_arg=copy_file_uses_each_environments_permissions \
-            --test_arg=--test-threads=1 \
-            -- \
-            //codex-rs/ext/multi-env-copy-file:multi-env-copy-file-copy_file-test
+                  for address in ['127.0.0.1', '::1']:
+                      if not any(record and record[0] == address and hostname in record[1:] for record in records):
+                          stream.write(f'\n{address} {hostname}\n')
+              print(hosts.read_text(), flush=True)
+              subprocess.run(['dscacheutil', '-flushcache'], check=True)
+              subprocess.run(['killall', '-HUP', 'mDNSResponder'], check=True)
+
+          measure('original')
+          add_local_alias(socket.gethostname())
+          measure('both-address-families-and-cache-flush')
+          subprocess.run(['scutil', '--set', 'HostName', 'codex-ci.localhost'], check=True)
+          add_local_alias('codex-ci.localhost')
+          elapsed = measure('explicit-localhost-name')
+          if elapsed >= 1:
+              raise RuntimeError(f'Hostname resolution is still slow: {elapsed:.3f}s')
+          PYPROBE
