@@ -511,6 +511,7 @@ pub(super) async fn start_recording_app_server_with_realtime_speech(
         let (stream, _) = listener.accept().await?;
         let mut websocket = accept_async(stream).await?;
         let mut inventories = usize::from(failed_thread_name == Some("background"));
+        let diagnostic_started = std::time::Instant::now();
         let mut reject_detach = false;
         let mut reject_thread_list = history_capabilities == HistoryCapabilities::ThreadListFails;
         loop {
@@ -559,6 +560,11 @@ pub(super) async fn start_recording_app_server_with_realtime_speech(
                     result?;
                 }
                 JSONRPCMessage::Request(request) => {
+                    let diagnostic_method = request.method.clone();
+                    eprintln!(
+                        "startup proxy {:?}: received {diagnostic_method}",
+                        diagnostic_started.elapsed()
+                    );
                     request_sink
                         .lock()
                         .expect("request recorder lock")
@@ -844,6 +850,10 @@ pub(super) async fn start_recording_app_server_with_realtime_speech(
                             }
                         }
                     };
+                    eprintln!(
+                        "startup proxy {:?}: responding to {diagnostic_method}",
+                        diagnostic_started.elapsed()
+                    );
                     let result = websocket
                         .send(Message::Text(serde_json::to_string(&response)?.into()))
                         .await;
@@ -885,7 +895,15 @@ pub(super) async fn start_recording_app_server_with_realtime_speech(
                 }
             }
         }
+        eprintln!(
+            "startup proxy {:?}: shutting down embedded server",
+            diagnostic_started.elapsed()
+        );
         embedded.shutdown().await?;
+        eprintln!(
+            "startup proxy {:?}: embedded shutdown complete",
+            diagnostic_started.elapsed()
+        );
         Ok(())
     });
     let app_server = crate::connect_remote_app_server(crate::RemoteAppServerEndpoint::WebSocket {

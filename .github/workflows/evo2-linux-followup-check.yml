@@ -26,58 +26,7 @@ jobs:
         with:
           target: ${{ matrix.target }}
           cache-scope: bazel-test
-      - name: Check all executor sandbox fixtures
-        if: always() && !cancelled()
-        shell: bash
-        env:
-          BUILDBUDDY_API_KEY: ${{ secrets.BUILDBUDDY_API_KEY }}
-          TEST_TARGET: ${{ matrix.target }}
-        run: |
-          target_args=()
-          if [[ "$TEST_TARGET" == *musl ]]; then
-            target_args+=(--platforms=@rules_rs//rs/platforms:x86_64-unknown-linux-musl --extra_toolchains=//:linux_musl_tests_on_gnu_host_toolchain)
-          fi
-          ./.github/scripts/run-bazel-ci.sh \
-            --print-failed-action-summary --print-failed-test-logs --remote-download-toplevel -- \
-            test --lockfile_mode=error --test_sharding_strategy=disabled \
-            --flaky_test_attempts=1 --test_output=all \
-            --test_arg=suite::sandbox --test_arg=--nocapture "${target_args[@]}" -- \
-            //codex-rs/exec:exec-all-test
-      - name: Check MCP process startup and plugin helper files
-        if: always() && !cancelled()
-        shell: bash
-        env:
-          BUILDBUDDY_API_KEY: ${{ secrets.BUILDBUDDY_API_KEY }}
-          TEST_TARGET: ${{ matrix.target }}
-        run: |
-          target_args=()
-          if [[ "$TEST_TARGET" == *musl ]]; then
-            target_args+=(--platforms=@rules_rs//rs/platforms:x86_64-unknown-linux-musl --extra_toolchains=//:linux_musl_tests_on_gnu_host_toolchain)
-          fi
-          ./.github/scripts/run-bazel-ci.sh \
-            --print-failed-action-summary --print-failed-test-logs --remote-download-toplevel -- \
-            test --lockfile_mode=error --test_sharding_strategy=disabled \
-            --flaky_test_attempts=1 --test_output=all \
-             "${target_args[@]}" -- \
-            //codex-rs/rmcp-client:rmcp-client-stdio_descriptor_boundary-test //codex-rs/ext/mcp:mcp-plugin_mcp-test
-      - name: Check the execution permission ceiling
-        if: always() && !cancelled()
-        shell: bash
-        env:
-          BUILDBUDDY_API_KEY: ${{ secrets.BUILDBUDDY_API_KEY }}
-          TEST_TARGET: ${{ matrix.target }}
-        run: |
-          target_args=()
-          if [[ "$TEST_TARGET" == *musl ]]; then
-            target_args+=(--platforms=@rules_rs//rs/platforms:x86_64-unknown-linux-musl --extra_toolchains=//:linux_musl_tests_on_gnu_host_toolchain)
-          fi
-          ./.github/scripts/run-bazel-ci.sh \
-            --print-failed-action-summary --print-failed-test-logs --remote-download-toplevel -- \
-            test --lockfile_mode=error --test_sharding_strategy=disabled \
-            --flaky_test_attempts=1 --test_output=all \
-            --test_arg=frozen_execution "${target_args[@]}" -- \
-            //codex-rs/core:core-all-test
-      - name: Inspect brokered shell completion with a longer diagnostic event deadline
+      - name: Check brokered shell completion with the standard event deadline
         if: always() && !cancelled()
         shell: bash
         env:
@@ -109,22 +58,5 @@ jobs:
             --print-failed-action-summary --print-failed-test-logs --remote-download-toplevel -- \
             test --lockfile_mode=error --test_sharding_strategy=disabled \
             --flaky_test_attempts=1 --test_output=all \
-            --test_arg=notification_test_delay_rejects_cancelled_and_rescheduled_timers --test_arg=fresh_startup_falls_back_only_for_unsupported_config_read --runs_per_test=50 --local_test_jobs=4 "${target_args[@]}" -- \
+            --test_arg=notification_test_delay_rejects_cancelled_and_rescheduled_timers --test_arg=fresh_startup_falls_back_only_for_unsupported_config_read --runs_per_test=100 --local_test_jobs=4 "${target_args[@]}" -- \
             //codex-rs/tui:tui-unit-tests
-      - name: Check daemon-local runners in the Wine executor test environment
-        if: always() && !cancelled() && matrix.target == 'x86_64-unknown-linux-gnu'
-        shell: bash
-        env:
-          BUILDBUDDY_API_KEY: ${{ secrets.BUILDBUDDY_API_KEY }}
-          TEST_TARGET: ${{ matrix.target }}
-        run: |
-          target_args=()
-          if [[ "$TEST_TARGET" == *musl ]]; then
-            target_args+=(--platforms=@rules_rs//rs/platforms:x86_64-unknown-linux-musl --extra_toolchains=//:linux_musl_tests_on_gnu_host_toolchain)
-          fi
-          ./.github/scripts/run-bazel-ci.sh \
-            --print-failed-action-summary --print-failed-test-logs --remote-download-toplevel -- \
-            test --lockfile_mode=error --test_sharding_strategy=disabled \
-            --flaky_test_attempts=1 --test_output=all \
-            --test_arg=idle_runner --test_arg=frozen_execution --test_arg=--nocapture "${target_args[@]}" -- \
-            //codex-rs/app-server:app-server-all-wine-exec-test //codex-rs/core:core-all-wine-exec-test
