@@ -63,6 +63,44 @@ The helper installs and pins the complete daemon package, enables Remote,
 verifies the running version, then selects the standalone CLI. Restarting the
 daemon disconnects the current Remote session.
 
+### Prepared package
+
+The canonical assembler built the optimized Linux package from source commit
+`fce456677856c785502eb6725d94878efd263b00`. `STABLE_GIT_COMMIT` stamped that exact
+commit into the CLI, and inspection confirmed it is present in the binary.
+The build temporarily set the workspace version to `0.164.0-alpha.12` and restored
+`Cargo.toml` and `Cargo.lock` byte-for-byte afterward. The existing Bubblewrap
+helper was reused because its source is unchanged from the previous baseline.
+The assembler stripped only the packaged CLI and code-mode host copies.
+This upstream package layout no longer includes the patched zsh bundle.
+
+The package manifest, CLI version, embedded source commit, and reload helper's
+`--check` passed. The packaged V8 code-mode host executed the bundled ripgrep
+through a local mock Responses API in an isolated full-access thread with spaces
+in its working path. This check does not exercise Linux user-namespace sandbox
+setup. Both runtime smoke checks used ordinary launches without the build-time
+transparent-huge-page workaround.
+
+A running `0.162.0-alpha.20` daemon in a temporary Codex home successfully upgraded
+to `0.164.0-alpha.12` using `update --from-cli --yes`. The CLI, managed package,
+and running app-server all reported the new version. All five package files
+matched the installed copies byte-for-byte, and production auto-updates remained
+disabled. `app-server idle status` reported protocol version 1, the new server
+version, workspace coordination capability, and an empty workspace registry.
+The test daemon was stopped and its temporary home removed. The live standalone
+and daemon selections were unchanged.
+
+The source release tag is `codex-evo-v0.164.0-alpha.12-idle.1`, pointing to the
+exact build commit above.
+
+| Artifact | SHA-256 |
+| --- | --- |
+| `bin/codex` | `7eaf3121ef571cd3d7a35b9986a8ffa5fd86e316921069fdfad12840570633d0` |
+| `bin/codex-code-mode-host` | `202e03b7b54938d63d914a9f5bef9c6545086cfd33e7612d8690a74cf30308ae` |
+| `codex-package.json` | `9c82f9abbb0234440e4f9566d8c1234f9df9c0658223ba8bd4c470d3d792f496` |
+| `codex-path/rg` | `e62198eb19b136b88c330af83647b5a962cb99b6b1f066758568f12de1974849` |
+| `codex-resources/bwrap` | `c102c5f893faed17ed053ce6ceb9fe0bb03069b991a6f0390e54d82c85f1bca0` |
+
 ## Upstream refresh: 0.162.0-alpha.20 / idle.1
 
 `idle-base` merges OpenAI upstream main
