@@ -28,6 +28,8 @@ jobs:
           mountpoint -q /mnt/ci-cache
           test "$CODEX_BAZEL_JOBS" -ge 1
           test "$CODEX_BAZEL_TEST_JOBS" -ge 1
+          gh --version
+          jq --version
       - name: Prepare Bazel CI
         uses: ./.github/actions/prepare-bazel-ci
         with:
@@ -35,6 +37,14 @@ jobs:
           cache-scope: self-hosted-check
       - name: Check CI helpers
         run: just test-github-scripts
+      - name: Check Bazel module lock and query
+        run: |
+          ./scripts/check-module-bazel-lock.sh
+          ./.github/scripts/run_bazel_with_buildbuddy.py query -- //codex-rs/utils/absolute-path:all
+      - name: Resolve compatibility releases
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 .github/scripts/resolve_exec_server_releases.py
       - name: Compile and test on the local runner
         run: |
           test -n "$BAZEL_DISK_CACHE"
