@@ -1,4 +1,5 @@
 use crate::Error;
+use crate::RunnerPolicy;
 use crate::WorkspaceBinding;
 use crate::WorkspaceService;
 use serde::Deserialize;
@@ -49,6 +50,8 @@ pub(crate) struct StoredGrant {
     pub(crate) token_hash: [u8; 32],
     #[serde(default)]
     pub(crate) scope: GrantScope,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) runner_policy: Option<RunnerPolicy>,
 }
 
 /// Explicit owner-approved authority; existing grants retain attachment access only.
@@ -58,6 +61,7 @@ pub enum GrantScope {
     #[default]
     Attachment,
     CoordinationOwner,
+    Runner,
 }
 
 impl StoredGrant {
@@ -66,6 +70,9 @@ impl StoredGrant {
             .into_iter()
             .any(|id| !valid_id(id))
         {
+            return Err(Error::InvalidBinding);
+        }
+        if (self.scope == GrantScope::Runner) != self.runner_policy.is_some() {
             return Err(Error::InvalidBinding);
         }
         Ok(())
@@ -84,6 +91,7 @@ pub struct GrantAccess {
     pub binding: WorkspaceBinding,
     pub expires_at: u64,
     pub scope: GrantScope,
+    pub runner_policy: Option<RunnerPolicy>,
 }
 
 /// A new private grant. The registry retains only the credential hash.
@@ -136,6 +144,40 @@ impl WorkspaceService {
         expires_at: u64,
         scope: GrantScope,
     ) -> Result<IssuedGrant, Error> {
+        self.issue(
+            checkout_id,
+            client_id,
+            expires_at,
+            scope,
+            /*runner_policy*/ None,
+        )
+    }
+
+    /// Permit execution only within explicitly selected checkout directories.
+    pub fn issue_runner_grant(
+        &self,
+        checkout_id: &str,
+        client_id: &str,
+        expires_at: u64,
+        policy: RunnerPolicy,
+    ) -> Result<IssuedGrant, Error> {
+        self.issue(
+            checkout_id,
+            client_id,
+            expires_at,
+            GrantScope::Runner,
+            Some(policy),
+        )
+    }
+
+    fn issue(
+        &self,
+        checkout_id: &str,
+        client_id: &str,
+        expires_at: u64,
+        scope: GrantScope,
+        runner_policy: Option<RunnerPolicy>,
+    ) -> Result<IssuedGrant, Error> {
         let now = now_ms()?;
         if !valid_id(client_id)
             || expires_at <= now
@@ -156,7 +198,9 @@ impl WorkspaceService {
             expires_at,
             token_hash: hash(&token.0),
             scope,
+            runner_policy,
         };
+        grant.validate()?;
         let access = self.edit(|store| store.issue_grant(grant, now))?;
         Ok(IssuedGrant { access, token })
     }
