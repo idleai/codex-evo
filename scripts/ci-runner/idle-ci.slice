@@ -5,6 +5,6 @@ Description=Shared Linux CI VM budget
 # Existing 24 GiB allowance plus the 128 decimal GB released from inference.
 MemoryMax=153769803776
 MemorySwapMax=0
-CPUQuota=6400%
+CPUQuota=12800%
 CPUWeight=20
 IOWeight=20

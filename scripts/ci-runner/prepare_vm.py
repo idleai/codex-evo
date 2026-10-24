@@ -31,13 +31,13 @@ def main() -> None:
     parser.add_argument("--name", default="codex-ci-linux")
     parser.add_argument("--service-name", default="codex-ci-vm")
     parser.add_argument("--ssh-port", type=positive_int, default=22061)
-    parser.add_argument("--cpus", type=positive_int, default=16)
+    parser.add_argument("--cpus", type=positive_int, default=32)
     parser.add_argument("--memory-mib", type=positive_int, default=32768)
     parser.add_argument("--root-disk-gib", type=positive_int, default=32)
     parser.add_argument("--cache-disk-gib", type=positive_int, default=192)
-    parser.add_argument("--bazel-jobs", type=positive_int, default=6)
+    parser.add_argument("--bazel-jobs", type=positive_int, default=12)
     parser.add_argument("--test-jobs", type=positive_int, default=2)
-    parser.add_argument("--cargo-jobs", type=positive_int, default=6)
+    parser.add_argument("--cargo-jobs", type=positive_int, default=12)
     args = parser.parse_args()
     for name in (args.name, args.service_name):
         if not re.fullmatch(r"[a-z][a-z0-9-]{0,62}", name):

@@ -4,16 +4,18 @@ Run the runner inside an Ubuntu 24.04 KVM guest. The guest has its own root disk
 credentials, Docker daemon and build cache. No host directory or Docker socket
 is mounted into it. Its SSH listener binds only to host loopback.
 
-The pool has four guests, each with 16 virtual CPUs and 32 GiB memory. Each
+The pool has four guests, each with 32 virtual CPUs and 32 GiB memory. Each
 service has a 35 GiB memory ceiling, including QEMU and disk-cache overhead.
 `idle-ci.slice` caps the complete pool at 153,769,803,776 bytes: the previous
 24 GiB allowance plus 128 decimal GB released from inference. Guest memory
 totals 128 GiB; the remaining allowance covers VM overhead. The slice caps CPU
-use at 64 CPU equivalents and disables host swap for the VM processes.
+use at 128 logical CPU equivalents and disables host swap for the VM processes.
+The host has 64 physical cores with two hardware threads per core. CPU quotas
+limit aggregate execution time; the guests are not pinned to particular cores.
 
 New guests have a sparse 32 GiB root disk and 192 GiB cache disk. The first
 guest retains its existing 48 GiB root and 400 GiB cache disks. Each guest has
-8 GiB of swap on its cache disk, six concurrent Bazel/Cargo build jobs and two
+8 GiB of swap on its cache disk, twelve concurrent Bazel/Cargo build jobs and two
 concurrent Bazel test jobs. Bazel's action cache has a 32 GB collection target;
 output directories, downloads and toolchains consume additional disk space.
 Sparse disk sizes are upper bounds, not immediate host allocations. Monitor
@@ -102,6 +104,11 @@ the guest runner service before unregistering or changing registration. Stop
 the host VM service only after the guest has shut down cleanly. Preserve
 `cache.qcow2` to retain compiled outputs. Guest `fstrim` can return unused
 blocks to the host because the virtual disks support discard.
+
+Changing the configured CPU count requires a clean guest shutdown and restart.
+Drain and resize one worker at a time so other workers continue their builds.
+Update its VM configuration, service CPU quota and runner build limits together,
+then verify the guest CPU count before restoring its job-routing labels.
 
 Cloud-init runs only for a new instance. Updating the generated seed does not
 upgrade an existing guest: apply package, swap, environment and service changes
