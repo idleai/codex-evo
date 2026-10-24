@@ -79,6 +79,9 @@ struct Host {
     /// Allow this client to move standalone workspace coordination to the daemon.
     #[arg(long)]
     coordination_owner: bool,
+    /// Permit sandboxed runner sessions after standalone coordination is transferred.
+    #[arg(long, conflicts_with = "coordination_owner")]
+    runner: bool,
 }
 
 #[derive(Deserialize)]
@@ -239,6 +242,7 @@ impl Host {
                     client_id: request.client_id,
                     expires_at,
                     coordination_owner: self.coordination_owner,
+                    runner: self.runner,
                 },
             })
             .await?;
@@ -250,7 +254,12 @@ impl Host {
             self.output.display(),
             response.grant_id
         );
-        println!("Paste the invitation into Idle: Connect Compute Host in VS Code.");
+        let command = if self.runner {
+            "Idle: Connect Runner Host"
+        } else {
+            "Idle: Connect Compute Host"
+        };
+        println!("Paste the invitation into {command} in VS Code.");
         Ok(())
     }
 }
