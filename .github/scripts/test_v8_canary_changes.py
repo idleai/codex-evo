@@ -6,6 +6,7 @@ from pathlib import Path
 from v8_canary_changes import changed_files
 from v8_canary_changes import canary_required
 from v8_canary_changes import merge_base
+from v8_canary_changes import pull_request_base
 from v8_canary_changes import resolved_v8_version
 from v8_canary_changes import windows_source_required
 
@@ -100,9 +101,68 @@ version = "149.2.0"
             self.assertEqual(merge_base(base, head, root=root), common)
 
     def write_and_commit(self, root: Path, contents: str, path: str) -> None:
+        (root / path).parent.mkdir(parents=True, exist_ok=True)
         (root / path).write_text(contents)
         self.run_git(root, "add", path)
         self.run_git(root, "commit", "-m", contents)
+
+    def test_restacked_pr_uses_the_checked_out_base_instead_of_the_old_event_base(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            old_base, base, head = self.make_pull_request_checkout(root, "feature.txt")
+            self.assertTrue(
+                canary_required(
+                    changed_files(old_base, head, root=root), "149.2.0", "149.2.0"
+                )
+            )
+            self.assertEqual(pull_request_base(head, root=root), base)
+            files = changed_files(pull_request_base(head, root=root), head, root=root)
+            self.assertEqual(files, {"feature.txt"})
+            self.assertFalse(canary_required(files, "149.2.0", "149.2.0"))
+            self.assertFalse(windows_source_required(files, "149.2.0", "149.2.0"))
+
+    def test_restacked_pr_still_builds_v8_when_its_own_ci_setup_changes(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            _, _, head = self.make_pull_request_checkout(
+                root, ".github/actions/setup-ci/action.yml"
+            )
+            files = changed_files(pull_request_base(head, root=root), head, root=root)
+            self.assertTrue(canary_required(files, "149.2.0", "149.2.0"))
+            self.assertTrue(windows_source_required(files, "149.2.0", "149.2.0"))
+
+    def test_pull_request_comparison_rejects_a_different_candidate_or_plain_head(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            old_base, _, head = self.make_pull_request_checkout(root, "feature.txt")
+            with self.assertRaisesRegex(ValueError, "requested head"):
+                pull_request_base(old_base, root=root)
+            self.run_git(root, "checkout", "--detach", head)
+            with self.assertRaisesRegex(ValueError, "requested head"):
+                pull_request_base(head, root=root)
+
+    def make_pull_request_checkout(
+        self, root: Path, feature_path: str
+    ) -> tuple[str, str, str]:
+        self.run_git(root, "init", "--initial-branch=main")
+        self.run_git(root, "config", "user.name", "Test User")
+        self.run_git(root, "config", "user.email", "test@example.com")
+        self.write_and_commit(root, "initial", "initial.txt")
+        old_base = self.run_git(root, "rev-parse", "HEAD")
+        self.write_and_commit(
+            root, "inherited setup change", ".github/actions/setup-ci/action.yml"
+        )
+        base = self.run_git(root, "rev-parse", "HEAD")
+        self.run_git(root, "switch", "-c", "feature")
+        self.write_and_commit(root, "feature change", feature_path)
+        head = self.run_git(root, "rev-parse", "HEAD")
+        self.run_git(root, "switch", "main")
+        self.run_git(root, "merge", "--no-ff", "feature", "-m", "pull request merge")
+        return old_base, base, head
 
     def run_git(self, root: Path, *args: str) -> str:
         return subprocess.check_output(

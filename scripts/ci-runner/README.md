@@ -93,7 +93,7 @@ For the first check, give an idle worker an additional `idle-linux-pilot` label
 and set repository variable `CODEX_LINUX_PILOT_RUNNER=idle-linux-pilot`. Run
 `self-hosted-linux-check.yml` on this branch. After the actual build and test
 pass, set `CODEX_LINUX_RUNNER=codex-linux-x64` to route the Linux x64 Bazel test,
-lint, release verification, V8 and argument-comment-lint jobs to it. Other
+lint, release verification, SDK, V8 and argument-comment-lint jobs to it. Other
 platforms and lightweight metadata jobs retain their current runners.
 
 The other repositories use `IDLE_LINUX_RUNNER=idle-linux-x64` with the same

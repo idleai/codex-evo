@@ -128,6 +128,18 @@ def merge_base(base: str, head: str, *, root: Path = ROOT) -> str:
     return git_output("merge-base", base, head, root=root).decode().strip()
 
 
+def pull_request_base(head: str, *, root: Path = ROOT) -> str:
+    """Read the base of the merge candidate actually checked out by Actions."""
+    parents = (
+        git_output("show", "-s", "--format=%P", "HEAD", root=root).decode().split()
+    )
+    if len(parents) != 2 or parents[1] != head:
+        raise ValueError(
+            "expected the checked-out pull request merge for the requested head"
+        )
+    return parents[0]
+
+
 def changed_files(base: str, head: str, *, root: Path = ROOT) -> set[str]:
     # Three-dot diff gives PRs merge-base semantics while remaining equivalent
     # to before/after for ordinary linear pushes to main.
@@ -145,6 +157,7 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
     parser.add_argument("--base")
     parser.add_argument("--head")
+    parser.add_argument("--pull-request", action="store_true")
     parser.add_argument("--force", action="store_true")
     return parser.parse_args()
 
@@ -161,9 +174,14 @@ def main() -> None:
     elif not args.base or not args.head:
         raise SystemExit("--base and --head are required unless --force is set")
     else:
-        files = changed_files(args.base, args.head)
-        base_version = v8_version_at_revision(merge_base(args.base, args.head))
+        # A stacked PR event can retain the previous base SHA after a restack,
+        # while checkout already contains the new merge candidate. Compare its
+        # actual parents so inherited CI changes are validated on their own PR.
+        base = pull_request_base(args.head) if args.pull_request else args.base
+        files = changed_files(base, args.head)
+        base_version = v8_version_at_revision(merge_base(base, args.head))
         head_version = v8_version_at_revision(args.head)
+        print(f"comparison_base={base}")
 
         matched_canary_paths = sorted(matching_canary_paths(files))
         canary = canary_required(files, base_version, head_version)

@@ -58,7 +58,12 @@ jobs:
           if [[ "${EVENT_NAME}" == "workflow_dispatch" ]]; then
             output="$(python3 .github/scripts/v8_canary_changes.py --force)"
           else
+            comparison_args=()
+            if [[ "${EVENT_NAME}" == "pull_request" ]]; then
+              comparison_args+=(--pull-request)
+            fi
             output="$(python3 .github/scripts/v8_canary_changes.py \
+              "${comparison_args[@]}" \
               --base "${BASE_SHA}" \
               --head "${HEAD_SHA}")"
           fi
