@@ -3,4 +3,7 @@ load("//:defs.bzl", "codex_rust_crate")
 codex_rust_crate(
     name = "rollout",
     crate_name = "codex_rollout",
+    # Ownership tests need the host's supplementary groups. Bazel's Linux user
+    # namespace maps only the primary group, so chown to another group is invalid.
+    test_tags = ["no-sandbox"],
 )

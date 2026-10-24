@@ -215,9 +215,15 @@ impl DynamicToolMcpServer {
 
 impl Drop for DynamicToolMcpServer {
     fn drop(&mut self) {
+        // Live MCP sessions can outlast the listener and retain the backend.
+        self.suspend();
         self.task.abort();
     }
 }
+
+#[cfg(test)]
+#[path = "dynamic_tools_mcp_tests.rs"]
+mod tests;
 
 async fn require_authorization(
     State(expected): State<Arc<String>>,

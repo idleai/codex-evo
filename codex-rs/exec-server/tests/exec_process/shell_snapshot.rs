@@ -162,7 +162,9 @@ async fn shell_snapshot_concurrent_replays_keep_independent_readers(
     let protected_file =
         tempfile::NamedTempFile::new_in(codex_uds::prepare_shared_daemon_socket_directory()?)?;
     std::fs::write(protected_file.path(), "protected")?;
-    let command = if sandbox_mode == SnapshotSandbox::WorkspaceWrite {
+    let command = if deny_fd_path {
+        "if ( : </dev/fd/0 ) 2>/dev/null; then exit 47; fi\n"
+    } else if sandbox_mode == SnapshotSandbox::WorkspaceWrite {
         // Broad /tmp grants must not expose the file while it still has a name.
         "if /bin/cat \"$SNAPSHOT_TRANSPORT_PROBE\" >/dev/null 2>&1 || (printf poisoned >> \"$SNAPSHOT_TRANSPORT_PROBE\") 2>/dev/null || /bin/mv \"$SNAPSHOT_TRANSPORT_PROBE\" \"$HOME/stolen\" 2>/dev/null; then exit 44; fi\n"
     } else {

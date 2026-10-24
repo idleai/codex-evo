@@ -4179,7 +4179,8 @@ terminal_visualization_instructions = true
         result: Ok(entries),
         ..
     }) = tokio::time::timeout(
-        std::time::Duration::from_secs(/*secs*/ 5),
+        // Scanning several worktrees starts Git processes on Windows.
+        std::time::Duration::from_secs(/*secs*/ 30),
         browser_rx.recv(),
     )
     .await?

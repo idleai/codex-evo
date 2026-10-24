@@ -18,6 +18,7 @@ use codex_protocol::permissions::FileSystemSandboxPolicyContext;
 use codex_protocol::permissions::FileSystemSpecialPath;
 use codex_protocol::permissions::NetworkSandboxPolicy;
 use codex_utils_absolute_path::AbsolutePathBuf;
+use codex_utils_cargo_bin::cargo_bin;
 use pretty_assertions::assert_eq;
 use std::collections::HashMap;
 use std::io::Read;
@@ -180,7 +181,7 @@ fn linux_sandbox_command(
     args.push("--".to_string());
     args.extend(command.iter().map(|entry| (*entry).to_string()));
 
-    let mut cmd = Command::new(env!("CARGO_BIN_EXE_codex-linux-sandbox"));
+    let mut cmd = Command::new(cargo_bin("codex-linux-sandbox").expect("resolve sandbox helper"));
     cmd.args(args)
         .current_dir(cwd)
         .env_clear()
@@ -308,8 +309,12 @@ async fn namespace_reaper_collects_orphaned_descendants() {
     assert_eq!(output.stdout, b"orphan reaped\n");
 }
 
+#[test_case::test_case("/newroot/proc"; "legacy_bubblewrap")]
+#[test_case::test_case("/proc"; "current_bubblewrap")]
 #[tokio::test]
-async fn proc_mount_denial_preserves_legacy_fallback_and_explicit_pid_inheritance() {
+async fn proc_mount_denial_preserves_legacy_fallback_and_explicit_pid_inheritance(
+    proc_mount_path: &str,
+) {
     if should_skip_bwrap_tests().await {
         eprintln!("skipping bwrap test: bubblewrap is unavailable");
         return;
@@ -326,16 +331,18 @@ async fn proc_mount_denial_preserves_legacy_fallback_and_explicit_pid_inheritanc
     let wrapper = tempdir.path().join("bwrap");
     codex_utils_cargo_bin::write_executable(
         &wrapper,
-        r#"#!/bin/sh
+        &format!(
+            r#"#!/bin/sh
 for arg in "$@"; do
     [ "$arg" = "--" ] && break
     if [ "$arg" = "--proc" ]; then
-        printf '%s\n' "bwrap: Can't mount proc on /newroot/proc: Operation not permitted" >&2
+        printf '%s\n' "bwrap: Can't mount proc on {proc_mount_path}: Operation not permitted" >&2
         exit 1
     fi
 done
 exec "$CODEX_TEST_REAL_BWRAP" "$@"
-"#,
+"#
+        ),
     )
     .expect("write proc-denying bubblewrap wrapper");
     let protected_file = tempdir.path().join("protected");
@@ -795,7 +802,11 @@ async fn managed_proxy_mode_routes_through_bridge_and_blocks_direct_egress() {
         format!("http://127.0.0.1:{proxy_port}"),
     );
 
-    let sandbox_helper_dir = std::path::Path::new(env!("CARGO_BIN_EXE_codex-linux-sandbox"))
+    let sandbox_helper = cargo_bin("codex-linux-sandbox")
+        .expect("resolve sandbox helper")
+        .canonicalize()
+        .expect("canonicalize sandbox helper");
+    let sandbox_helper_dir = sandbox_helper
         .parent()
         .expect("sandbox helper should have a parent");
     let file_system_sandbox_policy =

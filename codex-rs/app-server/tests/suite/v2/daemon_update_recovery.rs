@@ -810,6 +810,15 @@ pub(super) async fn connect_daemon_client(
 
 pub(super) fn spawn_server(home: &Path, socket_path: &Path) -> Result<Child> {
     let binary = codex_utils_cargo_bin::cargo_bin("codex-app-server")?;
+    let binary = if codex_utils_cargo_bin::runfiles_available() {
+        let install = TempDir::new_in(home)?;
+        let binary = app_test_support::stage_app_server_package(&binary, install.path())?;
+        // The caller's temporary home owns this package until the daemon exits.
+        let _ = install.keep();
+        binary
+    } else {
+        binary
+    };
     Ok(Command::new(binary)
         .args(["--listen", &format!("unix://{}", socket_path.display())])
         .arg(DISABLE_PLUGIN_STARTUP_TASKS_ARG)

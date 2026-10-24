@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-"""Assign Windows Bazel test targets using checked-in duration estimates."""
+"""Assign Bazel test targets, with Windows duration estimates by default."""
 
 import argparse
 import sys
@@ -89,7 +89,7 @@ def main() -> None:
 
     target_set = set(targets)
     print(
-        f"Windows Bazel shards: targets={[len(assignment) for assignment in assignments]}, "
+        f"Bazel test shards: targets={[len(assignment) for assignment in assignments]}, "
         f"estimated test-seconds={loads}, default weights={len(target_set - durations.keys())}, "
         f"unused weights={len(durations.keys() - target_set)}. "
         f"Selected shard {args.shard}/{args.shard_count}.",

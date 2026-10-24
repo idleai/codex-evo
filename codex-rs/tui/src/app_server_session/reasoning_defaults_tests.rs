@@ -57,12 +57,22 @@ async fn reasoning_defaults_reach_responses() -> Result<()> {
         let server = responses::start_mock_server().await;
         let home = tempfile::tempdir()?;
         let base_url = server.uri();
+        let mut catalog = codex_models_manager::bundled_models_response()?;
+        catalog
+            .models
+            .iter_mut()
+            .find(|model| model.slug == "gpt-5.5")
+            .expect("bundled model")
+            .default_reasoning_summary = codex_protocol::config_types::ReasoningSummary::Concise;
+        let catalog_path = home.path().join("models.json");
+        std::fs::write(&catalog_path, serde_json::to_vec(&catalog)?)?;
         std::fs::write(
             home.path().join("config.toml"),
             format!(
                 r#"
 model = "gpt-5.5"
 model_provider = "reasoning-test"
+model_catalog_json = {catalog_path}
 {settings}
 [model_providers.reasoning-test]
 name = "OpenAI"
@@ -70,7 +80,8 @@ base_url = "{base_url}/v1"
 wire_api = "responses"
 request_max_retries = 0
 stream_max_retries = 0
-"#
+"#,
+                catalog_path = serde_json::to_string(&catalog_path)?,
             ),
         )?;
         crate::legacy_core::config::set_project_trust_level(
@@ -79,18 +90,10 @@ stream_max_retries = 0
             codex_protocol::config_types::TrustLevel::Trusted,
         )
         .map_err(|error| color_eyre::eyre::eyre!(error.to_string()))?;
-        let mut server_config = ConfigBuilder::default()
+        let server_config = ConfigBuilder::default()
             .codex_home(home.path().to_path_buf())
             .build()
             .await?;
-        let mut catalog = codex_models_manager::bundled_models_response()?;
-        catalog
-            .models
-            .iter_mut()
-            .find(|model| model.slug == "gpt-5.5")
-            .expect("bundled model")
-            .default_reasoning_summary = codex_protocol::config_types::ReasoningSummary::Concise;
-        server_config.model_catalog = Some(catalog);
         let client_home = tempfile::tempdir()?;
         let config = if mode == ThreadParamsMode::Remote {
             std::fs::write(

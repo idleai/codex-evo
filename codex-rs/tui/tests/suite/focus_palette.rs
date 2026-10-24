@@ -227,7 +227,8 @@ fn default_owned_screen_entry_paints_before_sync_ends_and_exit_clears_inline_dra
         (1, (u16::try_from(composer_row)?, 2), false),
         "first owned-screen frame must contain one composer with its visible cursor"
     );
-    terminal.write_input(b"\x1b[99;5u")?;
+    // Quit with Ctrl+D because Ctrl+C may only interrupt remaining startup work.
+    terminal.write_input(b"\x1b[100;5u")?;
     let deadline = Instant::now() + STARTUP_TIMEOUT;
     loop {
         terminal.read_output(Duration::from_millis(/*millis*/ 50))?;

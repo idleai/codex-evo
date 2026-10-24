@@ -349,6 +349,31 @@ def codex_rust_crate(
         unit_test_name = name + "-unit-tests"
         unit_test_binary = name + "-unit-tests-bin"
         unit_test_shard_count = _test_shard_count(test_shard_counts, unit_test_name)
+        unit_test_data = test_data_extra + [
+            binary
+            for binary in extra_binaries
+            if binary not in test_data_extra
+        ]
+        unit_test_runfile_env = {
+            binary: "CARGO_BIN_EXE_" + Label(binary).name
+            for binary in extra_binaries
+        }
+        if extra_binaries_non_windows:
+            unit_test_data += select({
+                "@platforms//os:windows": [],
+                "//conditions:default": [
+                    binary
+                    for binary in extra_binaries_non_windows
+                    if binary not in test_data_extra and binary not in extra_binaries
+                ],
+            })
+            unit_test_runfile_env = select({
+                "@platforms//os:windows": unit_test_runfile_env,
+                "//conditions:default": unit_test_runfile_env | {
+                    binary: "CARGO_BIN_EXE_" + Label(binary).name
+                    for binary in extra_binaries_non_windows
+                },
+            })
 
         # Shard at the workspace_root_test layer. rules_rust's sharding wrapper
         # expects to run from its own runfiles cwd, while workspace_root_test
@@ -370,7 +395,7 @@ def codex_rust_crate(
                 "--remap-path-prefix=codex-rs=",
             ],
             rustc_env = rustc_env,
-            data = test_data_extra + [binary for binary in extra_binaries if binary not in test_data_extra],
+            data = unit_test_data,
             tags = test_tags + ["manual"],
             version = crate_version,
         )
@@ -387,10 +412,7 @@ def codex_rust_crate(
         workspace_root_test(
             name = unit_test_name,
             env = test_env,
-            runfile_env = {
-                binary: "CARGO_BIN_EXE_" + Label(binary).name
-                for binary in extra_binaries
-            },
+            runfile_env = unit_test_runfile_env,
             test_bin = ":" + unit_test_binary,
             workspace_root_marker = "//codex-rs/utils/cargo-bin:repo_root.marker",
             tags = test_tags,

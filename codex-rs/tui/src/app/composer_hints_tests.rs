@@ -31,6 +31,13 @@ async fn usage_notice_preserves_composer_geometry_on_recovery() -> Result<()> {
         let (mut app, mut events, _ops) = crate::app::tests::make_test_app_with_channels().await;
         app.local_settings.tui.show_tooltips = !running;
         app.local_settings.tui.animations = false;
+        app.chat_widget.apply_config_preference(
+            crate::config_panel::ConfigPreference::Toggle {
+                setting: crate::config_panel::ConfigToggle::Animations,
+                enabled: false,
+            },
+            &app.local_settings.tui,
+        );
         app.transcript_cells
             .push(Arc::new(crate::history_cell::PlainHistoryCell::new(
                 if running {
