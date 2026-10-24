@@ -2,7 +2,7 @@ name: Self-hosted Linux check
 
 on:
   push:
-    branches: [ci/self-hosted-linux]
+    branches: [ci/self-hosted-linux, ci/shared-linux-pool]
   workflow_dispatch:
 
 permissions:

@@ -1,11 +1,13 @@
 #!/usr/bin/env python3
-"""Prepare a Linux KVM guest for a repository-scoped GitHub Actions runner."""
+"""Prepare an isolated Linux KVM guest for a GitHub Actions runner."""
 
 import argparse
 import json
 import os
+import re
 import shlex
 import shutil
+import socket
 import subprocess
 from pathlib import Path
 
@@ -14,17 +16,48 @@ RUNNER_VERSION = "2.338.1"
 RUNNER_SHA256 = "08e9ccb3604d2462c24b5e33604dc30810296ca15cc65f23cffd4317eb144c37"
 
 
+def positive_int(value: str) -> int:
+    number = int(value)
+    if number < 1:
+        raise argparse.ArgumentTypeError("must be a positive integer")
+    return number
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--state-dir", required=True, type=Path)
     parser.add_argument("--image", required=True, type=Path)
     parser.add_argument("--tools-dir", required=True, type=Path)
+    parser.add_argument("--name", default="codex-ci-linux")
+    parser.add_argument("--service-name", default="codex-ci-vm")
+    parser.add_argument("--ssh-port", type=positive_int, default=22061)
+    parser.add_argument("--cpus", type=positive_int, default=16)
+    parser.add_argument("--memory-mib", type=positive_int, default=32768)
+    parser.add_argument("--root-disk-gib", type=positive_int, default=32)
+    parser.add_argument("--cache-disk-gib", type=positive_int, default=192)
+    parser.add_argument("--bazel-jobs", type=positive_int, default=6)
+    parser.add_argument("--test-jobs", type=positive_int, default=2)
+    parser.add_argument("--cargo-jobs", type=positive_int, default=6)
     args = parser.parse_args()
+    for name in (args.name, args.service_name):
+        if not re.fullmatch(r"[a-z][a-z0-9-]{0,62}", name):
+            parser.error("names must use lowercase letters, digits and hyphens")
+    if not 1024 <= args.ssh_port <= 65535:
+        parser.error("--ssh-port must be between 1024 and 65535")
+    if args.root_disk_gib < 8 or args.cache_disk_gib < 12:
+        parser.error("root and cache disks need at least 8 GiB and 12 GiB respectively")
     state = args.state_dir.resolve()
     tools = args.tools_dir.resolve()
     image = args.image.resolve(strict=True)
     state.mkdir(parents=True, exist_ok=True)
     os.chmod(state, 0o700)
+    with socket.socket(socket.AF_UNIX) as monitor:
+        try:
+            monitor.connect(str(state / "qmp.sock"))
+        except (FileNotFoundError, ConnectionRefusedError):
+            pass
+        else:
+            parser.error("stop this VM before changing its configuration")
     env = dict(os.environ)
     env["LD_LIBRARY_PATH"] = str(tools / "usr/lib/x86_64-linux-gnu")
     env["QEMU_MODULE_DIR"] = str(tools / "usr/lib/x86_64-linux-gnu/qemu")
@@ -49,7 +82,7 @@ def main() -> None:
                 "-b",
                 str(image),
                 str(root_disk),
-                "48G",
+                f"{args.root_disk_gib}G",
             ],
             env=env,
             check=True,
@@ -57,7 +90,14 @@ def main() -> None:
     cache_disk = state / "cache.qcow2"
     if not cache_disk.exists():
         subprocess.run(
-            [qemu_img, "create", "-f", "qcow2", str(cache_disk), "400G"],
+            [
+                qemu_img,
+                "create",
+                "-f",
+                "qcow2",
+                str(cache_disk),
+                f"{args.cache_disk_gib}G",
+            ],
             env=env,
             check=True,
         )
@@ -66,6 +106,18 @@ def main() -> None:
     bootstrap = f"""#!/bin/bash
 set -euo pipefail
 mountpoint -q /mnt/ci-cache
+if [[ ! -e /mnt/ci-cache/swapfile ]]; then
+  install -m 0600 /dev/null /mnt/ci-cache/swapfile
+  fallocate -l 8G /mnt/ci-cache/swapfile
+  mkswap /mnt/ci-cache/swapfile
+fi
+if ! swapon --show=NAME --noheadings | grep -Fxq /mnt/ci-cache/swapfile; then
+  swapon /mnt/ci-cache/swapfile
+fi
+if ! grep -Fq '/mnt/ci-cache/swapfile none swap' /etc/fstab; then
+  echo '/mnt/ci-cache/swapfile none swap sw,nofail 0 0' >> /etc/fstab
+fi
+sysctl -w vm.swappiness=10
 install -d -o runner -g runner /mnt/ci-cache/home-cache /mnt/ci-cache/cargo /mnt/ci-cache/rustup /mnt/ci-cache/toolcache /mnt/ci-cache/work
 install -d -o runner -g runner /home/runner/actions-runner
 for mapping in .cache:home-cache .cargo:cargo .rustup:rustup; do
@@ -77,6 +129,11 @@ for mapping in .cache:home-cache .cargo:cargo .rustup:rustup; do
   fi
   ln -sfn "$destination" "$source"
 done
+cat > /home/runner/.bazelrc <<'BAZELRC'
+build --experimental_disk_cache_gc_max_size=32G
+build --experimental_disk_cache_gc_idle_delay=1s
+BAZELRC
+chown runner:runner /home/runner/.bazelrc
 curl --fail --location --retry 3 {shlex.quote(download)} -o /tmp/runner.tar.gz
 printf '%s  %s\\n' {RUNNER_SHA256} /tmp/runner.tar.gz | sha256sum --check --status
 tar -xzf /tmp/runner.tar.gz -C /home/runner/actions-runner
@@ -84,15 +141,15 @@ rm /tmp/runner.tar.gz
 cat > /home/runner/actions-runner/.env <<'ENV'
 RUNNER_TOOL_CACHE=/mnt/ci-cache/toolcache
 AGENT_TOOLSDIRECTORY=/mnt/ci-cache/toolcache
-CODEX_BAZEL_JOBS=12
-CODEX_BAZEL_TEST_JOBS=2
-CARGO_BUILD_JOBS=12
+CODEX_BAZEL_JOBS={args.bazel_jobs}
+CODEX_BAZEL_TEST_JOBS={args.test_jobs}
+CARGO_BUILD_JOBS={args.cargo_jobs}
 ENV
 chown -R runner:runner /home/runner/actions-runner
 touch /home/runner/ci-bootstrap-complete
 """
     config = {
-        "hostname": "codex-ci-linux",
+        "hostname": args.name,
         "manage_etc_hosts": True,
         "ssh_pwauth": False,
         "disable_root": True,
@@ -115,21 +172,31 @@ touch /home/runner/ci-bootstrap-complete
             "cmake",
             "curl",
             "docker.io",
+            "fonts-liberation",
             "gh",
             "git",
+            "gnupg",
             "jq",
             "libasound2-dev",
+            "libgbm1",
+            "libgtk-3-0t64",
             "libicu74",
+            "libnss3",
             "libssl-dev",
             "libudev-dev",
+            "libxss1",
             "ninja-build",
             "openssh-server",
             "pkg-config",
             "python3",
             "python3-venv",
+            "ripgrep",
+            "rsync",
             "unzip",
+            "xvfb",
             "xz-utils",
             "zip",
+            "zstd",
         ],
         "disk_setup": {
             "/dev/vdb": {"table_type": "gpt", "layout": True, "overwrite": False},
@@ -147,10 +214,15 @@ touch /home/runner/ci-bootstrap-complete
         ],
         "write_files": [
             {
+                "path": "/etc/sysctl.d/60-ci-runner-memory.conf",
+                "permissions": "0644",
+                "content": "vm.swappiness=10\n",
+            },
+            {
                 "path": "/usr/local/sbin/prepare-ci-runner",
                 "permissions": "0700",
                 "content": bootstrap,
-            }
+            },
         ],
         "runcmd": [["/usr/local/sbin/prepare-ci-runner"]],
     }
@@ -158,7 +230,7 @@ touch /home/runner/ci-bootstrap-complete
         "#cloud-config\n" + json.dumps(config, indent=2) + "\n"
     )
     (state / "meta-data").write_text(
-        "instance-id: codex-ci-linux-1\nlocal-hostname: codex-ci-linux\n"
+        f"instance-id: {args.name}-1\nlocal-hostname: {args.name}\n"
     )
     subprocess.run(
         [
@@ -179,26 +251,28 @@ touch /home/runner/ci-bootstrap-complete
     vm = {
         "state_dir": str(state),
         "tools_dir": str(tools),
-        "cpus": 16,
-        "memory_mib": 20480,
-        "ssh_port": 22061,
+        "name": args.name,
+        "cpus": args.cpus,
+        "memory_mib": args.memory_mib,
+        "ssh_port": args.ssh_port,
     }
     (state / "vm.json").write_text(json.dumps(vm, indent=2) + "\n")
     shutil.copyfile(Path(__file__).with_name("run_vm.py"), state / "run_vm.py")
     launch = shlex.join(["/usr/bin/python3", str(state / "run_vm.py")])
     service = f"""[Unit]
-Description=Isolated Linux VM for Codex GitHub Actions
+Description=Isolated Linux CI VM ({args.name})
 After=network-online.target
 Wants=network-online.target
 
 [Service]
 Type=simple
+Slice=idle-ci.slice
 ExecStart=/usr/bin/sg kvm -c {shlex.quote(launch)}
 Restart=on-failure
 RestartSec=15
-CPUQuota=1600%
+CPUQuota={args.cpus * 100}%
 CPUWeight=20
-MemoryMax=24G
+MemoryMax={args.memory_mib + 3072}M
 MemorySwapMax=0
 IOWeight=20
 Nice=5
@@ -208,7 +282,7 @@ TimeoutStopSec=120
 [Install]
 WantedBy=default.target
 """
-    (state / "codex-ci-vm.service").write_text(service)
+    (state / f"{args.service_name}.service").write_text(service)
     print(f"Prepared VM files in {state}; no runner was registered or started.")
 
 
