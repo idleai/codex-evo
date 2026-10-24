@@ -7,6 +7,12 @@ on:
   push:
     branches: [main, idle-base]
 
+concurrency:
+  # Cancel the entire previous PR run, including SDK, lint and metadata jobs.
+  # Keep this group distinct from groups inside the reusable workflows.
+  group: blocking-ci::${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || format('run-{0}', github.run_id) }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   # Keep reusable workflow calls alphabetized. The `required` job below is the
   # version-controlled list that the main-branch ruleset should require.

@@ -89,6 +89,11 @@ runs:
         bazel_output_user_root="$CI_BUILD_ROOT/b"
         bazel_repository_cache="$CI_BUILD_ROOT/bazel-repository-cache"
         bazel_repo_contents_cache="$CI_BUILD_ROOT/bazel-repo-contents-cache-$GITHUB_RUN_ID-$GITHUB_JOB"
+        if [[ "${RUNNER_ENVIRONMENT:-}" == "self-hosted" ]]; then
+          # One job runs at a time in each dedicated VM. Share extracted
+          # repositories instead of retaining another copy for every job.
+          bazel_repo_contents_cache="$CI_BUILD_ROOT/bazel-repo-contents-cache"
+        fi
         cargo_target_dir="$CI_BUILD_ROOT/cargo-target"
         tmp="$CI_BUILD_ROOT/tmp"
 

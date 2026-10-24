@@ -16,8 +16,12 @@ limit aggregate execution time; the guests are not pinned to particular cores.
 New guests have a sparse 32 GiB root disk and 192 GiB cache disk. The first
 guest retains its existing 48 GiB root and 400 GiB cache disks. Each guest has
 8 GiB of swap on its cache disk, twelve concurrent Bazel/Cargo build jobs and two
-concurrent Bazel test jobs. Bazel's action cache has a 32 GB collection target;
-output directories, downloads and toolchains consume additional disk space.
+concurrent Bazel test jobs. Hooks before and after each job keep Bazel's disk
+cache below 32 GiB and require at least 24 GiB of free space before continuing.
+They remove extracted-repository caches left by older per-job paths and keep
+compiled outputs, repository downloads, toolchains and worktrees. New jobs reuse
+one extracted-repository cache in each VM. Output directories, downloads and
+toolchains consume additional disk space.
 Sparse disk sizes are upper bounds, not immediate host allocations. Monitor
 both host and guest free space as the pool fills its caches.
 
@@ -114,3 +118,16 @@ Cloud-init runs only for a new instance. Updating the generated seed does not
 upgrade an existing guest: apply package, swap, environment and service changes
 there separately while its runner is drained. Re-registering the first guest
 at organization scope preserves its disks and build caches.
+
+For existing guests, install `maintain_cache.py` and `maintain-cache.sh` in
+`/usr/local/lib/idle-ci-runner` and make the shell script executable. Set both
+`ACTIONS_RUNNER_HOOK_JOB_STARTED` and `ACTIONS_RUNNER_HOOK_JOB_COMPLETED` to
+`/usr/local/lib/idle-ci-runner/maintain-cache.sh` in the runner's `.env`, then
+restart its listener while drained. Run the Python helper once before restoring
+the routing labels. It reports the removed caches and free bytes as JSON and
+fails if it cannot restore the free-space reserve. It never removes Bazel's
+output base; investigate further disk growth before resuming a runner that
+cannot recover enough space. The hooks support older workflow revisions too.
+
+The Bazel wrapper also passes its disk-cache collection settings explicitly.
+Do not rely on `~/.bazelrc` for those settings: the setup action rewrites it.

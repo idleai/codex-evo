@@ -201,6 +201,22 @@ def bazel_args_with_remote_config(
             arg.startswith(option_prefix) for arg in configured_args[:separator_idx]
         )
     ]
+    if (
+        env.get("RUNNER_ENVIRONMENT") == "self-hosted"
+        and env.get("BAZEL_DISK_CACHE")
+        and runs_build_actions
+    ):
+        # setup-bazel rewrites ~/.bazelrc, so runner bootstrap settings there
+        # cannot enforce disk-cache limits on a persistent worker.
+        for flag in (
+            "--experimental_disk_cache_gc_max_size=32G",
+            "--experimental_disk_cache_gc_idle_delay=1s",
+        ):
+            prefix = flag.split("=", 1)[0] + "="
+            if not any(
+                arg.startswith(prefix) for arg in configured_args[:separator_idx]
+            ):
+                cache_args.append(flag)
     return [
         *configured_args[:separator_idx],
         *cache_args,

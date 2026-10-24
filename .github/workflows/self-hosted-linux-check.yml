@@ -2,7 +2,7 @@ name: Self-hosted Linux check
 
 on:
   push:
-    branches: [ci/self-hosted-linux, ci/shared-linux-pool]
+    branches: [ci/self-hosted-linux, ci/shared-linux-pool, ci/queue-and-cache]
   workflow_dispatch:
 
 permissions:
@@ -36,7 +36,9 @@ jobs:
           target: x86_64-unknown-linux-gnu
           cache-scope: self-hosted-check
       - name: Check CI helpers
-        run: just test-github-scripts
+        run: |
+          just test-github-scripts
+          python3 -m unittest discover -s scripts/ci-runner -p 'test_*.py'
       - name: Check Bazel module lock and query
         run: |
           ./scripts/check-module-bazel-lock.sh

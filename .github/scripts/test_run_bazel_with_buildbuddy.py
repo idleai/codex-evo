@@ -104,6 +104,8 @@ class RunBazelWithBuildBuddyTest(unittest.TestCase):
                 "--config=ci-bazel",
                 "--jobs=6",
                 "--disk_cache=/cache/actions",
+                "--experimental_disk_cache_gc_max_size=32G",
+                "--experimental_disk_cache_gc_idle_delay=1s",
                 "--",
                 "//codex-rs/cli:all",
             ],

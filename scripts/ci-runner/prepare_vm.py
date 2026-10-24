@@ -144,6 +144,8 @@ AGENT_TOOLSDIRECTORY=/mnt/ci-cache/toolcache
 CODEX_BAZEL_JOBS={args.bazel_jobs}
 CODEX_BAZEL_TEST_JOBS={args.test_jobs}
 CARGO_BUILD_JOBS={args.cargo_jobs}
+ACTIONS_RUNNER_HOOK_JOB_STARTED=/usr/local/lib/idle-ci-runner/maintain-cache.sh
+ACTIONS_RUNNER_HOOK_JOB_COMPLETED=/usr/local/lib/idle-ci-runner/maintain-cache.sh
 ENV
 chown -R runner:runner /home/runner/actions-runner
 touch /home/runner/ci-bootstrap-complete
@@ -220,6 +222,16 @@ touch /home/runner/ci-bootstrap-complete
             ["LABEL=ci-cache", "/mnt/ci-cache", "ext4", "defaults,nofail", "0", "2"]
         ],
         "write_files": [
+            {
+                "path": "/usr/local/lib/idle-ci-runner/maintain_cache.py",
+                "permissions": "0644",
+                "content": Path(__file__).with_name("maintain_cache.py").read_text(),
+            },
+            {
+                "path": "/usr/local/lib/idle-ci-runner/maintain-cache.sh",
+                "permissions": "0755",
+                "content": Path(__file__).with_name("maintain-cache.sh").read_text(),
+            },
             {
                 "path": "/etc/sysctl.d/60-ci-runner-memory.conf",
                 "permissions": "0644",
