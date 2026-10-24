@@ -432,6 +432,14 @@ impl Permissions {
             .can_set_legacy_permission_profile(&permission_profile)
     }
 
+    /// Keep the current profile and its existing constraints for this thread's
+    /// lifetime. Hosts should resolve symbolic paths before fixing a filesystem
+    /// ceiling. Approval policy, managed denies and process configuration remain
+    /// intact; this does not grant additional execution permissions.
+    pub fn freeze_permission_profile(&mut self) -> ConstraintResult<()> {
+        self.permission_profile_state.freeze()
+    }
+
     pub fn set_workspace_roots(&mut self, workspace_roots: Vec<AbsolutePathBuf>) {
         self.workspace_roots = workspace_roots;
     }

@@ -60,6 +60,12 @@ impl PermissionProfileState {
         self.permission_profile.get().clone()
     }
 
+    pub(crate) fn freeze(&mut self) -> ConstraintResult<()> {
+        let fixed = Constrained::allow_only(self.snapshot());
+        self.permission_profile
+            .add_validator(move |candidate| fixed.can_set(candidate))
+    }
+
     pub(crate) fn active_permission_profile(&self) -> Option<ActivePermissionProfile> {
         self.permission_profile.get().active_permission_profile()
     }
