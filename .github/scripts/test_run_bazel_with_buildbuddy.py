@@ -130,6 +130,36 @@ class RunBazelWithBuildBuddyTest(unittest.TestCase):
                     },
                 )
 
+    def test_persistent_runner_module_and_query_commands_keep_repository_caches(
+        self,
+    ) -> None:
+        env = {
+            "GITHUB_ACTIONS": "true",
+            "RUNNER_ENVIRONMENT": "self-hosted",
+            "CODEX_BAZEL_JOBS": "12",
+            "CODEX_BAZEL_TEST_JOBS": "2",
+            "BAZEL_DISK_CACHE": "/cache/actions",
+            "BAZEL_REPOSITORY_CACHE": "/cache/downloads",
+            "BAZEL_REPO_CONTENTS_CACHE": "/cache/repositories",
+        }
+        for args in (
+            ["mod", "deps", "--lockfile_mode=error"],
+            ["query", "--", "//codex-rs/utils/absolute-path:all"],
+        ):
+            with self.subTest(command=args[0]):
+                separator = args.index("--") if "--" in args else len(args)
+                self.assertEqual(
+                    run_bazel_with_buildbuddy.bazel_args_with_remote_config(args, env),
+                    [
+                        args[0],
+                        "--config=ci-local",
+                        *args[1:separator],
+                        "--repo_contents_cache=/cache/repositories",
+                        "--repository_cache=/cache/downloads",
+                        *args[separator:],
+                    ],
+                )
+
     def test_upstream_push_selects_openai_rbe_before_target_separator(self) -> None:
         with TemporaryDirectory() as temp_dir:
             env = self.github_env(temp_dir, event_name="push")

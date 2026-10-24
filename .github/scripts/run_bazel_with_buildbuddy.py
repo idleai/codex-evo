@@ -137,13 +137,21 @@ def bazel_args_with_remote_config(
     )
     if command_idx is None:
         raise ValueError("expected a Bazel command")
+    runs_build_actions = args[command_idx] in {
+        "build",
+        "test",
+        "run",
+        "coverage",
+        "cquery",
+        "aquery",
+    }
 
     config = remote_config(args, env)
     if config is None:
         configured_args = bazel_args_without_remote_execution(args)
         if env.get("GITHUB_ACTIONS") == "true":
             local_args = ["--config=ci-local"]
-            if env.get("RUNNER_ENVIRONMENT") == "self-hosted":
+            if env.get("RUNNER_ENVIRONMENT") == "self-hosted" and runs_build_actions:
                 for env_name, option in (
                     ("CODEX_BAZEL_JOBS", "--jobs"),
                     ("CODEX_BAZEL_TEST_JOBS", "--local_test_jobs"),
@@ -188,6 +196,7 @@ def bazel_args_with_remote_config(
             ("BAZEL_DISK_CACHE", "--disk_cache="),
         )
         if env.get(env_name)
+        and (env_name != "BAZEL_DISK_CACHE" or runs_build_actions)
         and not any(
             arg.startswith(option_prefix) for arg in configured_args[:separator_idx]
         )
