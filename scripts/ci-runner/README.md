@@ -30,6 +30,9 @@ retaining the filename `cache.qcow2` and mount point `/mnt/ci-cache`. Each guest
 has 8 GiB of swap on that disk, sixteen concurrent Bazel/Cargo build jobs and two
 concurrent Bazel test jobs. Hooks before and after each job keep Bazel's disk
 cache below 32 GiB and require at least 24 GiB of free space before continuing.
+When the shared host cache is configured, CI disables the extra per-VM action
+cache. Bazel only collects that cache between commands, so a full dependency
+build could otherwise exhaust the working disk before collection starts.
 They remove extracted-repository caches left by older per-job paths and keep
 compiled outputs, repository downloads, toolchains and worktrees. New jobs reuse
 one extracted-repository cache in each VM. Output directories, downloads and
@@ -167,5 +170,7 @@ fails if it cannot restore the free-space reserve. It never removes Bazel's
 output base; investigate further disk growth before resuming a runner that
 cannot recover enough space. The hooks support older workflow revisions too.
 
-The Bazel wrapper also passes its disk-cache collection settings explicitly.
-Do not rely on `~/.bazelrc` for those settings: the setup action rewrites it.
+The Bazel wrapper explicitly disables the per-VM action cache when
+`IDLE_CI_REMOTE_CACHE` is set, while preserving explicit command-line overrides.
+Without a shared cache, it passes the disk-cache collection settings explicitly.
+Do not rely on `~/.bazelrc` for these settings: the setup action rewrites it.
