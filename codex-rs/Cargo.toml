@@ -662,6 +662,8 @@ inherits = "test"
 opt-level = 0
 
 [patch.crates-io]
+rtc-dtls = { path = "../third_party/vendor/rtc-dtls" }
+rtc-shared = { path = "../third_party/vendor/rtc-shared" }
 # Preserve AWS login while using the fixed RustCrypto release.
 aws-config = { path = "../third_party/vendor/aws-config" }
 # Uncomment to debug local changes.

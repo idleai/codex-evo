@@ -91,7 +91,7 @@ dependencies = [
  "age-core",
  "base64 0.22.1",
  "bech32",
- "chacha20poly1305",
+ "chacha20poly1305 0.11.0",
  "cipher 0.5.2",
  "cookie-factory",
  "hkdf 0.13.0",
@@ -121,7 +121,7 @@ source = "git+https://github.com/str4d/rage?rev=b5b68c4f4f7ea5c368bc060f6fe02375
 dependencies = [
  "base64 0.22.1",
  "bech32",
- "chacha20poly1305",
+ "chacha20poly1305 0.11.0",
  "cookie-factory",
  "hkdf 0.13.0",
  "hpke",
@@ -273,7 +273,7 @@ version = "1.1.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "40c48f72fd53cd289104fc64099abca73db4166ad86ea0b4341abe65af83dadc"
 dependencies = [
- "windows-sys 0.60.2",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -284,7 +284,7 @@ checksum = "291e6a250ff86cd4a820112fb8898808a366d8f9f58ce16d1f538353ad55747d"
 dependencies = [
  "anstyle",
  "once_cell_polyfill",
- "windows-sys 0.60.2",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -1674,6 +1674,17 @@ checksum = "613afe47fcd5fac7ccf1db93babcb082c5994d996f20b8b159f2ad1658eb5724"
 
 [[package]]
 name = "chacha20"
+version = "0.9.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c3613f74bd2eac03dad61bd53dbe620703d4371614fe0bc3b9f04dd36fe4e818"
+dependencies = [
+ "cfg-if",
+ "cipher 0.4.4",
+ "cpufeatures 0.2.17",
+]
+
+[[package]]
+name = "chacha20"
 version = "0.10.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "65c35e4b699c7e15ccbe7ee35c005e4fc0a278d22238a2857e6ce2dadeda1b06"
@@ -1686,12 +1697,25 @@ dependencies = [
 
 [[package]]
 name = "chacha20poly1305"
+version = "0.10.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "10cd79432192d1c0f4e1a0fef9527696cc039165d729fb41b3f4f4f354c2dc35"
+dependencies = [
+ "aead 0.5.2",
+ "chacha20 0.9.1",
+ "cipher 0.4.4",
+ "poly1305 0.8.0",
+ "zeroize",
+]
+
+[[package]]
+name = "chacha20poly1305"
 version = "0.11.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9b89e1c441e926b9c82a8d023f6e1b7ae0adcfaa7d621814e4d60789bac751cb"
 dependencies = [
  "aead 0.6.1",
- "chacha20",
+ "chacha20 0.10.2",
  "cipher 0.5.2",
  "poly1305 0.9.1",
 ]
@@ -6178,7 +6202,7 @@ dependencies = [
  "openssl-sys",
  "schannel",
  "socket2 0.6.3",
- "windows-sys 0.60.2",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -6193,7 +6217,7 @@ dependencies = [
  "openssl-sys",
  "pkg-config",
  "vcpkg",
- "windows-sys 0.60.2",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -6754,7 +6778,7 @@ dependencies = [
  "libc",
  "option-ext",
  "redox_users 0.5.2",
- "windows-sys 0.60.2",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -7113,7 +7137,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "39cab71617ae0d63f51a36d69f866391735b51691dbda63cf6f96d042b63efeb"
 dependencies = [
  "libc",
- "windows-sys 0.60.2",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -7771,7 +7795,7 @@ dependencies = [
  "gobject-sys",
  "libc",
  "system-deps",
- "windows-sys 0.60.2",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -8919,7 +8943,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a5324110b02044183df000f0bd7d2d7e61f1000631508627e77f63983b6fdffb"
 dependencies = [
  "aead 0.6.1",
- "chacha20poly1305",
+ "chacha20poly1305 0.11.0",
  "hkdf 0.13.0",
  "hybrid-array 0.4.15",
  "ml-kem 0.3.3",
@@ -9116,7 +9140,7 @@ dependencies = [
  "libc",
  "percent-encoding",
  "pin-project-lite",
- "socket2 0.5.10",
+ "socket2 0.6.3",
  "system-configuration",
  "tokio",
  "tower-service",
@@ -9655,7 +9679,7 @@ checksum = "3640c1c38b8e4e43584d8df18be5fc6b0aa314ce6ebf51b53313d4306cca8e46"
 dependencies = [
  "hermit-abi",
  "libc",
- "windows-sys 0.60.2",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -10674,7 +10698,7 @@ version = "0.50.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7957b9740744892f114936ab4a57b3f487491bbeafaf8083688b16841a4240e5"
 dependencies = [
- "windows-sys 0.60.2",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -11404,7 +11428,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7d8fae84b431384b68627d0f9b3b1245fcf9f46f6c0e3dc902e9dce64edd1967"
 dependencies = [
  "libc",
- "windows-sys 0.48.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -11442,10 +11466,12 @@ version = "0.14.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d17b851e6b3e378ab4ecb07fa2ed23f4d15f075735f8fec9fa1e7bdce5f8301f"
 dependencies = [
+ "ecdsa",
  "elliptic-curve",
  "fiat-crypto 0.3.0",
  "primefield",
  "primeorder",
+ "sha2 0.11.0",
 ]
 
 [[package]]
@@ -12328,7 +12354,7 @@ dependencies = [
  "quinn-udp 0.5.14",
  "rustc-hash",
  "rustls",
- "socket2 0.5.10",
+ "socket2 0.6.3",
  "thiserror 2.0.18",
  "tokio",
  "tracing",
@@ -12366,7 +12392,7 @@ dependencies = [
  "cfg_aliases 0.2.1",
  "libc",
  "once_cell",
- "socket2 0.5.10",
+ "socket2 0.6.3",
  "tracing",
  "windows-sys 0.60.2",
 ]
@@ -12380,8 +12406,8 @@ dependencies = [
  "cfg_aliases 0.2.1",
  "libc",
  "log",
- "socket2 0.5.10",
- "windows-sys 0.60.2",
+ "socket2 0.6.3",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -12771,7 +12797,7 @@ version = "0.10.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d2e8e8bcc7961af1fdac401278c6a831614941f6164ee3bf4ce61b7edb162207"
 dependencies = [
- "chacha20",
+ "chacha20 0.10.2",
  "getrandom 0.4.2",
  "rand_core 0.10.1",
 ]
@@ -13304,17 +13330,16 @@ dependencies = [
 
 [[package]]
 name = "rtc"
-version = "0.21.1"
+version = "0.20.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4e2ca201de5ccc83aa3c08d49a2f08d7ed0aeeb2052fb1ccc517a8b77a6927ce"
+checksum = "66355ae7cad547376873a2ee7968eee1e3727492a241c05bf511b01db4cef077"
 dependencies = [
  "bytes",
  "hex",
  "log",
- "pem",
  "rand 0.10.1",
  "rcgen",
- "rtc-crypto",
+ "ring",
  "rtc-datachannel",
  "rtc-dtls",
  "rtc-ice",
@@ -13333,35 +13358,16 @@ dependencies = [
  "sansio",
  "serde",
  "serde_json",
+ "sha2 0.10.9",
  "unicase",
  "url",
- "x509-parser 0.16.0",
-]
-
-[[package]]
-name = "rtc-crypto"
-version = "0.21.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "404ea28682271626739dfb1f3a04e96c596490b948d7629d9e4651dd4ba6aaf3"
-dependencies = [
- "aes 0.8.4",
- "ccm",
- "ctr",
- "hmac 0.12.1",
- "md-5 0.10.6",
- "rand 0.10.1",
- "ring",
- "sha1 0.10.6",
- "subtle",
- "thiserror 2.0.18",
- "zeroize",
 ]
 
 [[package]]
 name = "rtc-datachannel"
-version = "0.21.1"
+version = "0.20.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8d93dd81014535ff0134c0f19dbccfbae4d5ceb6010cf917c1a6056ea2c0d9bb"
+checksum = "c1767cfa2571e226e16d1594518c5160d7bef10c6e0fe7a60a8f979051233ea1"
 dependencies = [
  "bytes",
  "log",
@@ -13372,34 +13378,45 @@ dependencies = [
 
 [[package]]
 name = "rtc-dtls"
-version = "0.21.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0a2fe5767d6caf61018d52189b3b8e37075799eeb81cd5ab452307c7e7ebd97e"
+version = "0.20.5"
 dependencies = [
+ "aes 0.8.4",
  "bytecheck",
  "byteorder",
  "bytes",
+ "cbc",
+ "ccm",
+ "chacha20poly1305 0.10.1",
  "der-parser 9.0.0",
+ "hmac 0.12.1",
  "log",
- "pem",
+ "p256",
+ "p384",
+ "rand 0.10.1",
+ "rand_core 0.6.4",
  "rcgen",
+ "ring",
  "rkyv",
- "rtc-crypto",
  "rtc-shared",
  "rustls",
+ "sec1",
+ "sha1 0.10.6",
+ "sha2 0.10.9",
+ "subtle",
+ "x25519-dalek 2.0.1",
  "x509-parser 0.16.0",
 ]
 
 [[package]]
 name = "rtc-ice"
-version = "0.21.1"
+version = "0.20.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "099984f1be120b2e5692f232f8cbb82e53f6b4261c5c2eeda5be6223ba1adaa9"
+checksum = "9ee1c117265c3460ef2d88b54bdd5048c7ee05d5de948310e9ca053ff5154f74"
 dependencies = [
  "bytes",
  "crc",
  "log",
- "rtc-crypto",
+ "rand 0.10.1",
  "rtc-mdns",
  "rtc-shared",
  "rtc-stun",
@@ -13411,12 +13428,13 @@ dependencies = [
 
 [[package]]
 name = "rtc-interceptor"
-version = "0.21.1"
+version = "0.20.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "43e7df85d7aacf6e3f69bb922a6c9f83b2a29461038d06285df7642206df64cf"
+checksum = "a2a76412e39ae1a8a024be246009ffb5e6300f9703bc7b1ba41a3e0e1c5e63c1"
 dependencies = [
  "log",
  "rand 0.10.1",
+ "rtc-interceptor-derive",
  "rtc-rtcp",
  "rtc-rtp",
  "rtc-shared",
@@ -13424,10 +13442,21 @@ dependencies = [
 ]
 
 [[package]]
-name = "rtc-mdns"
-version = "0.21.1"
+name = "rtc-interceptor-derive"
+version = "0.20.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d86ac3cafd411bef81d70aff9d59d9520331b29970f7e361180da99e7a8b5a0d"
+checksum = "57385751766059daa81c7badbef27b894c358057be0413bf329875c6950ae125"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 2.0.117",
+]
+
+[[package]]
+name = "rtc-mdns"
+version = "0.20.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "52e1e0868d134ff0f10cd6ee71ad0d53c4a81a733f9950947eb8806b0a090159"
 dependencies = [
  "bytes",
  "log",
@@ -13438,9 +13467,9 @@ dependencies = [
 
 [[package]]
 name = "rtc-media"
-version = "0.21.1"
+version = "0.20.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a76840ad2aff52efeb16a613db26c16981841a6cf50907bff950884f00f9d9a9"
+checksum = "fdd79fb066099a90edd43dfe5ef296021218def9070ce39dcd0756e309e8945f"
 dependencies = [
  "byteorder",
  "bytes",
@@ -13452,9 +13481,9 @@ dependencies = [
 
 [[package]]
 name = "rtc-rtcp"
-version = "0.21.1"
+version = "0.20.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "485aa259bdb68e550363c40c8dc30c1c453ddd80f0cf7224dd2d72dffd5e01c2"
+checksum = "b515f133b14a119a3862c34b36c807bb985e90dc64515b2283b8e9a177d6ae3f"
 dependencies = [
  "bytes",
  "rtc-shared",
@@ -13462,9 +13491,9 @@ dependencies = [
 
 [[package]]
 name = "rtc-rtp"
-version = "0.21.1"
+version = "0.20.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2a640f266927139a899a3a93b5cf4aa3626594ee2e5d26202b60930bb42cb445"
+checksum = "f8a5509cd26a487309ac0d933b100af8976c399c1082009d4d4364a205968127"
 dependencies = [
  "bytes",
  "memchr",
@@ -13475,9 +13504,9 @@ dependencies = [
 
 [[package]]
 name = "rtc-sctp"
-version = "0.21.1"
+version = "0.20.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2eb430b379d90e7984306036d1646454a26b300c9c3256009eb8f7e0615e90b9"
+checksum = "2f786b8224032e25084a52401fcc28a8b6a4a5b1b1971152ad01113279628861"
 dependencies = [
  "bytes",
  "crc32c",
@@ -13491,9 +13520,9 @@ dependencies = [
 
 [[package]]
 name = "rtc-sdp"
-version = "0.21.1"
+version = "0.20.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "cd69b1ea06978e045f374ec19eb34177ee4e4f8349cc7d9c0b183683fa7b2d1f"
+checksum = "6cb942d52e95a0b6b6178374e88e90b069d8aa7078e6e581e1490db2521978e8"
 dependencies = [
  "rand 0.10.1",
  "rtc-shared",
@@ -13502,14 +13531,17 @@ dependencies = [
 
 [[package]]
 name = "rtc-shared"
-version = "0.21.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1250e81796ac6d3d67bd04ecdb891b8371ff97c8a2ce0a5a1c1321f2e12b657b"
+version = "0.20.5"
 dependencies = [
+ "aes 0.8.4",
+ "aes-gcm",
  "bitflags 1.3.2",
  "bytes",
  "nix 0.31.3",
+ "p256",
  "rand 0.10.1",
+ "rcgen",
+ "sec1",
  "serde",
  "substring",
  "thiserror 2.0.18",
@@ -13519,44 +13551,50 @@ dependencies = [
 
 [[package]]
 name = "rtc-srtp"
-version = "0.21.1"
+version = "0.20.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "cbb71f476c84763db0435bc47a598acb31abc5fdc6ca3fc84dcb274ed9b70155"
+checksum = "c77ba0abc312a93840746c27d4d1f16efc71baa9d3838ca9dda65e478e41461d"
 dependencies = [
+ "aes 0.8.4",
  "byteorder",
  "bytes",
- "rtc-crypto",
+ "ctr",
+ "hmac 0.12.1",
+ "ring",
  "rtc-rtcp",
  "rtc-rtp",
  "rtc-shared",
+ "sha1 0.10.6",
+ "subtle",
 ]
 
 [[package]]
 name = "rtc-stun"
-version = "0.21.1"
+version = "0.20.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1e59e5c70b7900f537ded24cfee5fa476e8fdc186b90ced528611e441f4063b4"
+checksum = "dc22012b96070d048d16bd6d2b0ca451bc8e920a28fb850b8f9644f21e32a826"
 dependencies = [
  "base64 0.22.1",
  "bytes",
  "crc",
  "lazy_static",
+ "md-5 0.10.6",
  "rand 0.10.1",
- "rtc-crypto",
+ "ring",
  "rtc-shared",
  "sansio",
+ "subtle",
  "url",
 ]
 
 [[package]]
 name = "rtc-turn"
-version = "0.21.1"
+version = "0.20.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c53078a0696df5a3a5e4947bc550c5e903b59803b252f1d39062d637ebd3d17e"
+checksum = "55fd9c23215c3e22ae698b423ae86992a89cb0c24440e3e7e2932dcad75aa3f0"
 dependencies = [
  "bytes",
  "log",
- "rtc-crypto",
  "rtc-shared",
  "rtc-stun",
  "sansio",
@@ -13678,7 +13716,7 @@ dependencies = [
  "errno",
  "libc",
  "linux-raw-sys 0.12.1",
- "windows-sys 0.60.2",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -13737,7 +13775,7 @@ dependencies = [
  "security-framework 3.5.1",
  "security-framework-sys",
  "webpki-root-certs",
- "windows-sys 0.60.2",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -14601,7 +14639,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3a766e1110788c36f4fa1c2b71b387a7815aa65f88ce0229841826633d93723e"
 dependencies = [
  "libc",
- "windows-sys 0.60.2",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -15450,7 +15488,7 @@ dependencies = [
  "getrandom 0.4.2",
  "once_cell",
  "rustix 1.1.4",
- "windows-sys 0.60.2",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -15506,7 +15544,7 @@ dependencies = [
  "parking_lot",
  "rustix 1.1.4",
  "signal-hook",
- "windows-sys 0.60.2",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -17108,9 +17146,9 @@ dependencies = [
 
 [[package]]
 name = "webrtc"
-version = "0.21.1"
+version = "0.20.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b621e736302bef784948cc8d8099fd0a8fdb5757693c80a344ffbe38c49387d2"
+checksum = "91ce8fa1c8b8aa8753b7313a26e46e27d973e11945e35f525ac6700062c3b295"
 dependencies = [
  "async-broadcast",
  "async-channel",
@@ -17285,7 +17323,7 @@ version = "0.1.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c2a7b1c03c876122aa43f3020e6c3c3ee5c05081c9a00739faf7503aeba10d22"
 dependencies = [
- "windows-sys 0.48.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -17970,6 +18008,7 @@ checksum = "c7e468321c81fb07fa7f4c636c3972b9100f0346e5b6a9f2bd0603a52f7ed277"
 dependencies = [
  "curve25519-dalek 4.1.3",
  "rand_core 0.6.4",
+ "serde",
  "zeroize",
 ]
 
