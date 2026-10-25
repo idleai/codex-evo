@@ -711,3 +711,7 @@ mod tests {
 #[cfg(test)]
 #[path = "local_cache_tests.rs"]
 mod cache_tests;
+
+#[cfg(test)]
+#[path = "local_compatibility_tests.rs"]
+mod compatibility_tests;

@@ -332,7 +332,7 @@ codex-windows-sandbox-test-support = { path = "windows-sandbox-rs/tests/support"
 core_test_support = { path = "core/tests/common" }
 
 # External
-age = "0.12.1"
+age = { git = "https://github.com/str4d/rage", rev = "b5b68c4f4f7ea5c368bc060f6fe0237549c3a13f" }
 ansi-to-tui = "8.0.1"
 anyhow = "1"
 arboard = { version = "3", features = ["wayland-data-control"] }
@@ -662,6 +662,8 @@ inherits = "test"
 opt-level = 0
 
 [patch.crates-io]
+# Preserve AWS login while using the fixed RustCrypto release.
+aws-config = { path = "../third_party/vendor/aws-config" }
 # Uncomment to debug local changes.
 # ratatui = { path = "../../ratatui" }
 crossterm = { git = "https://github.com/openai-oss-forks/crossterm", rev = "ed1cdab335221515706178d68495bba2aed1924f" }
