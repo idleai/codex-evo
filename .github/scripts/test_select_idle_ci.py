@@ -45,13 +45,22 @@ class SelectionTests(unittest.TestCase):
         )
 
     def test_code_mode_only_edits_do_not_add_rust_checks(self):
-        self.assertFalse(self.plan(["codex-rs/code-mode-runtime/src/lib.rs"])["rust"])
+        for crate in (
+            "code-mode",
+            "code-mode-host",
+            "code-mode-protocol",
+            "code-mode-runtime",
+        ):
+            self.assertFalse(self.plan([f"codex-rs/{crate}/src/lib.rs"])["rust"])
         self.assertFalse(self.plan(["third_party/v8/BUILD.bazel"])["rust"])
 
     def test_full_run_excludes_dedicated_code_mode_and_cross_tests(self):
         plan = self.plan([], full=True)
         self.assertTrue(plan["rust"])
-        self.assertIn("code-mode|v8-poc|windows-cross|wine-exec", plan["query"])
+        self.assertIn(
+            "code[-_]mode|v8-poc|windows-cross|windows_sandbox|wine-exec",
+            plan["query"],
+        )
 
     def test_sdk_is_scoped_separately(self):
         plan = self.plan(["sdk/typescript/src/client.ts"])

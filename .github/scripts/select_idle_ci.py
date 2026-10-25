@@ -10,7 +10,9 @@ import subprocess
 
 ROOT = Path(__file__).resolve().parents[2]
 EXCLUDED = (
+    "codex-rs/code-mode/",
     "codex-rs/code-mode-host/",
+    "codex-rs/code-mode-protocol/",
     "codex-rs/code-mode-runtime/",
     "codex-rs/v8-poc/",
     "third_party/v8/",
@@ -70,9 +72,7 @@ def select(paths, *, full=False, root=ROOT):
         packages = {"//codex-rs/..."}
     query = "tests(set(" + " ".join(sorted(packages)) + "))"
     query += ' except attr(tags, "manual", //codex-rs/...)'
-    query += (
-        ' except filter("code-mode|v8-poc|windows-cross|wine-exec", //codex-rs/...)'
-    )
+    query += ' except filter("code[-_]mode|v8-poc|windows-cross|windows_sandbox|wine-exec", //codex-rs/...)'
     return {
         "rust": rust,
         "sdk": full or any(path.startswith("sdk/") for path in paths),
