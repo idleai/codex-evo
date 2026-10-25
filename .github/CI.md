@@ -27,3 +27,6 @@ overflow. The workflow routes external fork PRs to hosted runners.
 Release tags build Linux GNU packages with Bazel and publish them on GitHub
 after checksum verification. Existing published assets remain available. Publishing npm/Python or
 other platform packages requires a separate, explicitly configured release path.
+
+The repository's `CI required` ruleset is staged for activation after this policy
+lands on `idle-base`. It accepts only the GitHub Actions check of that name.

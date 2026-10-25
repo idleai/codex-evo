@@ -29,6 +29,10 @@ jobs:
         with:
           fetch-depth: 0
           persist-credentials: false
+      - name: Spelling
+        uses: codespell-project/actions-codespell@8f01853be192eb0f849a5c7d721450e7a467c579 # v2.2
+        with:
+          ignore_words_file: .codespellignore
       - name: Select Linux checks
         id: scope
         env:
@@ -83,10 +87,6 @@ jobs:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: python3 scripts/check_blob_size.py --base "$BASE_SHA" --head "$HEAD_SHA" --max-bytes 512000 --allowlist .github/blob-size-allowlist.txt
-      - name: Spelling
-        uses: codespell-project/actions-codespell@8f01853be192eb0f849a5c7d721450e7a467c579 # v2.2
-        with:
-          ignore_words_file: .codespellignore
       - name: Dependency policy
         uses: EmbarkStudios/cargo-deny-action@82eb9f621fbc699dd0918f3ea06864c14cc84246 # v2
         with:
