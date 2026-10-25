@@ -131,7 +131,9 @@ class RunBazelWithBuildBuddyTest(unittest.TestCase):
         self.assertLess(configured.index("--disk_cache="), configured.index("--"))
 
         explicit = ["test", "--disk_cache=/custom", *args[1:]]
-        configured = run_bazel_with_buildbuddy.bazel_args_with_remote_config(explicit, env)
+        configured = run_bazel_with_buildbuddy.bazel_args_with_remote_config(
+            explicit, env
+        )
         self.assertIn("--disk_cache=/custom", configured)
         self.assertNotIn("--disk_cache=", configured)
 

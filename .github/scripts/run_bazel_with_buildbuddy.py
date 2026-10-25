@@ -188,9 +188,8 @@ def bazel_args_with_remote_config(
     except ValueError:
         separator_idx = len(configured_args)
 
-    shared_runner_cache = (
-        env.get("RUNNER_ENVIRONMENT") == "self-hosted"
-        and bool(env.get("IDLE_CI_REMOTE_CACHE"))
+    shared_runner_cache = env.get("RUNNER_ENVIRONMENT") == "self-hosted" and bool(
+        env.get("IDLE_CI_REMOTE_CACHE")
     )
     cache_args = [
         f"{option_prefix}{env[env_name]}"
@@ -206,8 +205,12 @@ def bazel_args_with_remote_config(
             arg.startswith(option_prefix) for arg in configured_args[:separator_idx]
         )
     ]
-    if shared_runner_cache and runs_build_actions and not any(
-        arg.startswith("--disk_cache=") for arg in configured_args[:separator_idx]
+    if (
+        shared_runner_cache
+        and runs_build_actions
+        and not any(
+            arg.startswith("--disk_cache=") for arg in configured_args[:separator_idx]
+        )
     ):
         # Disk-cache collection runs between Bazel commands. Duplicating a full
         # build there can fill the VM before collection starts; use the host cache.
