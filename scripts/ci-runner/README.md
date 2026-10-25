@@ -1,9 +1,10 @@
 # Shared Linux GitHub Actions runners
 
 Run the runner inside an Ubuntu 24.04 KVM guest. The guest has its own root disk,
-credentials, Docker daemon and working disk. Completed Bazel action outputs are
-also stored in a persistent cache service on the host. No host directory or
-Docker socket is mounted into the guest. SSH binds only to host loopback.
+credentials, Docker daemon and working disk. Completed Bazel action outputs and
+Rust compiler outputs are also stored in persistent cache services on the host.
+No host directory or Docker socket is mounted into the guest. SSH binds only to
+host loopback.
 
 The pool has eight identical guests, each with 64 virtual CPUs and 28 GiB memory.
 Each VM service has a 32 GiB memory ceiling, including QEMU and disk-cache
@@ -37,9 +38,9 @@ build could otherwise exhaust the working disk before collection starts.
 They remove extracted-repository caches left by older per-job paths and keep
 compiled outputs, repository downloads, toolchains and worktrees. New jobs reuse
 one extracted-repository cache in each VM. Output directories, downloads and
-toolchains consume additional disk space. The shared host cache has a separate
-512 GiB limit. Combined maximum disk capacity is 2,816 GiB before image and
-filesystem overhead.
+toolchains consume additional disk space. The shared host caches have separate
+512 GiB Bazel and 256 GiB Cargo limits. Combined maximum disk capacity is 3,072
+GiB before image and filesystem overhead.
 Sparse disk sizes are upper bounds, not immediate host allocations. Monitor
 both host and guest free space as the pool fills its caches.
 
@@ -64,6 +65,59 @@ each VM. The cache API shares completed artifacts and coordinates concurrent
 reads and writes. The cache is for the existing trusted organization jobs;
 fork jobs retain their hosted routing. Stop only the VMs during replacement,
 and leave the cache service and its data directory in place.
+
+## Shared Cargo compiler cache
+
+Cargo jobs use sccache 0.19.0 through `RUSTC_WRAPPER=/usr/local/bin/sccache`.
+The runner sets `CARGO_INCREMENTAL=0` so compiled Rust libraries can be reused
+between VMs. Existing Cargo target directories still retain local outputs.
+Cache keys include the compiler, source contents, features, target and flags;
+matching a package version alone does not guarantee a hit. Rust compilation
+also requires matching build paths, which the CI workspaces and coordinated
+product checkouts keep stable across workers. Final linking, build scripts and
+tests still run. See [sccache's Rust support](https://github.com/mozilla/sccache/blob/v0.19.0/docs/Rust.md).
+
+`idle-ci-cargo-store.service` uses the installed bazel-remote binary to keep
+compiler results in `/mnt/hot/ci-cache/cargo`, bounded to 256 GiB with automatic
+eviction. This service accepts opaque sccache entries on host loopback port
+18502. Its HTTP action-result validation is disabled because these entries are
+compiler archives. The existing Bazel service keeps its own validation and
+512 GiB cache.
+
+`idle-ci-cargo-cache.service` runs Caddy 2.11.7 on host loopback port 18501.
+`cargo-cache.Caddyfile` maps sccache's three directory components and cache key
+to the store's action-cache URL, and forwards the client's storage check.
+Both services run inside `idle-ci.slice`; their memory ceilings are 2 GiB and
+512 MiB respectively. Guests connect at `http://10.0.2.2:18501` without a host
+filesystem mount. The endpoint is for the same trusted organization jobs as
+the Bazel cache.
+
+Run `bash scripts/ci-runner/install-cargo-cache.sh` on the host after installing
+bazel-remote. It verifies the pinned Caddy archive, installs the configuration
+and services, and starts the endpoint. Pass
+`--cargo-cache-url http://10.0.2.2:18501` when preparing a new VM. Preparation
+installs the pinned sccache binary with an archive checksum check and writes
+the runner environment. The client disables WebDAV directory creation because
+the cache protocol only needs reads and writes. It can fall back to rustc if
+its local daemon cannot be reached.
+
+For existing VMs, drain the runner, install sccache with
+`install-sccache.sh`, and add these values to its runner `.env` before restarting
+the listener:
+
+```sh
+RUSTC_WRAPPER=/usr/local/bin/sccache
+CARGO_INCREMENTAL=0
+SCCACHE_WEBDAV_ENDPOINT=http://10.0.2.2:18501
+SCCACHE_WEBDAV_DISABLE_CREATE_DIR=true
+SCCACHE_IGNORE_SERVER_IO_ERROR=1
+```
+
+Verify reuse by building the same Cargo inputs on two workers with empty local
+target directories at matching paths. Compare `sccache --show-stats` before and
+after the second build; it must report remote cache hits. Run the resulting
+tests as well. The shared cache cannot import previously compiled Cargo target
+directories: jobs populate it as they compile through sccache.
 
 ## Prepare
 

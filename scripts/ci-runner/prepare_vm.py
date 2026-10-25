@@ -41,6 +41,7 @@ def main() -> None:
     parser.add_argument("--test-jobs", type=positive_int, default=2)
     parser.add_argument("--cargo-jobs", type=positive_int, default=64)
     parser.add_argument("--remote-cache-url", default="")
+    parser.add_argument("--cargo-cache-url", default="")
     args = parser.parse_args()
     for name in (args.name, args.service_name):
         if not re.fullmatch(r"[a-z][a-z0-9-]{0,62}", name):
@@ -62,6 +63,20 @@ def main() -> None:
         ):
             parser.error(
                 "--remote-cache-url must be an endpoint without embedded credentials"
+            )
+    if args.cargo_cache_url:
+        url = urlsplit(args.cargo_cache_url)
+        if (
+            url.scheme not in ("http", "https")
+            or not url.hostname
+            or url.username
+            or url.password
+            or url.query
+            or url.fragment
+            or any(char.isspace() for char in args.cargo_cache_url)
+        ):
+            parser.error(
+                "--cargo-cache-url must be an HTTP endpoint without embedded credentials"
             )
     state = args.state_dir.resolve()
     tools = args.tools_dir.resolve()
@@ -120,6 +135,17 @@ def main() -> None:
         )
     archive = f"actions-runner-linux-x64-{RUNNER_VERSION}.tar.gz"
     download = f"https://github.com/actions/runner/releases/download/v{RUNNER_VERSION}/{archive}"
+    cargo_environment = ""
+    cargo_install = ""
+    if args.cargo_cache_url:
+        cargo_environment = (
+            "RUSTC_WRAPPER=/usr/local/bin/sccache\n"
+            "CARGO_INCREMENTAL=0\n"
+            f"SCCACHE_WEBDAV_ENDPOINT={args.cargo_cache_url}\n"
+            "SCCACHE_WEBDAV_DISABLE_CREATE_DIR=true\n"
+            "SCCACHE_IGNORE_SERVER_IO_ERROR=1\n"
+        )
+        cargo_install = "/usr/local/lib/idle-ci-runner/install-sccache.sh\n"
     bootstrap = f"""#!/bin/bash
 set -euo pipefail
 mountpoint -q /mnt/ci-cache
@@ -146,7 +172,7 @@ for mapping in .cache:home-cache .cargo:cargo .rustup:rustup; do
   fi
   ln -sfn "$destination" "$source"
 done
-cat > /home/runner/.bazelrc <<'BAZELRC'
+{cargo_install}cat > /home/runner/.bazelrc <<'BAZELRC'
 build --experimental_disk_cache_gc_max_size=32G
 build --experimental_disk_cache_gc_idle_delay=1s
 BAZELRC
@@ -161,7 +187,7 @@ AGENT_TOOLSDIRECTORY=/mnt/ci-cache/toolcache
 CODEX_BAZEL_JOBS={args.bazel_jobs}
 CODEX_BAZEL_TEST_JOBS={args.test_jobs}
 CARGO_BUILD_JOBS={args.cargo_jobs}
-LANG=C.UTF-8
+{cargo_environment}LANG=C.UTF-8
 IDLE_CI_REMOTE_CACHE={args.remote_cache_url}
 ACTIONS_RUNNER_HOOK_JOB_STARTED=/usr/local/lib/idle-ci-runner/maintain-cache.sh
 ACTIONS_RUNNER_HOOK_JOB_COMPLETED=/usr/local/lib/idle-ci-runner/maintain-cache.sh
@@ -252,6 +278,11 @@ touch /home/runner/ci-bootstrap-complete
                 "content": Path(__file__).with_name("maintain-cache.sh").read_text(),
             },
             {
+                "path": "/usr/local/lib/idle-ci-runner/install-sccache.sh",
+                "permissions": "0755",
+                "content": Path(__file__).with_name("install-sccache.sh").read_text(),
+            },
+            {
                 "path": "/etc/sysctl.d/60-ci-runner-memory.conf",
                 "permissions": "0644",
                 "content": "vm.swappiness=10\n",
@@ -312,6 +343,7 @@ touch /home/runner/ci-bootstrap-complete
         "cargo_jobs": args.cargo_jobs,
         "test_jobs": args.test_jobs,
         "remote_cache_url": args.remote_cache_url,
+        "cargo_cache_url": args.cargo_cache_url,
         "ssh_port": args.ssh_port,
     }
     (state / "vm.json").write_text(json.dumps(vm, indent=2) + "\n")
