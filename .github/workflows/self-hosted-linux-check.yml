@@ -45,7 +45,8 @@ jobs:
           cache-scope: self-hosted-check
       - name: Check CI helpers
         run: |
-          just test-github-scripts
+          python3 -m unittest discover -s .github/scripts -p 'test_select_idle_ci.py'
+          python3 -m unittest discover -s .github/scripts -p 'test_check_ci_results.py'
           python3 -m unittest discover -s scripts/ci-runner -p 'test_*.py'
       - name: Check Bazel module lock and query
         run: |

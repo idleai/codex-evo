@@ -161,6 +161,7 @@ runs:
     # instead of failing the job.
     - name: Restore bazel repository cache
       id: cache_bazel_repository_restore
+      if: runner.environment == 'github-hosted'
       continue-on-error: true
       uses: actions/cache/restore@668228422ae6a00e4ad889ee87cd7109ec5666a7 # v5.0.4
       with:

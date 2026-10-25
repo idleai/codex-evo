@@ -15,8 +15,15 @@ logical CPU equivalents and disables host swap for its processes.
 The host has 64 physical cores with two hardware threads per core. The guests
 share all 128 logical CPUs with equal weights. The 256 configured vCPUs allow
 four busy guests to use up to 32 CPU equivalents each, while eight equally busy
-guests share approximately 16 each, subject to other host workloads. All guests
-have the same organization routing labels.
+guests share approximately 16 each, subject to other host workloads. Workers
+01–04 serve Codex PRs through `codex-pr-linux-x64`, 05–06 serve client PRs through
+`idle-pr-linux-x64`, and 07–08 serve integration and release work through
+`idle-background-linux-x64`. Legacy labels remain for existing workflows.
+
+`configure_routes.py --record-directory <directory>` previews these assignments.
+Add `--apply` to update labels and the seven participating repositories' runner
+variables. It does not alter VM sizing. The plan is validated before any update;
+the directory retains the original runner labels and the applied assignments.
 
 Every guest has a sparse 32 GiB root disk and a 256 GiB private working disk,
 retaining the filename `cache.qcow2` and mount point `/mnt/ci-cache`. Each guest

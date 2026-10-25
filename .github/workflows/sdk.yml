@@ -34,7 +34,7 @@ jobs:
             '
 
   sdks:
-    runs-on: ${{ (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && vars.CODEX_LINUX_RUNNER || 'ubuntu-24.04' }}
+    runs-on: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository && vars.CODEX_LINUX_RUNNER || github.event_name != 'pull_request' && vars.IDLE_BACKGROUND_RUNNER || 'ubuntu-24.04' }}
     timeout-minutes: 90
     environment:
       name: bazel
@@ -145,7 +145,7 @@ jobs:
           uv run --only-group dev --frozen --no-sync pytest
 
       - name: Save bazel repository cache
-        if: always() && !cancelled() && steps.build_bazel.outcome == 'success' && steps.setup_bazel.outputs.repository-cache-hit != 'true'
+        if: always() && !cancelled() && runner.environment == 'github-hosted' && steps.build_bazel.outcome == 'success' && steps.setup_bazel.outputs.repository-cache-hit != 'true'
         continue-on-error: true
         uses: actions/cache/save@668228422ae6a00e4ad889ee87cd7109ec5666a7 # v5.0.4
         with:

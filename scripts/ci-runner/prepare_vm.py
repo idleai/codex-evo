@@ -60,7 +60,9 @@ def main() -> None:
             or url.password
             or any(char.isspace() for char in args.remote_cache_url)
         ):
-            parser.error("--remote-cache-url must be an endpoint without embedded credentials")
+            parser.error(
+                "--remote-cache-url must be an endpoint without embedded credentials"
+            )
     state = args.state_dir.resolve()
     tools = args.tools_dir.resolve()
     image = args.image.resolve(strict=True)
