@@ -1,0 +1,21 @@
+name: Build desktop product
+
+on:
+  push:
+    branches: [idle-base]
+    paths-ignore:
+      - '**/*.md'
+      - '.github/workflows/product.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  checks: read
+  actions: read
+
+jobs:
+  product:
+    uses: idleai/memos/.github/workflows/product.yml@v1
+    with:
+      source_repository: ${{ github.repository }}
+      source_revision: ${{ github.sha }}
