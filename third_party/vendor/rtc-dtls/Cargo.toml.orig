@@ -1,0 +1,106 @@
+[package]
+name = "rtc-dtls"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+description = "RTC DTLS in Rust"
+license.workspace = true
+documentation = "https://docs.rs/rtc-dtls"
+homepage.workspace = true
+repository.workspace = true
+keywords.workspace = true
+categories.workspace = true
+
+[dependencies]
+shared = { workspace = true, default-features = false, features = ["crypto", "replay"] }
+
+bytes.workspace = true
+byteorder.workspace = true
+rand_core = "0.6.4"
+p256 = { version = "0.14.0", features = ["default", "ecdh", "ecdsa"] }
+p384 = { version = "0.14.0", features = ["ecdh"] }
+rand.workspace = true
+hmac = "0.12.1"
+sec1 = { version = "0.8.1", features = ["std"] }
+sha1 = "0.10.6"
+sha2 = "0.10.8"
+aes = "0.8.4"
+cbc = { version = "0.1.2", features = ["block-padding", "alloc"] }
+# AES-GCM cipher suites use ring's hardware-accelerated AES-GCM (see
+# crypto/crypto_gcm.rs); CCM/CBC/ChaCha20-Poly1305 stay on RustCrypto.
+ccm = "0.5.0"
+x25519-dalek = { version = "2.0.1", features = ["static_secrets"] }
+x509-parser = "0.16.0"
+der-parser = "9.0.0"
+rcgen.workspace = true
+ring = { workspace = true, optional = true }
+aws-lc-rs = { workspace = true, optional = true }
+rustls = { version = "0.23.27", default-features = false, features = ["std"] }
+rkyv = "0.8.17"
+bytecheck = "0.8"
+subtle = "2.5.0"
+log.workspace = true
+pem = { version = "3.0.3", optional = true }
+chacha20poly1305 = "0.10.1"
+
+[dev-dependencies]
+local-sync = "0.1.1"
+core_affinity = "0.8.1"
+chrono.workspace = true
+env_logger.workspace = true
+clap.workspace = true
+anyhow = "1.0.80"
+ctrlc.workspace = true
+futures = "0.3.30"
+
+[features]
+default = ["ring"]
+pem = ["dep:pem"]
+ring = ["dep:ring", "rustls/ring", "rcgen/ring"]
+aws-lc-rs = ["dep:aws-lc-rs", "rustls/aws-lc-rs", "rcgen/aws_lc_rs"]
+
+#[[example]]
+#name = "dtls_chat_server"
+#path = "examples/dtls_chat_server.rs"
+
+#[[example]]
+#name = "dtls_echo_server"
+#path = "examples/dtls_echo_server.rs"
+
+#[[example]]
+#name = "dtls_client"
+#path = "examples/dtls_client.rs"
+
+#[[example]]
+#name = "dtls_client_selfsign"
+#path = "examples/dtls_client_selfsign.rs"
+
+#[[example]]
+#name = "dial_psk"
+#path = "examples/dial/psk/dial_psk.rs"
+#bench = false
+#
+#[[example]]
+#name = "dial_selfsign"
+#path = "examples/dial/selfsign/dial_selfsign.rs"
+#bench = false
+#
+#[[example]]
+#name = "dial_verify"
+#path = "examples/dial/verify/dial_verify.rs"
+#bench = false
+#
+#[[example]]
+#name = "listen_psk"
+#path = "examples/listen/psk/listen_psk.rs"
+#bench = false
+#
+#[[example]]
+#name = "listen_selfsign"
+#path = "examples/listen/selfsign/listen_selfsign.rs"
+#bench = false
+#
+#[[example]]
+#name = "listen_verify"
+#path = "examples/listen/verify/listen_verify.rs"
+#bench = false
