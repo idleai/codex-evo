@@ -57,7 +57,7 @@ jobs:
         with:
           node-version: 22
           cache: pnpm
-      - run: pnpm install --frozen-lockfile --ignore-scripts
+      - run: pnpm --filter codex-monorepo install --frozen-lockfile --ignore-scripts
       - name: Install workflow validator
         run: |
           curl --fail --silent --show-error --location --retry 3 \
@@ -76,9 +76,15 @@ jobs:
           python3 -m unittest discover -s .github/scripts -p 'test_select_idle_ci.py'
           python3 -m unittest discover -s .github/scripts -p 'test_check_ci_results.py'
           python3 -m unittest discover -s scripts/ci-runner -p 'test_*.py'
+          python3 -m unittest discover -s .github/scripts -p 'test_releases.py'
+          for suite in archive cargo cli layout; do
+            python3 -m unittest discover -s scripts/codex_package -p "test_${suite}.py"
+          done
           python3 .github/scripts/verify_idle_ci.py
       - name: Formatting
         run: |
+          python3 scripts/asciicheck.py README.md
+          python3 scripts/readme_toc.py README.md
           just fmt-check
           pnpm run format
       - name: Blob size policy

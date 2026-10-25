@@ -16,7 +16,12 @@ permissions:
 jobs:
   check:
     if: ${{ vars.CODEX_LINUX_PILOT_RUNNER != '' }}
-    runs-on: [self-hosted, Linux, "${{ inputs.runner_label || vars.CODEX_LINUX_PILOT_RUNNER }}"]
+    runs-on:
+      [
+        self-hosted,
+        Linux,
+        "${{ inputs.runner_label || vars.CODEX_LINUX_PILOT_RUNNER }}",
+      ]
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
