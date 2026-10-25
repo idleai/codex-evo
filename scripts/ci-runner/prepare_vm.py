@@ -10,6 +10,7 @@ import shutil
 import socket
 import subprocess
 from pathlib import Path
+from urllib.parse import urlsplit
 
 
 RUNNER_VERSION = "2.338.1"
@@ -32,12 +33,14 @@ def main() -> None:
     parser.add_argument("--service-name", default="codex-ci-vm")
     parser.add_argument("--ssh-port", type=positive_int, default=22061)
     parser.add_argument("--cpus", type=positive_int, default=32)
-    parser.add_argument("--memory-mib", type=positive_int, default=32768)
+    parser.add_argument("--memory-mib", type=positive_int, default=28672)
+    parser.add_argument("--host-memory-mib", type=positive_int, default=32768)
     parser.add_argument("--root-disk-gib", type=positive_int, default=32)
-    parser.add_argument("--cache-disk-gib", type=positive_int, default=192)
-    parser.add_argument("--bazel-jobs", type=positive_int, default=12)
+    parser.add_argument("--cache-disk-gib", type=positive_int, default=256)
+    parser.add_argument("--bazel-jobs", type=positive_int, default=16)
     parser.add_argument("--test-jobs", type=positive_int, default=2)
-    parser.add_argument("--cargo-jobs", type=positive_int, default=12)
+    parser.add_argument("--cargo-jobs", type=positive_int, default=16)
+    parser.add_argument("--remote-cache-url", default="")
     args = parser.parse_args()
     for name in (args.name, args.service_name):
         if not re.fullmatch(r"[a-z][a-z0-9-]{0,62}", name):
@@ -46,6 +49,18 @@ def main() -> None:
         parser.error("--ssh-port must be between 1024 and 65535")
     if args.root_disk_gib < 8 or args.cache_disk_gib < 12:
         parser.error("root and cache disks need at least 8 GiB and 12 GiB respectively")
+    if args.host_memory_mib < args.memory_mib + 1024:
+        parser.error("the host memory limit must include at least 1 GiB of VM overhead")
+    if args.remote_cache_url:
+        url = urlsplit(args.remote_cache_url)
+        if (
+            url.scheme not in ("http", "https", "grpc", "grpcs")
+            or not url.hostname
+            or url.username
+            or url.password
+            or any(char.isspace() for char in args.remote_cache_url)
+        ):
+            parser.error("--remote-cache-url must be an endpoint without embedded credentials")
     state = args.state_dir.resolve()
     tools = args.tools_dir.resolve()
     image = args.image.resolve(strict=True)
@@ -144,6 +159,8 @@ AGENT_TOOLSDIRECTORY=/mnt/ci-cache/toolcache
 CODEX_BAZEL_JOBS={args.bazel_jobs}
 CODEX_BAZEL_TEST_JOBS={args.test_jobs}
 CARGO_BUILD_JOBS={args.cargo_jobs}
+LANG=C.UTF-8
+IDLE_CI_REMOTE_CACHE={args.remote_cache_url}
 ACTIONS_RUNNER_HOOK_JOB_STARTED=/usr/local/lib/idle-ci-runner/maintain-cache.sh
 ACTIONS_RUNNER_HOOK_JOB_COMPLETED=/usr/local/lib/idle-ci-runner/maintain-cache.sh
 ENV
@@ -245,6 +262,19 @@ touch /home/runner/ci-bootstrap-complete
         ],
         "runcmd": [["/usr/local/sbin/prepare-ci-runner"]],
     }
+    if args.remote_cache_url:
+        config["write_files"].append(
+            {
+                "path": "/etc/bazel.bazelrc",
+                "permissions": "0644",
+                "content": (
+                    "# Shared host cache; active build directories stay on this VM.\n"
+                    f"build --remote_cache={args.remote_cache_url}\n"
+                    "build --remote_upload_local_results=true\n"
+                    "build --remote_timeout=30\n"
+                ),
+            }
+        )
     (state / "user-data").write_text(
         "#cloud-config\n" + json.dumps(config, indent=2) + "\n"
     )
@@ -273,6 +303,13 @@ touch /home/runner/ci-bootstrap-complete
         "name": args.name,
         "cpus": args.cpus,
         "memory_mib": args.memory_mib,
+        "host_memory_mib": args.host_memory_mib,
+        "root_disk_gib": args.root_disk_gib,
+        "cache_disk_gib": args.cache_disk_gib,
+        "bazel_jobs": args.bazel_jobs,
+        "cargo_jobs": args.cargo_jobs,
+        "test_jobs": args.test_jobs,
+        "remote_cache_url": args.remote_cache_url,
         "ssh_port": args.ssh_port,
     }
     (state / "vm.json").write_text(json.dumps(vm, indent=2) + "\n")
@@ -291,7 +328,7 @@ Restart=on-failure
 RestartSec=15
 CPUQuota={args.cpus * 100}%
 CPUWeight=20
-MemoryMax={args.memory_mib + 3072}M
+MemoryMax={args.host_memory_mib}M
 MemorySwapMax=0
 IOWeight=20
 Nice=5

@@ -2,9 +2,11 @@
 Description=Shared Linux CI VM budget
 
 [Slice]
-# Existing 24 GiB allowance plus the 128 decimal GB released from inference.
-MemoryMax=153769803776
+# Eight 28 GiB guests, their VM overhead, and the persistent cache service.
+MemoryHigh=240G
+MemoryMax=256G
 MemorySwapMax=0
 CPUQuota=12800%
+AllowedCPUs=0-127
 CPUWeight=20
 IOWeight=20
