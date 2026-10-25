@@ -1,0 +1,82 @@
+name: Self-hosted Linux check
+
+on:
+  push:
+    branches: [ci/self-hosted-linux, ci/shared-linux-pool, ci/queue-and-cache]
+  workflow_dispatch:
+    inputs:
+      runner_label:
+        description: Runner label for a focused infrastructure check
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    if: ${{ vars.CODEX_LINUX_PILOT_RUNNER != '' }}
+    runs-on:
+      [
+        self-hosted,
+        Linux,
+        "${{ inputs.runner_label || vars.CODEX_LINUX_PILOT_RUNNER }}",
+      ]
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+      - name: Check runner resources
+        shell: bash
+        run: |
+          test "$RUNNER_ENVIRONMENT" = self-hosted
+          test "$RUNNER_OS" = Linux
+          nproc
+          free -h
+          df -h /mnt/ci-cache
+          mountpoint -q /mnt/ci-cache
+          test "$CODEX_BAZEL_JOBS" -ge 1
+          test "$CODEX_BAZEL_TEST_JOBS" -ge 1
+          gh --version
+          jq --version
+          if [[ -n "${IDLE_CI_REMOTE_CACHE:-}" ]]; then
+            curl --fail --silent --show-error "${IDLE_CI_REMOTE_CACHE}/status"
+          fi
+      - name: Prepare Bazel CI
+        uses: ./.github/actions/prepare-bazel-ci
+        with:
+          target: x86_64-unknown-linux-gnu
+          cache-scope: self-hosted-check
+      - name: Check CI helpers
+        run: |
+          python3 -m unittest discover -s .github/scripts -p 'test_select_idle_ci.py'
+          python3 -m unittest discover -s .github/scripts -p 'test_check_ci_results.py'
+          python3 -m unittest discover -s scripts/ci-runner -p 'test_*.py'
+      - name: Check Bazel module lock and query
+        run: |
+          ./scripts/check-module-bazel-lock.sh
+          ./.github/scripts/run_bazel_with_buildbuddy.py query -- //codex-rs/utils/absolute-path:all
+      - name: Resolve compatibility releases
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 .github/scripts/resolve_exec_server_releases.py
+      - name: Compile and test on the local runner
+        run: |
+          test -n "$BAZEL_DISK_CACHE"
+          ./.github/scripts/run-bazel-ci.sh -- test --test_output=all -- //codex-rs/utils/absolute-path:absolute-path-unit-tests
+      - name: Check cache reuse
+        run: |
+          cache_args=()
+          if [[ -n "${IDLE_CI_REMOTE_CACHE:-}" ]]; then
+            cache_args+=(--disk_cache=)
+          fi
+          ./.github/scripts/run_bazel_with_buildbuddy.py \
+            --output_base="$RUNNER_TEMP/bazel-cache-check" \
+            test --config=ci-bazel --nocache_test_results --test_output=all \
+            "${cache_args[@]}" \
+            -- //codex-rs/utils/absolute-path:absolute-path-unit-tests
+          du -sh "$BAZEL_DISK_CACHE"
+      - name: Check for a clean worktree
+        if: always() && !cancelled()
+        uses: ./.github/actions/check-clean-worktree

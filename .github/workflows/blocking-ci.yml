@@ -1,72 +1,135 @@
 name: blocking-ci
 
-# This is the single entrypoint for checks that block a PR merge. It also runs
-# after pushes to main so the same check family stays grouped in the Actions UI.
 on:
-  pull_request: {}
+  pull_request:
   push:
-    branches: [main]
+    branches: [main, idle-base]
+  schedule:
+    - cron: "41 9 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: idle-ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 
 jobs:
-  # Keep reusable workflow calls alphabetized. The `required` job below is the
-  # version-controlled list that the main-branch ruleset should require.
-  bazel:
-    name: Bazel
+  preflight:
+    name: Preflight
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    outputs:
+      rust: ${{ steps.scope.outputs.rust }}
+      sdk: ${{ steps.scope.outputs.sdk }}
+      query: ${{ steps.scope.outputs.query }}
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Spelling
+        uses: codespell-project/actions-codespell@8f01853be192eb0f849a5c7d721450e7a467c579 # v2.2
+        with:
+          ignore_words_file: .codespellignore
+      - name: Select Linux checks
+        id: scope
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+          FULL: ${{ github.event_name != 'pull_request' }}
+        run: |
+          args=()
+          if [[ "$FULL" == true ]]; then args+=(--full); fi
+          python3 .github/scripts/select_idle_ci.py "${args[@]}"
+      - uses: ./.github/actions/setup-ci
+      - uses: dtolnay/rust-toolchain@d124f86f28ff42855784ff3319f48ac182c248f8 # 1.99.1
+        with:
+          components: rustfmt
+      - uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
+        with:
+          version: "0.13.5"
+      - uses: pnpm/action-setup@a8198c4bff370c8506180b035930dea56dbd5288 # v5
+        with:
+          run_install: false
+      - uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f # v6.3.0
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm --filter codex-monorepo install --frozen-lockfile --ignore-scripts
+      - name: Install workflow validator
+        run: |
+          curl --fail --silent --show-error --location --retry 3 \
+            https://github.com/rhysd/actionlint/releases/download/v1.7.12/actionlint_1.7.12_linux_amd64.tar.gz \
+            --output "$RUNNER_TEMP/actionlint.tar.gz"
+          echo "8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8  $RUNNER_TEMP/actionlint.tar.gz" | sha256sum --check
+          mkdir -p "$RUNNER_TEMP/actionlint"
+          tar -xzf "$RUNNER_TEMP/actionlint.tar.gz" -C "$RUNNER_TEMP/actionlint" actionlint
+          echo "$RUNNER_TEMP/actionlint" >> "$GITHUB_PATH"
+      - name: Repository contracts and CI selection
+        run: |
+          actionlint
+          python3 .github/scripts/verify_cargo_workspace_manifests.py
+          python3 .github/scripts/verify_tui_core_boundary.py
+          python3 .github/scripts/verify_bazel_clippy_lints.py
+          python3 -m unittest discover -s .github/scripts -p 'test_select_idle_ci.py'
+          python3 -m unittest discover -s .github/scripts -p 'test_check_ci_results.py'
+          python3 -m unittest discover -s scripts/ci-runner -p 'test_*.py'
+          python3 -m unittest discover -s .github/scripts -p 'test_releases.py'
+          for suite in archive cargo cli layout; do
+            python3 -m unittest discover -s scripts/codex_package -p "test_${suite}.py"
+          done
+          python3 .github/scripts/verify_idle_ci.py
+      - name: Formatting
+        run: |
+          python3 scripts/asciicheck.py README.md
+          python3 scripts/readme_toc.py README.md
+          just fmt-check
+          pnpm run format
+      - name: Blob size policy
+        if: github.event_name == 'pull_request'
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: python3 scripts/check_blob_size.py --base "$BASE_SHA" --head "$HEAD_SHA" --max-bytes 512000 --allowlist .github/blob-size-allowlist.txt
+      - name: Dependency policy
+        uses: EmbarkStudios/cargo-deny-action@82eb9f621fbc699dd0918f3ea06864c14cc84246 # v2
+        with:
+          rust-version: 1.99.1
+          manifest-path: ./codex-rs/Cargo.toml
+
+  linux:
+    name: Linux
+    needs: preflight
+    if: needs.preflight.outputs.rust == 'true'
     uses: ./.github/workflows/bazel.yml
-    secrets: inherit
-
-  blob-size-policy:
-    name: Blob size policy
-    uses: ./.github/workflows/blob-size-policy.yml
-    secrets: inherit
-
-  cargo-deny:
-    name: cargo-deny
-    uses: ./.github/workflows/cargo-deny.yml
-    secrets: inherit
-
-  codespell:
-    name: Codespell
-    uses: ./.github/workflows/codespell.yml
-    secrets: inherit
-
-  repo-checks:
-    name: repo-checks
-    uses: ./.github/workflows/repo-checks.yml
-    secrets: inherit
-
-  rust-ci:
-    name: rust-ci
-    uses: ./.github/workflows/rust-ci.yml
+    with:
+      query: ${{ needs.preflight.outputs.query }}
     secrets: inherit
 
   sdk:
-    name: sdk
+    name: SDK
+    needs: preflight
+    if: needs.preflight.outputs.sdk == 'true'
     uses: ./.github/workflows/sdk.yml
     secrets: inherit
 
   required:
     name: CI required
-    # Without `always()`, GitHub skips this job after a failed dependency and a
-    # required check can appear successful instead of reporting the failure.
-    if: ${{ always() }}
-    needs:
-      - bazel
-      - blob-size-policy
-      - cargo-deny
-      - codespell
-      - repo-checks
-      - rust-ci
-      - sdk
+    if: always()
+    needs: [preflight, linux, sdk]
     runs-on: ubuntu-24.04
     steps:
-      # Keep the helper on the same combined revision as the child workflows so
-      # the merge gate evaluates the exact candidate they validated.
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           persist-credentials: false
-
-      - name: Require successful dependencies
+      - name: Require the selected jobs
         env:
           NEEDS: ${{ toJSON(needs) }}
-        run: python3 .github/scripts/check_ci_results.py
+          RUST_SELECTED: ${{ needs.preflight.outputs.rust }}
+          SDK_SELECTED: ${{ needs.preflight.outputs.sdk }}
+        run: |
+          OPTIONAL_SKIPPED="$(python3 -c 'import json,os; print(json.dumps([job for job,key in [("linux","RUST_SELECTED"),("sdk","SDK_SELECTED")] if os.environ[key] == "false"]))')"
+          export OPTIONAL_SKIPPED
+          python3 .github/scripts/check_ci_results.py

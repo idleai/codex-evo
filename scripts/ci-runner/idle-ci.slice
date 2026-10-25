@@ -1,0 +1,12 @@
+[Unit]
+Description=Shared Linux CI VM budget
+
+[Slice]
+# Eight 28 GiB guests, their VM overhead, and the persistent cache service.
+MemoryHigh=240G
+MemoryMax=256G
+MemorySwapMax=0
+CPUQuota=12800%
+AllowedCPUs=0-127
+CPUWeight=20
+IOWeight=20

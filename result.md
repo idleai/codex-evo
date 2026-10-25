@@ -93,13 +93,13 @@ and daemon selections were unchanged.
 The source release tag is `codex-evo-v0.164.0-alpha.12-idle.1`, pointing to the
 exact build commit above.
 
-| Artifact | SHA-256 |
-| --- | --- |
-| `bin/codex` | `7eaf3121ef571cd3d7a35b9986a8ffa5fd86e316921069fdfad12840570633d0` |
+| Artifact                   | SHA-256                                                            |
+| -------------------------- | ------------------------------------------------------------------ |
+| `bin/codex`                | `7eaf3121ef571cd3d7a35b9986a8ffa5fd86e316921069fdfad12840570633d0` |
 | `bin/codex-code-mode-host` | `202e03b7b54938d63d914a9f5bef9c6545086cfd33e7612d8690a74cf30308ae` |
-| `codex-package.json` | `9c82f9abbb0234440e4f9566d8c1234f9df9c0658223ba8bd4c470d3d792f496` |
-| `codex-path/rg` | `e62198eb19b136b88c330af83647b5a962cb99b6b1f066758568f12de1974849` |
-| `codex-resources/bwrap` | `c102c5f893faed17ed053ce6ceb9fe0bb03069b991a6f0390e54d82c85f1bca0` |
+| `codex-package.json`       | `9c82f9abbb0234440e4f9566d8c1234f9df9c0658223ba8bd4c470d3d792f496` |
+| `codex-path/rg`            | `e62198eb19b136b88c330af83647b5a962cb99b6b1f066758568f12de1974849` |
+| `codex-resources/bwrap`    | `c102c5f893faed17ed053ce6ceb9fe0bb03069b991a6f0390e54d82c85f1bca0` |
 
 ## Upstream refresh: 0.162.0-alpha.20 / idle.1
 
@@ -177,13 +177,13 @@ the prepared package and production auto-updates remained disabled. The test
 daemon was stopped and its temporary home removed. The live standalone and
 daemon selections were not changed. The reload helper's `--check` passed.
 
-| Artifact | SHA-256 |
-| --- | --- |
-| `bin/codex` | `747c08b521cb41c940dbc6266a3183f8215764fcde313c4a35ad64cfb70bf0f5` |
-| `bin/codex-code-mode-host` | `c2167ccf8b64fe84d4d4cf164add70d5f59771902f193c122754f43344a96690` |
-| `codex-package.json` | `b203425ab687a9003116a379f01aed8201e76bc167a52a4725ac9b77f76edb8d` |
-| `codex-path/rg` | `e62198eb19b136b88c330af83647b5a962cb99b6b1f066758568f12de1974849` |
-| `codex-resources/bwrap` | `c102c5f893faed17ed053ce6ceb9fe0bb03069b991a6f0390e54d82c85f1bca0` |
+| Artifact                      | SHA-256                                                            |
+| ----------------------------- | ------------------------------------------------------------------ |
+| `bin/codex`                   | `747c08b521cb41c940dbc6266a3183f8215764fcde313c4a35ad64cfb70bf0f5` |
+| `bin/codex-code-mode-host`    | `c2167ccf8b64fe84d4d4cf164add70d5f59771902f193c122754f43344a96690` |
+| `codex-package.json`          | `b203425ab687a9003116a379f01aed8201e76bc167a52a4725ac9b77f76edb8d` |
+| `codex-path/rg`               | `e62198eb19b136b88c330af83647b5a962cb99b6b1f066758568f12de1974849` |
+| `codex-resources/bwrap`       | `c102c5f893faed17ed053ce6ceb9fe0bb03069b991a6f0390e54d82c85f1bca0` |
 | `codex-resources/zsh/bin/zsh` | `52fc20199c35aac8a9ce1aad7de127a3cac47886a9ff0bf2f80bac3ebac2283f` |
 
 ## Previous releases
@@ -350,11 +350,11 @@ occur on untouched upstream main.
 /mnt/hot/ambientlight/.codex/packages/standalone/releases/0.158.0-alpha.14-codex-evo-idle.1-20260925-x86_64-unknown-linux-gnu
 ```
 
-| Artifact | SHA-256 |
-| --- | --- |
-| `bin/codex` | `b44902cc4997321e3fce23961c9c5a28415ca6e3878bd4d5180d7fc52831db25` |
+| Artifact                   | SHA-256                                                            |
+| -------------------------- | ------------------------------------------------------------------ |
+| `bin/codex`                | `b44902cc4997321e3fce23961c9c5a28415ca6e3878bd4d5180d7fc52831db25` |
 | `bin/codex-code-mode-host` | `0d4e2a07d88bae6111f1343532f5f7f6dfacc37862d1b850bc097583a144e731` |
-| `codex-resources/bwrap` | `c102c5f893faed17ed053ce6ceb9fe0bb03069b991a6f0390e54d82c85f1bca0` |
+| `codex-resources/bwrap`    | `c102c5f893faed17ed053ce6ceb9fe0bb03069b991a6f0390e54d82c85f1bca0` |
 
 The canonical assembler built the CLI and V8 code-mode host with a temporary
 `0.158.0-alpha.14` workspace version and an explicit `STABLE_GIT_COMMIT` stamp.
@@ -465,9 +465,9 @@ The existing `litellm.config.toml` was left intact but is not part of the DSV4 r
 
 Two optional provider properties were added:
 
-| Property | Purpose |
-| --- | --- |
-| `supports_namespace_tools` | Prevents namespace tool definitions from being sent to compatible servers that only support ordinary function tools. |
+| Property                        | Purpose                                                                                                              |
+| ------------------------------- | -------------------------------------------------------------------------------------------------------------------- |
+| `supports_namespace_tools`      | Prevents namespace tool definitions from being sent to compatible servers that only support ordinary function tools. |
 | `supports_codex_agent_messages` | Rewrites Codex-internal agent-message items into public user-message items when the target server cannot parse them. |
 
 Omitting either property preserves the historical `true` behavior, so the native OpenAI path is unchanged.
@@ -484,10 +484,10 @@ This lets a handoff fork load the DSV4 catalog without replacing or weakening th
 
 `thread/fork` received two experimental fields:
 
-| Field | Semantics |
-| --- | --- |
-| `profile` | Omitted: preserve app-server startup profile. String: load `$CODEX_HOME/<name>.config.toml`. Explicit `null`: load the base `$CODEX_HOME/config.toml`. |
-| `portableHistory` | Project source history into bounded provider-neutral user and assistant text before starting the fork. |
+| Field             | Semantics                                                                                                                                              |
+| ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `profile`         | Omitted: preserve app-server startup profile. String: load `$CODEX_HOME/<name>.config.toml`. Explicit `null`: load the base `$CODEX_HOME/config.toml`. |
+| `portableHistory` | Project source history into bounded provider-neutral user and assistant text before starting the fork.                                                 |
 
 Portable history deliberately excludes:
 
@@ -575,34 +575,34 @@ The final binary now reports `0.149.0` both at the CLI and app-server protocol l
 
 ## Code change summary
 
-| Area | Main result |
-| --- | --- |
-| `app-server-protocol` | Added experimental `thread/fork.profile` and `thread/fork.portableHistory` fields and regenerated experimental schema output. |
-| `app-server` | Added request-scoped profile loading, bounded portable-history projection, portable fork construction, docs, and integration coverage. |
-| `config` | Transported the two provider compatibility flags through remote thread config and protobuf representation. |
-| `core` | Added agent-message rewriting, provider/catalog-specific model-manager creation, and profile-routed subagents. |
-| `model-provider-info` | Added optional namespace-tool and Codex-agent-message support declarations. |
-| `model-provider` | Exposed those declarations as runtime provider capabilities. |
-| `tui` | Added `/handoff`, linked-fork attachment, active provider/model updates, messages, hints, and slash-command tests. |
-| `app-server-daemon` | Added a dedicated 35-second pairing response timeout and delayed-response regression coverage. |
-| Model prompts | Made `apply_patch` guidance reflect whether the tool is exposed as a function or free-form tool. |
-| Local configuration | Added the direct `sglang_dsv4` provider, `dsv4` profile, and DSV4 model catalog. |
-| Operations | Added `restart-custom-codex-daemon.sh` to select and safely restart the custom standalone daemon without re-enabling the stock updater. |
+| Area                  | Main result                                                                                                                             |
+| --------------------- | --------------------------------------------------------------------------------------------------------------------------------------- |
+| `app-server-protocol` | Added experimental `thread/fork.profile` and `thread/fork.portableHistory` fields and regenerated experimental schema output.           |
+| `app-server`          | Added request-scoped profile loading, bounded portable-history projection, portable fork construction, docs, and integration coverage.  |
+| `config`              | Transported the two provider compatibility flags through remote thread config and protobuf representation.                              |
+| `core`                | Added agent-message rewriting, provider/catalog-specific model-manager creation, and profile-routed subagents.                          |
+| `model-provider-info` | Added optional namespace-tool and Codex-agent-message support declarations.                                                             |
+| `model-provider`      | Exposed those declarations as runtime provider capabilities.                                                                            |
+| `tui`                 | Added `/handoff`, linked-fork attachment, active provider/model updates, messages, hints, and slash-command tests.                      |
+| `app-server-daemon`   | Added a dedicated 35-second pairing response timeout and delayed-response regression coverage.                                          |
+| Model prompts         | Made `apply_patch` guidance reflect whether the tool is exposed as a function or free-form tool.                                        |
+| Local configuration   | Added the direct `sglang_dsv4` provider, `dsv4` profile, and DSV4 model catalog.                                                        |
+| Operations            | Added `restart-custom-codex-daemon.sh` to select and safely restart the custom standalone daemon without re-enabling the stock updater. |
 
 ## Verification and final state
 
-| Check | Result |
-| --- | --- |
-| Rust formatting | `just fmt` passed. |
-| Pairing regression | `just test -p codex-app-server-daemon`: 33/33 passed. |
-| Release build | Custom `codex` release build succeeded. |
-| CLI version | `codex-cli 0.149.0`. |
-| Internal app-server version | `0.149.0`. |
-| Daemon | Running from the final custom release with `cliVersion` and `appServerVersion` both `0.149.0`. |
-| Direct DSV4 | Successful through SGLang on port 8000. |
-| DSV4 subagents | Two live repository-exploration subagents completed. |
-| Remote pairing | Confirmed successful by the user. |
-| Cargo version residue | None in `Cargo.toml` or `Cargo.lock`. |
+| Check                       | Result                                                                                         |
+| --------------------------- | ---------------------------------------------------------------------------------------------- |
+| Rust formatting             | `just fmt` passed.                                                                             |
+| Pairing regression          | `just test -p codex-app-server-daemon`: 33/33 passed.                                          |
+| Release build               | Custom `codex` release build succeeded.                                                        |
+| CLI version                 | `codex-cli 0.149.0`.                                                                           |
+| Internal app-server version | `0.149.0`.                                                                                     |
+| Daemon                      | Running from the final custom release with `cliVersion` and `appServerVersion` both `0.149.0`. |
+| Direct DSV4                 | Successful through SGLang on port 8000.                                                        |
+| DSV4 subagents              | Two live repository-exploration subagents completed.                                           |
+| Remote pairing              | Confirmed successful by the user.                                                              |
+| Cargo version residue       | None in `Cargo.toml` or `Cargo.lock`.                                                          |
 
 ## Initial handoff release artifact (historical)
 
@@ -679,16 +679,16 @@ The follow-up patch completes the remaining workflow: a native OpenAI root agent
 
 ### Implemented behavior
 
-| Area | Result |
-| --- | --- |
-| Spawn profile loading | `spawn_agent` can resolve a validated `$CODEX_HOME/<profile>.config.toml` model route without replacing inherited tools, permissions, environments, or workspace settings. |
-| Project default | `[agents].default_subagent_profile = "dsv4"` applies whenever a spawn call omits an explicit profile. |
-| Child model manager | Profile-routed children receive a provider/catalog-specific models manager, so DSV4 is validated against its own catalog instead of the OpenAI parent catalog. |
-| Explicit override | Non-OpenAI parents can advertise the optional `profile` field directly. Native OpenAI parents hide it because OpenAI reserves and validates the exact `spawn_agent` schema. |
+| Area                    | Result                                                                                                                                                                                                                                                                          |
+| ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Spawn profile loading   | `spawn_agent` can resolve a validated `$CODEX_HOME/<profile>.config.toml` model route without replacing inherited tools, permissions, environments, or workspace settings.                                                                                                      |
+| Project default         | `[agents].default_subagent_profile = "dsv4"` applies whenever a spawn call omits an explicit profile.                                                                                                                                                                           |
+| Child model manager     | Profile-routed children receive a provider/catalog-specific models manager, so DSV4 is validated against its own catalog instead of the OpenAI parent catalog.                                                                                                                  |
+| Explicit override       | Non-OpenAI parents can advertise the optional `profile` field directly. Native OpenAI parents hide it because OpenAI reserves and validates the exact `spawn_agent` schema.                                                                                                     |
 | OpenAI plaintext bridge | An OpenAI parent with `default_subagent_profile` automatically uses Codex's stock V1 multi-agent surface. V1 carries delegated task text as plaintext; OpenAI's V2 surface intentionally encrypts it for OpenAI children and a direct SGLang child cannot decrypt that payload. |
-| Child protocol | The DSV4 child still resolves its own catalog and uses V2 multi-agent behavior; only the OpenAI parent-side handoff uses V1. |
-| Cross-provider context | Cross-provider V2 spawns require `fork_turns = "none"`; when omitted for a profile-routed spawn it is selected automatically. V1 cross-provider spawns reject `fork_context = true`. |
-| OpenAI compatibility | The native OpenAI request receives the unmodified reserved schema, avoiding the backend `Function 'collaboration.spawn_agent' ... must match the configured schema` rejection found by the first live smoke test. |
+| Child protocol          | The DSV4 child still resolves its own catalog and uses V2 multi-agent behavior; only the OpenAI parent-side handoff uses V1.                                                                                                                                                    |
+| Cross-provider context  | Cross-provider V2 spawns require `fork_turns = "none"`; when omitted for a profile-routed spawn it is selected automatically. V1 cross-provider spawns reject `fork_context = true`.                                                                                            |
+| OpenAI compatibility    | The native OpenAI request receives the unmodified reserved schema, avoiding the backend `Function 'collaboration.spawn_agent' ... must match the configured schema` rejection found by the first live smoke test.                                                               |
 
 ### `editchain` configuration
 
@@ -703,18 +703,18 @@ No model or profile argument is needed in that repository. A normal OpenAI sessi
 
 ### Live verification
 
-| Check | Result |
-| --- | --- |
-| Native parent | `gpt-5.6-sol` used the native OpenAI provider/authentication path. |
-| Packaged routing sentinel | The final packaged binary spawned exactly one child without model/profile arguments; the child returned `FINAL_DSV4_OK`. |
-| Direct endpoint evidence | The `dsv4` container logged a fresh successful `POST /v1/responses` during the packaged run. |
-| Repository exploration | A DSV4 child read only `Cargo.toml` and `README.md` in `editchain`, identified the `editchain` CLI package, summarized the repository's CRDT edit-chain purpose, and completed without edits. |
-| Focused integration tests | `just test -p codex-core subagent_profiles`: 2/2 passed for explicit and configured-default profile routes, using separate parent and child mock endpoints. |
-| Tool schema tests | The focused `spawn_agent_tool` tests passed, and the tool-plan test confirms OpenAI V1/V2 schemas omit the custom profile property. |
-| Config tests | `just test -p codex-config`: 275/275 passed. |
-| `editchain` validation | `./scripts/lint.sh` exited 0 with `RESULT: PASS`; formatting, check, Clippy, tests, doc tests, and cargo-deny passed. Cargo-deny emitted only its non-failing unmatched ISC allowance warning. |
-| Formatting/lint | Scoped `just fix -p codex-core`, `just fix -p codex-config`, `just fmt`, and `git diff --check` completed. The config fix retained one pre-existing generated-protobuf Clippy warning. |
-| Broader core run | The earlier `just test -p codex-core` run passed 3566/3567 tests with 9 skipped; the sole failure was the unrelated existing hook timeout `async_hook_finishing_while_idle_waits_for_the_next_turn`, which also timed out when isolated. |
+| Check                     | Result                                                                                                                                                                                                                                   |
+| ------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Native parent             | `gpt-5.6-sol` used the native OpenAI provider/authentication path.                                                                                                                                                                       |
+| Packaged routing sentinel | The final packaged binary spawned exactly one child without model/profile arguments; the child returned `FINAL_DSV4_OK`.                                                                                                                 |
+| Direct endpoint evidence  | The `dsv4` container logged a fresh successful `POST /v1/responses` during the packaged run.                                                                                                                                             |
+| Repository exploration    | A DSV4 child read only `Cargo.toml` and `README.md` in `editchain`, identified the `editchain` CLI package, summarized the repository's CRDT edit-chain purpose, and completed without edits.                                            |
+| Focused integration tests | `just test -p codex-core subagent_profiles`: 2/2 passed for explicit and configured-default profile routes, using separate parent and child mock endpoints.                                                                              |
+| Tool schema tests         | The focused `spawn_agent_tool` tests passed, and the tool-plan test confirms OpenAI V1/V2 schemas omit the custom profile property.                                                                                                      |
+| Config tests              | `just test -p codex-config`: 275/275 passed.                                                                                                                                                                                             |
+| `editchain` validation    | `./scripts/lint.sh` exited 0 with `RESULT: PASS`; formatting, check, Clippy, tests, doc tests, and cargo-deny passed. Cargo-deny emitted only its non-failing unmatched ISC allowance warning.                                           |
+| Formatting/lint           | Scoped `just fix -p codex-core`, `just fix -p codex-config`, `just fmt`, and `git diff --check` completed. The config fix retained one pre-existing generated-protobuf Clippy warning.                                                   |
+| Broader core run          | The earlier `just test -p codex-core` run passed 3566/3567 tests with 9 skipped; the sole failure was the unrelated existing hook timeout `async_hook_finishing_while_idle_waits_for_the_next_turn`, which also timed out when isolated. |
 
 The first live exploration attempt exposed the two backend constraints that shaped the final design: OpenAI rejects modifications to its reserved V2 tool schema, and the stock V2 delegated `message` is opaque ciphertext outside OpenAI. Keeping the exact stock schema and selecting stock plaintext V1 for a configured cross-provider default solved both issues. Subsequent sentinel and real repository-exploration runs completed successfully.
 
@@ -806,15 +806,15 @@ runtime identity, not a byte-for-byte derivative of the official release tag.
 
 The replay retained all ten original custom commits, followed by two integration fixes:
 
-| Area | Rebase result |
-| --- | --- |
-| Provider compatibility | Direct Responses-compatible providers retain custom header, message-role, and request-shape controls. |
-| Thread-local routing | Each thread can own its provider-specific model manager and static model catalog. |
-| Portable handoff | App-server and TUI profile handoffs preserve bounded user/assistant text while dropping provider-specific tool, reasoning, realtime, and retained-context records. |
-| Profiled subagents | OpenAI parents can route children through named profiles such as `dsv4`, with the child's provider and model catalog created independently. |
-| Service tier | Explicit spawn tier, selected-profile tier, and root preference now have stable precedence; ordinary role-local tiers cannot unexpectedly override them. |
-| Remote pairing | The longer pairing-response timeout remains in the app-server daemon client. |
-| Upstream adaptation | Current thread settings, task tools, MCP hydration, Windows proxy settings, originators, and newer rollout variants were integrated during the replay. |
+| Area                   | Rebase result                                                                                                                                                      |
+| ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Provider compatibility | Direct Responses-compatible providers retain custom header, message-role, and request-shape controls.                                                              |
+| Thread-local routing   | Each thread can own its provider-specific model manager and static model catalog.                                                                                  |
+| Portable handoff       | App-server and TUI profile handoffs preserve bounded user/assistant text while dropping provider-specific tool, reasoning, realtime, and retained-context records. |
+| Profiled subagents     | OpenAI parents can route children through named profiles such as `dsv4`, with the child's provider and model catalog created independently.                        |
+| Service tier           | Explicit spawn tier, selected-profile tier, and root preference now have stable precedence; ordinary role-local tiers cannot unexpectedly override them.           |
+| Remote pairing         | The longer pairing-response timeout remains in the app-server daemon client.                                                                                       |
+| Upstream adaptation    | Current thread settings, task tools, MCP hydration, Windows proxy settings, originators, and newer rollout variants were integrated during the replay.             |
 
 That custom source was tagged with the annotated tag `codex-evo-v0.151.0-idle.1`. The old
 `dsv4-sglang-handoff` branch remains untouched as a historical reference.
@@ -825,9 +825,9 @@ That custom source was tagged with the annotated tag `codex-evo-v0.151.0-idle.1`
 /mnt/hot/ambientlight/.codex/packages/standalone/releases/0.151.0-codex-evo-idle.1-20260903-x86_64-unknown-linux-gnu
 ```
 
-| Artifact | SHA-256 |
-| --- | --- |
-| `bin/codex` | `a908a0d1d25673fe3dd7da7336fffcda201d674efe5f857a189d6503f2bce56f` |
+| Artifact                   | SHA-256                                                            |
+| -------------------------- | ------------------------------------------------------------------ |
+| `bin/codex`                | `a908a0d1d25673fe3dd7da7336fffcda201d674efe5f857a189d6503f2bce56f` |
 | `bin/codex-code-mode-host` | `07aa85992de9f38606b50a7a9b31e89ced276fd3d0b605c9ee44335f974a7205` |
 
 The repository's canonical package assembler created the package with a GNU/Linux target, a
@@ -838,24 +838,24 @@ the binary and `codex-package.json` report `0.151.0`.
 The release build temporarily changed the Cargo workspace version from `0.0.0` to `0.151.0`.
 After packaging, `Cargo.toml` and `Cargo.lock` were restored byte-for-byte to these original hashes:
 
-| File | Restored SHA-256 |
-| --- | --- |
+| File                  | Restored SHA-256                                                   |
+| --------------------- | ------------------------------------------------------------------ |
 | `codex-rs/Cargo.toml` | `d0da87a7ea903a8bd17a61d9164cbffdbab9031d00c90f90ff040cde58feca9f` |
 | `codex-rs/Cargo.lock` | `c441d9fd25810acab8b75a489f9b61ff8e585a3215eff86e4393987587194024` |
 
 ### Validation
 
-| Check | Result |
-| --- | --- |
-| Compile | `cargo check` passed for core, app-server, TUI, and app-server daemon. |
-| App-server protocol | 299 tests passed, 1 skipped. |
-| DSV4 subagent profiles | Both explicit-profile and configured-default integration tests passed. |
-| Service-tier behavior | Profile/root inheritance tests and all 40 matching service-tier tests passed. |
-| Provider catalogs and role rewriting | 7 model-catalog tests and the Responses message-role rewrite test passed. |
-| Portable handoff | The cross-provider app-server integration test passed. |
-| TUI handoff | All 3 matching slash-handoff tests passed. |
-| Remote pairing timeout | The focused daemon regression test passed. |
-| Lint and formatting | Scoped Clippy fixes completed for all affected crates; `just fmt` and `git diff --check` passed. |
+| Check                                | Result                                                                                           |
+| ------------------------------------ | ------------------------------------------------------------------------------------------------ |
+| Compile                              | `cargo check` passed for core, app-server, TUI, and app-server daemon.                           |
+| App-server protocol                  | 299 tests passed, 1 skipped.                                                                     |
+| DSV4 subagent profiles               | Both explicit-profile and configured-default integration tests passed.                           |
+| Service-tier behavior                | Profile/root inheritance tests and all 40 matching service-tier tests passed.                    |
+| Provider catalogs and role rewriting | 7 model-catalog tests and the Responses message-role rewrite test passed.                        |
+| Portable handoff                     | The cross-provider app-server integration test passed.                                           |
+| TUI handoff                          | All 3 matching slash-handoff tests passed.                                                       |
+| Remote pairing timeout               | The focused daemon regression test passed.                                                       |
+| Lint and formatting                  | Scoped Clippy fixes completed for all affected crates; `just fmt` and `git diff --check` passed. |
 
 The restart helper is pinned to this package and verifies `codex-cli 0.151.0` before changing the
 managed `standalone/current` symlink. It was deliberately not executed from the Remote session
@@ -891,16 +891,16 @@ flow, and the experimental app-server schema was regenerated from source.
 
 ### Alpha.11 port validation
 
-| Check | Result |
-| --- | --- |
-| Experimental schema | `just write-app-server-schema --experimental` passed. |
-| App-server protocol | 303 passed, 1 skipped. |
-| DSV4 subagent profiles | Both explicit-profile and configured-default core integration tests passed. |
-| Portable handoff | 3 app-server unit tests and the cross-provider integration test passed. |
-| TUI handoff | All 3 matching slash-command tests passed. |
-| Provider, config, daemon | 458 tests passed, including the delayed pairing-response regression. |
-| Protocol and sample | 343 protocol tests passed; the thread-manager sample compiled successfully. |
-| Lint and formatting | Scoped Clippy completed for all affected crates; `just fmt` and `git diff --check` passed. |
+| Check                    | Result                                                                                     |
+| ------------------------ | ------------------------------------------------------------------------------------------ |
+| Experimental schema      | `just write-app-server-schema --experimental` passed.                                      |
+| App-server protocol      | 303 passed, 1 skipped.                                                                     |
+| DSV4 subagent profiles   | Both explicit-profile and configured-default core integration tests passed.                |
+| Portable handoff         | 3 app-server unit tests and the cross-provider integration test passed.                    |
+| TUI handoff              | All 3 matching slash-command tests passed.                                                 |
+| Provider, config, daemon | 458 tests passed, including the delayed pairing-response regression.                       |
+| Protocol and sample      | 343 protocol tests passed; the thread-manager sample compiled successfully.                |
+| Lint and formatting      | Scoped Clippy completed for all affected crates; `just fmt` and `git diff --check` passed. |
 
 ### Prepared alpha.11 standalone package
 
@@ -908,11 +908,11 @@ flow, and the experimental app-server schema was regenerated from source.
 /mnt/hot/ambientlight/.codex/packages/standalone/releases/0.154.0-alpha.11-codex-evo-idle.1-20260909-x86_64-unknown-linux-gnu
 ```
 
-| Artifact | SHA-256 |
-| --- | --- |
-| `bin/codex` | `8ce34c8c533a914f46c1a7b605e4c5f9745ea315e9e97a93064960180adeb3f3` |
+| Artifact                   | SHA-256                                                            |
+| -------------------------- | ------------------------------------------------------------------ |
+| `bin/codex`                | `8ce34c8c533a914f46c1a7b605e4c5f9745ea315e9e97a93064960180adeb3f3` |
 | `bin/codex-code-mode-host` | `239e74aacd9ffb28d8164900762d9a739f59c09836a048f7d75f21d712acd830` |
-| `codex-resources/bwrap` | `c102c5f893faed17ed053ce6ceb9fe0bb03069b991a6f0390e54d82c85f1bca0` |
+| `codex-resources/bwrap`    | `c102c5f893faed17ed053ce6ceb9fe0bb03069b991a6f0390e54d82c85f1bca0` |
 
 The canonical package assembler built a GNU/Linux release with a temporary upstream-style
 `0.154.0-alpha.11` Cargo workspace stamp. The CLI and a fresh app-server handshake both report
