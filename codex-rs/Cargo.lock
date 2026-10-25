@@ -1850,7 +1850,7 @@ dependencies = [
  "arrayvec",
  "displaydoc",
  "getrandom 0.3.4",
- "ml-kem 0.2.1",
+ "ml-kem 0.2.3",
  "rand_core 0.6.4",
  "sha2 0.10.9",
  "thiserror-no-std",
@@ -9918,6 +9918,14 @@ dependencies = [
 
 [[package]]
 name = "kem"
+version = "0.3.0-pre.0"
+dependencies = [
+ "rand_core 0.6.4",
+ "zeroize",
+]
+
+[[package]]
+name = "kem"
 version = "0.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "01737161ba802849cfd486b5bd209d38ba4943494c249a8126005170c7621edd"
@@ -10394,12 +10402,10 @@ dependencies = [
 
 [[package]]
 name = "ml-kem"
-version = "0.2.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "97befee0c869cb56f3118f49d0f9bb68c9e3f380dec23c1100aedc4ec3ba239a"
+version = "0.2.3"
 dependencies = [
  "hybrid-array 0.2.3",
- "kem",
+ "kem 0.3.0-pre.0",
  "rand_core 0.6.4",
  "sha3 0.10.9",
  "zeroize",
@@ -10412,7 +10418,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a9ba01ebcf90f6aff8e9b9f55bb69b19e6250e4ade5787d0040eaa27dd226238"
 dependencies = [
  "hybrid-array 0.4.15",
- "kem",
+ "kem 0.3.0",
  "module-lattice",
  "pkcs8 0.11.0",
  "rand_core 0.10.1",
@@ -15485,7 +15491,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "32497e9a4c7b38532efcdebeef879707aa9f794296a4f0244f6f69e9bc8574bd"
 dependencies = [
  "fastrand",
- "getrandom 0.4.2",
+ "getrandom 0.3.4",
  "once_cell",
  "rustix 1.1.4",
  "windows-sys 0.61.2",
@@ -17975,7 +17981,7 @@ version = "0.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "01576e56599d01d75c5efcd5b30fa5de29e776f5a225e43fbf8c92c7302d4c8b"
 dependencies = [
- "kem",
+ "kem 0.3.0",
  "ml-kem 0.3.3",
  "sha3 0.12.0",
  "shake",

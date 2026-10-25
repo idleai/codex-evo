@@ -662,6 +662,9 @@ inherits = "test"
 opt-level = 0
 
 [patch.crates-io]
+# Expose the transitive legacy path to Bazel's workspace graph resolver.
+kem = { path = "../third_party/vendor/kem" }
+ml-kem = { path = "../third_party/vendor/ml-kem" }
 rtc-dtls = { path = "../third_party/vendor/rtc-dtls" }
 rtc-shared = { path = "../third_party/vendor/rtc-shared" }
 # Preserve AWS login while using the fixed RustCrypto release.

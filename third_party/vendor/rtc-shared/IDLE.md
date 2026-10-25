@@ -12,3 +12,6 @@ Cargo and Bazel consume this directory through the workspace path patch.
 Remove this copy when a compatible published release uses the fixed crypto
 dependencies. The upstream license and source are retained; the crate-local
 Cargo.lock is omitted because the workspace lockfile is used.
+
+The license files are copied unchanged from upstream commit
+`69ebe02fb1ba8d4fd51cce76c579c68fafb6b04b`, matching `.cargo_vcs_info.json`.
