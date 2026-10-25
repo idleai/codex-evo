@@ -71,16 +71,27 @@ and leave the cache service and its data directory in place.
 Cargo jobs use sccache 0.19.0 through `RUSTC_WRAPPER=/usr/local/bin/sccache`.
 The runner sets `CARGO_INCREMENTAL=0` so compiled Rust libraries can be reused
 between VMs. Existing Cargo target directories still retain local outputs.
+`CARGO_BUILD_BUILD_DIR=/mnt/ci-cache/cargo/build` gives every repository the same
+intermediate build path inside its VM. Cargo 1.97 keeps final outputs in each
+repository's target directory. This also gives generated dependency files the
+same paths across jobs, allowing the remote cache to reuse them. The build
+directory is private to each VM; Cargo manages its local locking and freshness.
 Cache keys include the compiler, source contents, features, target and flags;
 matching a package version alone does not guarantee a hit. Rust compilation
 also requires matching build paths, which the CI workspaces and coordinated
 product checkouts keep stable across workers. Final linking, build scripts and
 tests still run. See [sccache's Rust support](https://github.com/mozilla/sccache/blob/v0.19.0/docs/Rust.md).
 
+The coordinated product builder inherits the ordinary Cargo home and build
+directory. It temporarily adds source dependency patches to its owned checkouts
+and restores those configurations when it exits. A separate Cargo home or an
+extra `CARGO_TARGET_DIR` value would change the compiler cache keys even for
+otherwise identical dependencies. Different dependency selections, feature
+sets, target platforms and compiler flags continue to produce separate entries.
+
 `idle-ci-cargo-store.service` uses the installed bazel-remote binary to keep
 compiler results in `/mnt/hot/ci-cache/cargo`, bounded to 256 GiB with automatic
-eviction. This service accepts opaque sccache entries on host loopback port
-18502. Its HTTP action-result validation is disabled because these entries are
+eviction. This service accepts opaque sccache entries on host loopback port 18502. Its HTTP action-result validation is disabled because these entries are
 compiler archives. The existing Bazel service keeps its own validation and
 512 GiB cache.
 
@@ -108,6 +119,7 @@ the listener:
 ```sh
 RUSTC_WRAPPER=/usr/local/bin/sccache
 CARGO_INCREMENTAL=0
+CARGO_BUILD_BUILD_DIR=/mnt/ci-cache/cargo/build
 SCCACHE_WEBDAV_ENDPOINT=http://10.0.2.2:18501
 SCCACHE_WEBDAV_DISABLE_CREATE_DIR=true
 SCCACHE_IGNORE_SERVER_IO_ERROR=1
@@ -118,6 +130,13 @@ target directories at matching paths. Compare `sccache --show-stats` before and
 after the second build; it must report remote cache hits. Run the resulting
 tests as well. The shared cache cannot import previously compiled Cargo target
 directories: jobs populate it as they compile through sccache.
+
+`check_cargo_cache.py` exercises the remote store from independent consumer
+workspaces, clearing local intermediate files and restarting its isolated
+cache client between builds. It checks reuse, changed source and generated
+inputs, feature and compiler-flag changes, and restoration of the original
+inputs. It also executes the resulting binaries. The self-hosted runner check
+runs this validation with Cargo 1.97.
 
 ## Prepare
 
