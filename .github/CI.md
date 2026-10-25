@@ -10,6 +10,9 @@ and app server. SDK checks run when SDK files change. Documentation-only changes
 do not allocate a Rust runner. `CI required` fails for failed, cancelled or
 unexpectedly skipped jobs.
 
+Each Rust test binary uses four threads within the runner's two Bazel test
+slots, bounding concurrent subprocess-heavy integration cases.
+
 Pushes to `idle-base` and `main`, a daily scheduled run, and manual full runs
 validate the broader Linux Rust suite. New revisions replace older runs for the
 same branch or PR. Integration runs use the background runner allocation.

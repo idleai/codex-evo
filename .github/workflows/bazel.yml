@@ -68,6 +68,7 @@ jobs:
           ./.github/scripts/run-bazel-ci.sh --print-failed-action-summary --print-failed-test-logs -- test \
             --platforms=//:local_linux --skip_incompatible_explicit_targets \
             --test_tag_filters=-argument-comment-lint \
+            --test_env=RUST_TEST_THREADS=4 \
             --test_env=CODEX_BAZEL_TEST_SKIP_FILTERS=code_mode,code-mode,CodeMode,v8_ \
             -- "${targets[@]}"
       - name: Save hosted repository cache
