@@ -57,12 +57,25 @@ async fn reasoning_defaults_reach_responses() -> Result<()> {
         let server = responses::start_mock_server().await;
         let home = tempfile::tempdir()?;
         let base_url = server.uri();
+        let mut catalog = codex_models_manager::bundled_models_response()?;
+        catalog
+            .models
+            .iter_mut()
+            .find(|model| model.slug == "gpt-5.5")
+            .expect("bundled model")
+            .default_reasoning_summary = codex_protocol::config_types::ReasoningSummary::Concise;
+        // Thread startup reloads config, so the fixture catalog must survive that reload.
+        std::fs::write(
+            home.path().join("catalog.json"),
+            serde_json::to_vec(&catalog)?,
+        )?;
         std::fs::write(
             home.path().join("config.toml"),
             format!(
                 r#"
 model = "gpt-5.5"
 model_provider = "reasoning-test"
+model_catalog_json = "catalog.json"
 {settings}
 [model_providers.reasoning-test]
 name = "OpenAI"
@@ -79,18 +92,10 @@ stream_max_retries = 0
             codex_protocol::config_types::TrustLevel::Trusted,
         )
         .map_err(|error| color_eyre::eyre::eyre!(error.to_string()))?;
-        let mut server_config = ConfigBuilder::default()
+        let server_config = ConfigBuilder::default()
             .codex_home(home.path().to_path_buf())
             .build()
             .await?;
-        let mut catalog = codex_models_manager::bundled_models_response()?;
-        catalog
-            .models
-            .iter_mut()
-            .find(|model| model.slug == "gpt-5.5")
-            .expect("bundled model")
-            .default_reasoning_summary = codex_protocol::config_types::ReasoningSummary::Concise;
-        server_config.model_catalog = Some(catalog);
         let client_home = tempfile::tempdir()?;
         let config = if mode == ThreadParamsMode::Remote {
             std::fs::write(
