@@ -4,8 +4,8 @@ on:
   push:
     branches: [idle-base]
     paths-ignore:
-      - '**/*.md'
-      - '.github/workflows/product.yml'
+      - "**/*.md"
+      - ".github/workflows/product.yml"
   workflow_dispatch:
 
 permissions:
