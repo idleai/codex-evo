@@ -75,7 +75,7 @@ def select(paths, *, full=False, root=ROOT):
     )
     return {
         "rust": rust,
-        "sdk": any(path.startswith("sdk/") for path in paths),
+        "sdk": full or any(path.startswith("sdk/") for path in paths),
         "full": full,
         "query": query,
     }
