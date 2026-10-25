@@ -1,0 +1,46 @@
+name: Report an asynchronous failure
+
+on:
+  workflow_call:
+    inputs:
+      run_id:
+        type: number
+        required: true
+      dry_run:
+        type: boolean
+        default: false
+  workflow_dispatch:
+    inputs:
+      run_id:
+        description: Completed asynchronous workflow run to inspect
+        type: number
+        required: true
+      dry_run:
+        description: Preview the remediation issue without creating it
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+  actions: read
+  issues: write
+
+jobs:
+  report:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          repository: idleai/codex-evo
+          ref: idle-base
+          persist-credentials: false
+      - name: Open or update the candidate's remediation issue
+        env:
+          GH_TOKEN: ${{ github.token }}
+          FAILED_RUN_ID: ${{ inputs.run_id }}
+          DRY_RUN: ${{ inputs.dry_run }}
+        run: |
+          args=()
+          if [[ "$DRY_RUN" == true ]]; then args+=(--dry-run); fi
+          python3 .github/scripts/report_async_failure.py --run-id "$FAILED_RUN_ID" "${args[@]}"

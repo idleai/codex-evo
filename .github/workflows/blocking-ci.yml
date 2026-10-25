@@ -7,23 +7,25 @@ on:
   schedule:
     - cron: "41 9 * * *"
   workflow_dispatch:
+  workflow_call:
 
 permissions:
   contents: read
 
 concurrency:
   group: idle-ci-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   preflight:
     name: Preflight
     runs-on: ubuntu-24.04
-    timeout-minutes: 15
+    timeout-minutes: ${{ github.event_name == 'pull_request' && 4 || 15 }}
     outputs:
       rust: ${{ steps.scope.outputs.rust }}
       sdk: ${{ steps.scope.outputs.sdk }}
       query: ${{ steps.scope.outputs.query }}
+      full: ${{ steps.scope.outputs.full }}
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
@@ -86,6 +88,8 @@ jobs:
           python3 -m unittest discover -s .github/scripts -p 'test_run_bazel_ci.py'
           python3 -m unittest discover -s scripts/ci-runner -p 'test_*.py'
           python3 -m unittest discover -s .github/scripts -p 'test_releases.py'
+          python3 -m unittest discover -s .github/scripts -p 'test_report_async_failure.py'
+          python3 -m unittest discover -s .github/actions/check-pr-budget -p 'test_*.py'
           for suite in archive cargo cli layout; do
             python3 -m unittest discover -s scripts/codex_package -p "test_${suite}.py"
           done
@@ -115,6 +119,7 @@ jobs:
     uses: ./.github/workflows/bazel.yml
     with:
       query: ${{ needs.preflight.outputs.query }}
+      full: ${{ needs.preflight.outputs.full == 'true' }}
     secrets: inherit
 
   sdk:
@@ -122,6 +127,8 @@ jobs:
     needs: preflight
     if: needs.preflight.outputs.sdk == 'true'
     uses: ./.github/workflows/sdk.yml
+    with:
+      full: ${{ needs.preflight.outputs.full == 'true' }}
     secrets: inherit
 
   required:
@@ -129,6 +136,10 @@ jobs:
     if: always()
     needs: [preflight, linux, sdk]
     runs-on: ubuntu-24.04
+    timeout-minutes: 1
+    permissions:
+      contents: read
+      actions: read
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
@@ -142,3 +153,7 @@ jobs:
           OPTIONAL_SKIPPED="$(python3 -c 'import json,os; print(json.dumps([job for job,key in [("linux","RUST_SELECTED"),("sdk","SDK_SELECTED")] if os.environ[key] == "false"]))')"
           export OPTIONAL_SKIPPED
           python3 .github/scripts/check_ci_results.py
+      - uses: ./.github/actions/check-pr-budget
+        if: always() && github.event_name == 'pull_request'
+        with:
+          token: ${{ github.token }}

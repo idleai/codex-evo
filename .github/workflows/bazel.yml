@@ -13,6 +13,10 @@ on:
         description: Scoped Bazel test query from hosted preflight
         required: true
         type: string
+      full:
+        description: Run complete release validation instead of PR smoke checks
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -21,7 +25,7 @@ jobs:
   test:
     name: Linux build and tests
     runs-on: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository && vars.CODEX_LINUX_RUNNER || github.event_name == 'workflow_dispatch' && inputs.full == false && vars.CODEX_LINUX_RUNNER || github.event_name != 'pull_request' && vars.IDLE_BACKGROUND_RUNNER || 'ubuntu-24.04' }}
-    timeout-minutes: 90
+    timeout-minutes: ${{ inputs.full && 90 || 5 }}
     environment:
       name: bazel
       deployment: false
@@ -65,7 +69,12 @@ jobs:
             echo "Selected Linux suite is empty" >&2
             exit 1
           fi
+          budget_args=()
+          if [[ "$FULL" != true ]]; then
+            budget_args=(--flaky_test_attempts=1 --test_timeout=120)
+          fi
           ./.github/scripts/run-bazel-ci.sh --print-failed-action-summary --print-failed-test-logs -- test \
+            "${budget_args[@]}" \
             --platforms=//:local_linux --skip_incompatible_explicit_targets \
             --test_tag_filters=-argument-comment-lint \
             --test_env=RUST_TEST_THREADS=4 \

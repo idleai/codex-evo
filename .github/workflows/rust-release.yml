@@ -12,6 +12,14 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  validation:
+    name: Complete release validation
+    permissions:
+      contents: read
+      actions: read
+    uses: ./.github/workflows/blocking-ci.yml
+    secrets: inherit
+
   build:
     name: Linux release package
     runs-on: ${{ vars.IDLE_BACKGROUND_RUNNER || 'ubuntu-24.04' }}
@@ -61,7 +69,7 @@ jobs:
 
   publish:
     name: Publish Linux release
-    needs: build
+    needs: [build, validation]
     runs-on: ubuntu-24.04
     permissions:
       contents: write
