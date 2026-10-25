@@ -27,6 +27,40 @@ Add `--apply` to update labels and the seven participating repositories' runner
 variables. It does not alter VM sizing. The plan is validated before any update;
 the directory retains the original runner labels and the applied assignments.
 
+## PR feedback and asynchronous validation
+
+PR feedback has a ten-minute target, measured from the current workflow attempt
+starting through `CI required`, including setup and queue time. The terminal
+check fails if that budget is exceeded. Codex allows four minutes for preflight,
+five for each parallel build/smoke job, and one for the terminal check. Client
+repositories allow two minutes for preflight, seven for checks, and one for the
+terminal check. Cold compilation or runner congestion can still exceed the
+target; a timeout never counts as a successful check.
+
+Codex PRs retain formatting, dependency policy, shipped-binary compilation,
+eleven Rust smoke targets, and scoped SDK smoke tests. Default-branch, scheduled
+and tagged-release validation run the complete Linux and SDK suites. Tagged
+releases cannot publish until that validation succeeds. The coordinated product
+publisher also requires successful CI for each exact component revision.
+Client PRs retain their Rust quality checks. App-core's bindings and consumer
+integration, and web-ui's complete browser matrix, run after merge; web-ui PRs
+exercise one relevant browser fixture.
+
+PR updates cancel superseded PR runs. Default-branch validation and coordinated
+product builds finish their current run, with a newer pending candidate kept by
+GitHub's concurrency queue. Reserved PR workers keep those longer jobs out of
+the PR runner queue.
+
+`async-failures.yml` watches completed default-branch and release workflows and
+calls `report-async-failure.yml`. Its hosted job reads workflow/job metadata and
+opens or updates a remediation issue per workflow and source commit. It uses
+reporting code from `idle-base`, never candidate source or build artifacts.
+Failed retries update the same issue; PR failures, superseded cancellations and
+successful retries do not open issues. A failing candidate remains unpublished.
+The issue includes its revision, run attempt, failed jobs and steps; close it
+after verifying the successful remediation run. The reporting workflow's manual
+`dry_run` mode previews the issue without writing it.
+
 Every guest has a sparse 32 GiB root disk and a 256 GiB private working disk,
 retaining the filename `cache.qcow2` and mount point `/mnt/ci-cache`. Each guest
 has 8 GiB of swap on that disk, 64 concurrent Bazel/Cargo build jobs and two

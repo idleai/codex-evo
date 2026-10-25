@@ -17,32 +17,39 @@ class SelectionTests(unittest.TestCase):
             path.touch()
 
     def plan(self, paths, **options):
-        return select(paths, root=self.root, **options)
+        return select(paths, **options)
 
     def test_docs_do_not_allocate_a_rust_runner(self):
         self.assertFalse(self.plan(["docs/start.md"])["rust"])
 
-    def test_changed_leaf_and_runtime_consumers_are_selected(self):
+    def test_changed_leaf_selects_bounded_runtime_smoke_checks(self):
         plan = self.plan(["codex-rs/utils/absolute-path/src/lib.rs"])
-        for package in (
-            "utils/absolute-path",
-            "core",
-            "app-server",
-            "ext/idle-runtime",
-        ):
-            self.assertIn(f"//codex-rs/{package}:all", plan["query"])
+        self.assertIn(
+            "//codex-rs/ext/idle-runtime:idle-runtime-grants-test", plan["query"]
+        )
+        self.assertIn(
+            "//codex-rs/cli:cli-exec_server_websocket_auth-test", plan["query"]
+        )
+        self.assertNotIn("//codex-rs/core:all", plan["query"])
+        self.assertNotIn("//codex-rs/app-server:all", plan["query"])
         self.assertFalse(plan["full"])
 
-    def test_shared_inputs_expand_the_linux_suite(self):
-        self.assertIn(
-            "tests(set(//codex-rs/...))", self.plan(["codex-rs/Cargo.lock"])["query"]
-        )
+    def test_build_changes_and_removed_packages_keep_the_pr_budget(self):
+        for path in [
+            "codex-rs/Cargo.lock",
+            "codex-rs/removed-crate/src/lib.rs",
+            "MODULE.bazel",
+        ]:
+            with self.subTest(path=path):
+                plan = self.plan([path])
+                self.assertTrue(plan["rust"])
+                self.assertNotIn("tests(set(//codex-rs/...))", plan["query"])
 
-    def test_removed_or_unmapped_packages_expand_the_linux_suite(self):
-        self.assertIn(
-            "tests(set(//codex-rs/...))",
-            self.plan(["codex-rs/removed-crate/src/lib.rs"])["query"],
-        )
+    def test_async_validation_always_selects_the_full_suite_and_sdks(self):
+        plan = self.plan([], full=True)
+        self.assertTrue(plan["rust"])
+        self.assertTrue(plan["sdk"])
+        self.assertIn("tests(set(//codex-rs/...))", plan["query"])
 
     def test_code_mode_only_edits_do_not_add_rust_checks(self):
         for crate in (
@@ -66,6 +73,7 @@ class SelectionTests(unittest.TestCase):
         plan = self.plan(["sdk/typescript/src/client.ts"])
         self.assertTrue(plan["sdk"])
         self.assertFalse(plan["rust"])
+        self.assertTrue(self.plan(["pnpm-lock.yaml"])["sdk"])
 
     def test_ci_edits_validate_the_gate(self):
         self.assertTrue(self.plan([".github/workflows/blocking-ci.yml"])["rust"])

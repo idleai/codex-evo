@@ -2,11 +2,16 @@ name: sdk
 
 on:
   workflow_call:
+    inputs:
+      full:
+        description: Include the complete SDK integration and conformance suites
+        type: boolean
+        default: true
 
 jobs:
   python-sdk-installation:
     runs-on: ubuntu-24.04
-    timeout-minutes: 10
+    timeout-minutes: ${{ inputs.full && 10 || 5 }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
@@ -35,7 +40,7 @@ jobs:
 
   sdks:
     runs-on: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository && vars.CODEX_LINUX_RUNNER || github.event_name != 'pull_request' && vars.IDLE_BACKGROUND_RUNNER || 'ubuntu-24.04' }}
-    timeout-minutes: 90
+    timeout-minutes: ${{ inputs.full && 90 || 5 }}
     environment:
       name: bazel
       deployment: false
@@ -138,7 +143,14 @@ jobs:
         run: pnpm -r --filter ./sdk/typescript run lint
 
       - name: Test SDK packages
-        run: pnpm -r --filter ./sdk/typescript run test
+        env:
+          FULL: ${{ inputs.full }}
+        run: |
+          args=()
+          if [[ "$FULL" != true ]]; then
+            args=(--runTestsByPath tests/exec.test.ts tests/abort.test.ts tests/runStreamed.test.ts)
+          fi
+          pnpm -r --filter ./sdk/typescript run test "${args[@]}"
 
       - name: Install uv
         uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
@@ -147,11 +159,17 @@ jobs:
 
       - name: Test Python SDK against the same CLI
         working-directory: sdk/python
+        env:
+          FULL: ${{ inputs.full }}
         run: |
           uv sync --only-group dev --frozen
           uv run --only-group dev --frozen --no-sync ruff check --output-format=github .
           uv run --only-group dev --frozen --no-sync ruff format --check .
-          uv run --only-group dev --frozen --no-sync pytest
+          args=()
+          if [[ "$FULL" != true ]]; then
+            args=(tests/test_client_rpc_methods.py tests/test_app_server_lifecycle.py tests/test_async_client_behavior.py)
+          fi
+          uv run --only-group dev --frozen --no-sync pytest "${args[@]}"
 
       - name: Save bazel repository cache
         if: always() && !cancelled() && runner.environment == 'github-hosted' && steps.build_bazel.outcome == 'success' && steps.setup_bazel.outputs.repository-cache-hit != 'true'

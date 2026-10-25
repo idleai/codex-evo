@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Select Idle's Linux checks from the candidate diff without resolving Cargo."""
+"""Keep PR smoke checks bounded and select the complete suite after merge."""
 
 import argparse
 import json
@@ -17,13 +17,18 @@ EXCLUDED = (
     "codex-rs/v8-poc/",
     "third_party/v8/",
 )
-CRITICAL = (
-    "codex-rs/ext/idle-runtime",
-    "codex-rs/core",
-    "codex-rs/app-server",
-    "codex-rs/app-server-daemon",
-    "codex-rs/execpolicy",
-    "codex-rs/linux-sandbox",
+SMOKE = (
+    "//codex-rs/app-server-protocol:app-server-protocol-unit-tests",
+    "//codex-rs/cli:cli-execpolicy-test",
+    "//codex-rs/cli:cli-exec_server_websocket_auth-test",
+    "//codex-rs/execpolicy:execpolicy-basic-test",
+    "//codex-rs/execpolicy:execpolicy-unit-tests",
+    "//codex-rs/ext/idle-runtime:idle-runtime-grants-test",
+    "//codex-rs/ext/idle-runtime:idle-runtime-unit-tests",
+    "//codex-rs/ext/idle-runtime:idle-runtime-workspaces-test",
+    "//codex-rs/protocol:protocol-unit-tests",
+    "//codex-rs/utils/absolute-path:absolute-path-unit-tests",
+    "//codex-rs/utils/cargo-bin:cargo-bin-unit-tests",
 )
 BUILD_FILES = {
     "MODULE.bazel",
@@ -38,7 +43,7 @@ BUILD_FILES = {
 }
 
 
-def select(paths, *, full=False, root=ROOT):
+def select(paths, *, full=False):
     paths = [path for path in paths if not path.startswith(EXCLUDED)]
     rust_paths = [path for path in paths if path.startswith("codex-rs/")]
     build = any(
@@ -48,34 +53,26 @@ def select(paths, *, full=False, root=ROOT):
     )
     ci = any(path.startswith(".github/") for path in paths)
     rust = full or build or ci or bool(rust_paths)
-    packages = set()
-    if rust:
-        packages.update(
-            f"//{path}:all"
-            for path in CRITICAL
-            if (root / path / "BUILD.bazel").is_file()
-        )
-    for path in rust_paths:
-        found = False
-        for directory in (root / path).parents:
-            if directory in (root, root / "codex-rs"):
-                break
-            if (directory / "BUILD.bazel").is_file():
-                packages.add(f"//{directory.relative_to(root).as_posix()}:all")
-                found = True
-                break
-        if not found:
-            build = True
-    # Changes to shared build inputs, deleted crates, and integration runs need
-    # the full Linux Rust suite. Ordinary edits retain their package boundaries.
-    if full or build:
-        packages = {"//codex-rs/..."}
-    query = "tests(set(" + " ".join(sorted(packages)) + "))"
+    # The full suite also covers changed and deleted packages and shared build
+    # inputs. It runs after merge; none of those paths expands the PR budget.
+    targets = ("//codex-rs/...",) if full else SMOKE if rust else ()
+    query = "tests(set(" + " ".join(targets) + "))"
     query += ' except attr(tags, "manual", //codex-rs/...)'
     query += ' except filter("code[-_]mode|v8-poc|windows-cross|windows_sandbox|wine-exec", //codex-rs/...)'
     return {
         "rust": rust,
-        "sdk": full or any(path.startswith("sdk/") for path in paths),
+        "sdk": full
+        or any(
+            path.startswith("sdk/")
+            or path
+            in {
+                "package.json",
+                "pnpm-lock.yaml",
+                "pnpm-workspace.yaml",
+                ".github/workflows/sdk.yml",
+            }
+            for path in paths
+        ),
         "full": full,
         "query": query,
     }

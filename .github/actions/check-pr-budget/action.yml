@@ -1,0 +1,13 @@
+name: Check PR feedback budget
+description: Include setup and queue time in the ten-minute PR feedback target
+inputs:
+  token:
+    description: Repository token with actions read permission
+    required: true
+runs:
+  using: composite
+  steps:
+    - shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.token }}
+      run: python3 "$GITHUB_ACTION_PATH/budget.py"
