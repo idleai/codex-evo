@@ -460,7 +460,7 @@ async fn executor_stop_hook_rejects_mismatched_environment() -> Result<()> {
             let executor_url = format!("ws://{executor_address}");
             drop(listener);
             let runtime_paths = ExecServerRuntimeOptions::new(
-                std::env::current_exe()?,
+                core_test_support::find_codex_helper_exe()?,
                 /*codex_linux_sandbox_exe*/ None,
             )?;
             let http_client_factory = fixture.test.config.http_client_factory();

@@ -1952,8 +1952,14 @@ impl TestAppServerBuilder {
 
     /// Builds a server and completes its standard initialization handshake.
     pub async fn build_initialized(self) -> anyhow::Result<TestAppServer> {
-        self.build_initialized_with_timeout(DEFAULT_REQUEST_TIMEOUT)
-            .await
+        // The remote Windows executor performs capability discovery during
+        // initialization, including cold Wine startup on Linux hosts.
+        let timeout = if core_test_support::is_wine_exec_test_environment() {
+            Duration::from_secs(/*secs*/ 120)
+        } else {
+            DEFAULT_REQUEST_TIMEOUT
+        };
+        self.build_initialized_with_timeout(timeout).await
     }
 
     /// Builds and initializes a server while preserving a suite-specific timeout.
@@ -2104,11 +2110,7 @@ impl TestAppServerBuilder {
                 .context("should find binary for codex-app-server")?,
         };
         let mut owned_install_dir = None;
-        if !custom_program
-            && codex_utils_cargo_bin::runfiles_available()
-            && let Ok(code_mode_host_program) =
-                codex_utils_cargo_bin::cargo_bin("codex-code-mode-host")
-        {
+        if !custom_program && codex_utils_cargo_bin::runfiles_available() {
             // Bazel keeps binary targets in separate package directories.
             // Recreate the installed sibling layout without a path override.
             // Prefer Bazel's TEST_TMPDIR so staging can share a filesystem with
@@ -2117,25 +2119,7 @@ impl TestAppServerBuilder {
                 Some(test_tmpdir) => TempDir::new_in(test_tmpdir)?,
                 None => TempDir::new()?,
             };
-            let staged_program = install_dir.path().join(
-                program
-                    .file_name()
-                    .context("app-server executable should have a filename")?,
-            );
-            let staged_host = install_dir.path().join(
-                code_mode_host_program
-                    .file_name()
-                    .context("code-mode host executable should have a filename")?,
-            );
-            for (source, destination) in [
-                (&program, &staged_program),
-                (&code_mode_host_program, &staged_host),
-            ] {
-                std::fs::hard_link(source, destination)
-                    .or_else(|_| codex_utils_cargo_bin::copy_executable(source, destination))
-                    .with_context(|| format!("stage executable {}", source.display()))?;
-            }
-            program = staged_program;
+            program = crate::stage_app_server_package(&program, install_dir.path())?;
             owned_install_dir = Some(install_dir);
         }
         let env_overrides = env_overrides

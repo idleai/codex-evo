@@ -795,6 +795,57 @@ async fn recorder_materializes_on_flush_with_pending_items() -> std::io::Result<
 }
 
 #[tokio::test]
+async fn shutdown_releases_writer_lock_with_retained_recorder_clones() -> std::io::Result<()> {
+    let home = TempDir::new()?;
+    let config = test_config(home.path());
+    let thread_id = ThreadId::new();
+    let coordinator = Arc::new(crate::WriterLockCoordinator::new(home.path()));
+    let owner = Arc::new(coordinator.acquire(thread_id)?);
+    let recorder = RolloutRecorder::new_with_writer_lock(
+        &config,
+        RolloutRecorderParams::new(
+            thread_id,
+            /*forked_from_id*/ None,
+            /*parent_thread_id*/ None,
+            SessionSource::Exec,
+            /*thread_source*/ None,
+            "test_originator".to_string(),
+            BaseInstructions::default(),
+            Vec::new(),
+        ),
+        owner,
+    )
+    .await?;
+    let retained = recorder.clone();
+    let item = agent_message_item("Persist before releasing writer ownership.");
+    recorder
+        .record_canonical_items(std::slice::from_ref(&item))
+        .await?;
+    recorder.persist().await?;
+    assert_eq!(
+        coordinator
+            .acquire(thread_id)
+            .err()
+            .map(|error| error.kind()),
+        Some(std::io::ErrorKind::WouldBlock)
+    );
+    recorder.shutdown().await?;
+
+    let next_owner = coordinator.acquire(thread_id)?;
+    assert_eq!(
+        serde_json::to_value(
+            read_rollout_lines(recorder.rollout_path())?
+                .last()
+                .map(|line| &line.item)
+        )?,
+        serde_json::to_value(&item)?
+    );
+    assert!(retained.flush().await.is_err());
+    drop(next_owner);
+    Ok(())
+}
+
+#[tokio::test]
 async fn referenced_paginated_rollout_starts_at_history_cutoff_and_resumes() -> std::io::Result<()>
 {
     let home = TempDir::new().expect("temp dir");

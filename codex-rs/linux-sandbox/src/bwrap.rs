@@ -45,6 +45,11 @@ use globset::GlobBuilder;
 use globset::GlobSet;
 use globset::GlobSetBuilder;
 
+#[path = "bwrap_unreadable.rs"]
+mod unreadable;
+
+use unreadable::append_unreadable_root_args;
+
 /// Linux "platform defaults" that keep common system binaries and dynamic
 /// libraries readable when a split filesystem policy requests `:minimal`.
 ///
@@ -595,6 +600,15 @@ fn create_filesystem_args(
             allowed_write_paths.push(target);
         }
     }
+    let allowed_read_only_paths = file_system_sandbox_policy
+        .get_readable_roots_with_cwd(cwd)
+        .into_iter()
+        .filter(|path| {
+            file_system_sandbox_policy.can_read_local_path_with_cwd(path.as_path(), cwd)
+                && !file_system_sandbox_policy.can_write_local_path_with_cwd(path.as_path(), cwd)
+        })
+        .map(AbsolutePathBuf::into_path_buf)
+        .collect::<Vec<_>>();
     let unreadable_paths: HashSet<PathBuf> = unreadable_roots.iter().cloned().collect();
     let mut sorted_writable_roots = writable_roots;
     sorted_writable_roots.sort_by_key(|writable_root| path_depth(writable_root.root.as_path()));
@@ -620,7 +634,13 @@ fn create_filesystem_args(
     unreadable_ancestors_of_writable_roots.sort_by_key(|path| path_depth(path));
 
     for unreadable_root in &unreadable_ancestors_of_writable_roots {
-        append_unreadable_root_args(&mut bwrap_args, unreadable_root, &allowed_write_paths)?;
+        append_unreadable_root_args(
+            &mut bwrap_args,
+            unreadable_root,
+            &allowed_write_paths,
+            &allowed_read_only_paths,
+            &daemon_directories,
+        )?;
     }
 
     for writable_root in &sorted_writable_roots {
@@ -753,7 +773,13 @@ fn create_filesystem_args(
         }
         nested_unreadable_roots.sort_by_key(|path| path_depth(path));
         for unreadable_root in nested_unreadable_roots {
-            append_unreadable_root_args(&mut bwrap_args, &unreadable_root, &allowed_write_paths)?;
+            append_unreadable_root_args(
+                &mut bwrap_args,
+                &unreadable_root,
+                &allowed_write_paths,
+                &allowed_read_only_paths,
+                &daemon_directories,
+            )?;
         }
     }
 
@@ -769,17 +795,30 @@ fn create_filesystem_args(
         .collect();
     rootless_unreadable_roots.sort_by_key(|path| path_depth(path));
     for unreadable_root in rootless_unreadable_roots {
-        append_unreadable_root_args(&mut bwrap_args, &unreadable_root, &allowed_write_paths)?;
+        append_unreadable_root_args(
+            &mut bwrap_args,
+            &unreadable_root,
+            &allowed_write_paths,
+            &allowed_read_only_paths,
+            &daemon_directories,
+        )?;
     }
 
     if options.mask_wslg_distro
         && !unreadable_roots.iter().any(|denied| {
             let distro = Path::new(WSLG_DISTRO_ROOT);
             distro.starts_with(denied)
-                && !allowed_write_paths.iter().any(|root| {
-                    root.starts_with(denied)
-                        && (distro.starts_with(root) || root.starts_with(distro))
-                })
+                && !allowed_write_paths
+                    .iter()
+                    .chain(
+                        allowed_read_only_paths
+                            .iter()
+                            .filter(|root| *root != denied && root.exists()),
+                    )
+                    .any(|root| {
+                        root.starts_with(denied)
+                            && (distro.starts_with(root) || root.starts_with(distro))
+                    })
         })
     {
         // Use the expanded masks, including symlink targets from deny globs.
@@ -1323,84 +1362,6 @@ fn append_existing_empty_directory_args(
         .push(SyntheticMountTarget::existing_empty_directory(
             path, metadata,
         ));
-}
-
-fn append_unreadable_root_args(
-    bwrap_args: &mut BwrapArgs,
-    unreadable_root: &Path,
-    allowed_write_paths: &[PathBuf],
-) -> Result<()> {
-    if let Some(symlink) =
-        first_writable_symlink_component_in_path(unreadable_root, allowed_write_paths)
-    {
-        /*
-         * Deny-read masks must fail closed when the protected path crosses a
-         * symlink that remains writable to the sandboxed process. Resolving and
-         * masking the symlink's current target is a TOCTTOU snapshot: bwrap would
-         * protect the old target while the logical path could later point
-         * somewhere else.
-         */
-        return Err(CodexErr::Fatal(format!(
-            "cannot enforce sandbox deny-read path {} because it crosses writable symlink {}",
-            unreadable_root.display(),
-            symlink.display()
-        )));
-    }
-
-    if !unreadable_root.exists() {
-        if let Some(first_missing_component) = find_first_non_existent_component(unreadable_root)
-            && is_within_allowed_write_paths(&first_missing_component, allowed_write_paths)
-        {
-            append_missing_empty_file_bind_data_args(bwrap_args, &first_missing_component)?;
-        }
-        return Ok(());
-    }
-
-    append_existing_unreadable_path_args(bwrap_args, unreadable_root, allowed_write_paths)
-}
-
-fn append_existing_unreadable_path_args(
-    bwrap_args: &mut BwrapArgs,
-    unreadable_root: &Path,
-    allowed_write_paths: &[PathBuf],
-) -> Result<()> {
-    if unreadable_root.is_dir() {
-        let mut writable_descendants: Vec<&Path> = allowed_write_paths
-            .iter()
-            .map(PathBuf::as_path)
-            .filter(|path| *path != unreadable_root && path.starts_with(unreadable_root))
-            .collect();
-        bwrap_args.args.push("--perms".to_string());
-        // Execute-only perms let the process traverse into explicitly
-        // re-opened writable descendants while still hiding the denied
-        // directory contents. Plain denied directories with no writable child
-        // mounts stay at `000`.
-        bwrap_args.args.push(if writable_descendants.is_empty() {
-            "000".to_string()
-        } else {
-            "111".to_string()
-        });
-        bwrap_args.args.push("--tmpfs".to_string());
-        bwrap_args.args.push(path_to_string(unreadable_root));
-        // Recreate any writable descendants inside the tmpfs before remounting
-        // the denied parent read-only. Otherwise bubblewrap cannot mkdir the
-        // nested mount targets after the parent has been frozen.
-        writable_descendants.sort_by_key(|path| path_depth(path));
-        for writable_descendant in writable_descendants {
-            append_mount_target_parent_dir_args(
-                &mut bwrap_args.args,
-                writable_descendant,
-                unreadable_root,
-            );
-        }
-        bwrap_args.args.push("--remount-ro".to_string());
-        bwrap_args.args.push(path_to_string(unreadable_root));
-        return Ok(());
-    }
-
-    bwrap_args.args.push("--perms".to_string());
-    bwrap_args.args.push("000".to_string());
-    append_empty_file_bind_data_args(bwrap_args, unreadable_root)
 }
 
 /// Returns true when `path` is under any allowed writable root.

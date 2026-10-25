@@ -309,8 +309,12 @@ async fn namespace_reaper_collects_orphaned_descendants() {
     assert_eq!(output.stdout, b"orphan reaped\n");
 }
 
+#[test_case::test_case("/newroot/proc"; "legacy_bubblewrap")]
+#[test_case::test_case("/proc"; "current_bubblewrap")]
 #[tokio::test]
-async fn proc_mount_denial_preserves_legacy_fallback_and_explicit_pid_inheritance() {
+async fn proc_mount_denial_preserves_legacy_fallback_and_explicit_pid_inheritance(
+    proc_mount_path: &str,
+) {
     if should_skip_bwrap_tests().await {
         eprintln!("skipping bwrap test: bubblewrap is unavailable");
         return;
@@ -327,16 +331,18 @@ async fn proc_mount_denial_preserves_legacy_fallback_and_explicit_pid_inheritanc
     let wrapper = tempdir.path().join("bwrap");
     codex_utils_cargo_bin::write_executable(
         &wrapper,
-        r#"#!/bin/sh
+        &format!(
+            r#"#!/bin/sh
 for arg in "$@"; do
     [ "$arg" = "--" ] && break
     if [ "$arg" = "--proc" ]; then
-        printf '%s\n' "bwrap: Can't mount proc on /newroot/proc: Operation not permitted" >&2
+        printf '%s\n' "bwrap: Can't mount proc on {proc_mount_path}: Operation not permitted" >&2
         exit 1
     fi
 done
 exec "$CODEX_TEST_REAL_BWRAP" "$@"
-"#,
+"#
+        ),
     )
     .expect("write proc-denying bubblewrap wrapper");
     let protected_file = tempdir.path().join("protected");

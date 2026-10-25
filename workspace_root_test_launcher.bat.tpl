@@ -95,7 +95,7 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -Command ^
   "$testBin = $env:test_bin;" ^
   "$tests = @(Get-Content -LiteralPath $env:TEMP_SHARD_LIST);" ^
   "$failed = $false; $limit = 7000; $batch = @(); $batchChars = $testBin.Length + 8;" ^
-  "function Invoke-TestBatch { if ($script:batch.Count -eq 0) { return }; & $script:testBin @script:batch '--exact'; if ($LASTEXITCODE -ne 0) { $script:failed = $true }; $script:batch = @(); $script:batchChars = $script:testBin.Length + 8 }" ^
+  "function Invoke-TestBatch { if ($script:batch.Count -eq 0) { return }; & $script:testBin @script:batch '--exact'; $exitCode = $LASTEXITCODE; if ($exitCode -ne 0) { [Console]::Error.WriteLine(('libtest batch failed with exit code {0}; first test: {1}; last test: {2}' -f $exitCode, $script:batch[0], $script:batch[-1])); $script:failed = $true }; $script:batch = @(); $script:batchChars = $script:testBin.Length + 8 }" ^
   "foreach ($test in $tests) { $argChars = $test.Length + 3; if (($batch.Count -gt 0) -and ($batchChars + $argChars -gt $limit)) { Invoke-TestBatch }; $batch += $test; $batchChars += $argChars }" ^
   "Invoke-TestBatch; if ($failed) { exit 1 }"
 set "TEST_EXIT=%ERRORLEVEL%"

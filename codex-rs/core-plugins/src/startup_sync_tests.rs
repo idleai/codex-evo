@@ -1403,6 +1403,44 @@ fn read_extracted_backup_archive_git_sha_rejects_path_traversal_ref() {
     assert!(err.contains("invalid path components"));
 }
 
+#[cfg(unix)]
+#[test]
+fn zipball_extraction_strips_privileged_permissions() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let mut writer = ZipWriter::new(std::io::Cursor::new(Vec::new()));
+    writer
+        .start_file("plugins/run.sh", SimpleFileOptions::default())
+        .expect("start executable entry");
+    writer.write_all(b"#!/bin/sh\n").expect("write executable");
+    let mut archive = writer.finish().expect("finish archive").into_inner();
+    let header = archive
+        .windows(/*size*/ 4)
+        .position(|bytes| bytes == b"PK\x01\x02")
+        .expect("central directory entry");
+    // Set the creator OS to Unix and supply an executable with all special bits.
+    archive[header + 5] = 3;
+    let attributes = (0o107755_u32 << 16).to_le_bytes();
+    archive[header + 38..header + 42].copy_from_slice(&attributes);
+    let destination = tempdir().expect("destination");
+
+    extract_zipball_to_dir(&archive, destination.path()).expect("extract archive");
+
+    let executable = destination.path().join("run.sh");
+    assert_eq!(
+        std::fs::metadata(&executable)
+            .expect("executable metadata")
+            .permissions()
+            .mode()
+            & 0o7777,
+        0o755
+    );
+    assert_eq!(
+        std::fs::read(executable).expect("executable contents"),
+        b"#!/bin/sh\n"
+    );
+}
+
 fn curated_repo_zipball_bytes(sha: &str) -> Vec<u8> {
     let cursor = std::io::Cursor::new(Vec::new());
     let mut writer = ZipWriter::new(cursor);

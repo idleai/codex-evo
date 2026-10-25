@@ -94,8 +94,8 @@ async fn tmpdir_uses_command_environment_over_rpc(
     #[cfg(windows)]
     let _account_guard = if selection == WindowsSandboxSelection::Elevated {
         let guard = codex_windows_sandbox_test_support::WindowsSandboxAccountTestGuard::acquire()?;
-        // The RPC server re-enters this test executable, as in file_system_windows.
-        let executable = std::env::current_exe()?;
+        // The RPC server locates bundled helpers next to its executable.
+        let (executable, _) = common::current_test_binary_helper_paths()?;
         let resources = executable
             .parent()
             .context("Windows test executable should have a parent directory")?

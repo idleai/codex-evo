@@ -175,7 +175,7 @@ enum Subcommand {
     Plugin(PluginCli),
 
     /// [experimental] Run the app server or related tooling.
-    AppServer(AppServerCommand),
+    AppServer(Box<AppServerCommand>),
 
     /// [experimental] Manage the app-server daemon with remote control enabled.
     RemoteControl(RemoteControlCommand),
@@ -1263,7 +1263,7 @@ async fn cli_main(
                 managed_daemon,
                 analytics_default_enabled,
                 auth,
-            } = app_server_cli;
+            } = *app_server_cli;
             let strict_config = app_server_strict_config || root_strict_config;
             reject_strict_config_for_app_server_subcommand(strict_config, subcommand.as_ref())?;
             reject_remote_mode_for_app_server_subcommand(
@@ -3497,7 +3497,7 @@ enabled = true
         let Subcommand::AppServer(app_server) = cli.subcommand.expect("app-server present") else {
             unreachable!()
         };
-        app_server
+        *app_server
     }
 
     fn default_app_server_socket_path() -> AbsolutePathBuf {

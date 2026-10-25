@@ -19,7 +19,7 @@ Conversation
 ⚠ Heads up, you have less than 5% of your 5h limit left. Run /status for a
   breakdown.
 
-• Working (0s • esc to interrupt)
+Working (0s • esc to interrupt)
 
                                              ⚠ 5h limit: only 2% left · /status
 
@@ -31,7 +31,7 @@ Conversation
 32 columns, 10 rows, running=true, queued=false
   Run /status for a breakdown.
 
-• Working (0s • esc to interrup…
+Working (0s • esc to interrupt)
 
                   ⚠ 5h <1% left
 
@@ -43,7 +43,7 @@ Conversation
 18 columns, 10 rows, running=true, queued=false
   a breakdown.
 
-• Working (0s • e…
+Working (0s • esc…
 
      ⚠ 5h 5% left
 
@@ -59,7 +59,7 @@ Conversation row 19
 ⚠ Heads up, you have less than 5% of your 5h limit left. Run /status for a
   breakdown.
 
-• Working (0s • esc to interrupt)
+Working (0s • esc to interrupt)
 
 • Queued follow-up inputs
   ↳ queued follow-up
@@ -73,7 +73,7 @@ Conversation row 19
   tab to queue message
 
 80 columns, 11 rows, running=true, queued=true
-• Working (0s • esc to interrupt)
+Working (0s • esc to interrupt)
 
 • Queued follow-up inputs
   ↳ queued follow-up
@@ -86,7 +86,7 @@ Conversation row 19
   tab to queue message
 
 80 columns, 6 rows, running=true, queued=false
-• Working (0s • esc to interrupt)
+Working (0s • esc to interrupt)
 
 › draft stays
 
