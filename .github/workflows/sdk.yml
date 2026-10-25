@@ -5,9 +5,7 @@ on:
 
 jobs:
   python-sdk-installation:
-    runs-on:
-      group: ${{ github.event.repository.name }}-runners
-      labels: ${{ github.event.repository.name }}-linux-x64
+    runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
       - name: Checkout repository
@@ -36,10 +34,8 @@ jobs:
             '
 
   sdks:
-    runs-on:
-      group: ${{ github.event.repository.name }}-runners
-      labels: ${{ github.event.repository.name }}-linux-x64
-    timeout-minutes: 20
+    runs-on: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository && vars.CODEX_LINUX_RUNNER || github.event_name != 'pull_request' && vars.IDLE_BACKGROUND_RUNNER || 'ubuntu-24.04' }}
+    timeout-minutes: 90
     environment:
       name: bazel
       deployment: false
@@ -61,11 +57,18 @@ jobs:
         with:
           run_install: false
 
+      - name: Select the SDK dependency store
+        run: echo "npm_config_store_dir=$RUNNER_TEMP/pnpm-sdk-store" >> "$GITHUB_ENV"
+
       - name: Setup Node.js
         uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f # v6.3.0
         with:
           node-version: 22
           cache: pnpm
+          cache-dependency-path: |
+            pnpm-lock.yaml
+            pnpm-workspace.yaml
+            .github/workflows/sdk.yml
 
       - name: Prepare Bazel CI
         id: setup_bazel
@@ -89,7 +92,8 @@ jobs:
             --remote-download-toplevel \
             -- \
             build \
-            --build_metadata=COMMIT_SHA=${GITHUB_SHA} \
+            --platforms=//:local_linux \
+            --build_metadata="COMMIT_SHA=${GITHUB_SHA}" \
             --build_metadata=TAG_job=sdk \
             -- \
             //codex-rs/cli:codex \
@@ -99,6 +103,7 @@ jobs:
             ./.github/scripts/run-bazel-ci.sh \
               -- \
               cquery \
+              --platforms=//:local_linux \
               --output=files \
               -- \
               'set(//codex-rs/cli:codex //codex-rs/code-mode-host:codex-code-mode-host)' \
@@ -149,7 +154,7 @@ jobs:
           uv run --only-group dev --frozen --no-sync pytest
 
       - name: Save bazel repository cache
-        if: always() && !cancelled() && steps.build_bazel.outcome == 'success' && steps.setup_bazel.outputs.repository-cache-hit != 'true'
+        if: always() && !cancelled() && runner.environment == 'github-hosted' && steps.build_bazel.outcome == 'success' && steps.setup_bazel.outputs.repository-cache-hit != 'true'
         continue-on-error: true
         uses: actions/cache/save@668228422ae6a00e4ad889ee87cd7109ec5666a7 # v5.0.4
         with:
