@@ -117,6 +117,29 @@ class RunBazelWithBuildBuddyTest(unittest.TestCase):
             ["test", "--config=ci-local", *args[1:]],
         )
 
+    def test_shared_runner_cache_avoids_duplicate_local_artifacts(self) -> None:
+        env = {
+            "GITHUB_ACTIONS": "true",
+            "RUNNER_ENVIRONMENT": "self-hosted",
+            "IDLE_CI_REMOTE_CACHE": "http://10.0.2.2:18500",
+            "BAZEL_DISK_CACHE": "/cache/actions",
+        }
+        args = ["test", "--", "//codex-rs/cli:all"]
+        configured = run_bazel_with_buildbuddy.bazel_args_with_remote_config(args, env)
+        self.assertIn("--disk_cache=", configured)
+        self.assertNotIn("--disk_cache=/cache/actions", configured)
+        self.assertLess(configured.index("--disk_cache="), configured.index("--"))
+
+        explicit = ["test", "--disk_cache=/custom", *args[1:]]
+        configured = run_bazel_with_buildbuddy.bazel_args_with_remote_config(explicit, env)
+        self.assertIn("--disk_cache=/custom", configured)
+        self.assertNotIn("--disk_cache=", configured)
+
+        query = run_bazel_with_buildbuddy.bazel_args_with_remote_config(
+            ["query", "--", "//codex-rs/cli:all"], env
+        )
+        self.assertFalse(any(arg.startswith("--disk_cache=") for arg in query))
+
     def test_persistent_runner_rejects_invalid_job_limit(self) -> None:
         for value in ("0", "-1", "unlimited"):
             with (
