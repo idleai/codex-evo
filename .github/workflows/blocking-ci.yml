@@ -53,10 +53,17 @@ jobs:
       - uses: pnpm/action-setup@a8198c4bff370c8506180b035930dea56dbd5288 # v5
         with:
           run_install: false
+      - name: Select the preflight dependency store
+        run: echo "npm_config_store_dir=$RUNNER_TEMP/pnpm-preflight-store" >> "$GITHUB_ENV"
       - uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f # v6.3.0
         with:
           node-version: 22
           cache: pnpm
+          # Script-free installs must not populate the SDK's prepared packages.
+          cache-dependency-path: |
+            pnpm-lock.yaml
+            pnpm-workspace.yaml
+            .github/workflows/blocking-ci.yml
       - run: pnpm --filter codex-monorepo install --frozen-lockfile --ignore-scripts
       - name: Install workflow validator
         run: |

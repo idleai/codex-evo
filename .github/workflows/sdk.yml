@@ -57,11 +57,18 @@ jobs:
         with:
           run_install: false
 
+      - name: Select the SDK dependency store
+        run: echo "npm_config_store_dir=$RUNNER_TEMP/pnpm-sdk-store" >> "$GITHUB_ENV"
+
       - name: Setup Node.js
         uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f # v6.3.0
         with:
           node-version: 22
           cache: pnpm
+          cache-dependency-path: |
+            pnpm-lock.yaml
+            pnpm-workspace.yaml
+            .github/workflows/sdk.yml
 
       - name: Prepare Bazel CI
         id: setup_bazel
