@@ -31,7 +31,7 @@ class BudgetTests(unittest.TestCase):
                 datetime(2026, 1, 1, tzinfo=timezone.utc),
             )
 
-    def test_terminal_check_rejects_an_over_budget_attempt(self):
+    def test_terminal_check_reports_slow_attempts_without_failing(self):
         environment = {
             "GITHUB_EVENT_NAME": "pull_request",
             "GITHUB_API_URL": "https://api.github.com",
@@ -52,13 +52,13 @@ class BudgetTests(unittest.TestCase):
                     return_value=StringIO('{"run_started_at":"2026-01-02T00:00:00Z"}'),
                 ) as request,
                 patch("budget.datetime", wraps=datetime) as clock,
+                patch("sys.stdout", new_callable=StringIO) as output,
             ):
                 clock.now.return_value = now
-                if seconds > 600:
-                    with self.assertRaisesRegex(SystemExit, "budget was exceeded"):
-                        main()
-                else:
-                    main()
+                main()
+                self.assertIn(f"PR feedback: {seconds}s", output.getvalue())
+                self.assertIn("advisory target: 600s", output.getvalue())
+                self.assertEqual("::notice::" in output.getvalue(), seconds > 600)
                 self.assertTrue(
                     request.call_args.args[0].full_url.endswith("/runs/42/attempts/2")
                 )

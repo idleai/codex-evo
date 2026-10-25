@@ -23,7 +23,6 @@ jobs:
   build:
     name: Linux release package
     runs-on: ${{ vars.IDLE_BACKGROUND_RUNNER || 'ubuntu-24.04' }}
-    timeout-minutes: 120
     env:
       CODEX_REPO_ROOT: ${{ github.workspace }}
     steps:
