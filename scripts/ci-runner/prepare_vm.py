@@ -141,6 +141,7 @@ def main() -> None:
         cargo_environment = (
             "RUSTC_WRAPPER=/usr/local/bin/sccache\n"
             "CARGO_INCREMENTAL=0\n"
+            "CARGO_BUILD_BUILD_DIR=/mnt/ci-cache/cargo/build\n"
             f"SCCACHE_WEBDAV_ENDPOINT={args.cargo_cache_url}\n"
             "SCCACHE_WEBDAV_DISABLE_CREATE_DIR=true\n"
             "SCCACHE_IGNORE_SERVER_IO_ERROR=1\n"
