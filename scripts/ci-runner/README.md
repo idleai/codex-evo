@@ -5,7 +5,7 @@ credentials, Docker daemon and working disk. Completed Bazel action outputs are
 also stored in a persistent cache service on the host. No host directory or
 Docker socket is mounted into the guest. SSH binds only to host loopback.
 
-The pool has eight identical guests, each with 32 virtual CPUs and 28 GiB memory.
+The pool has eight identical guests, each with 64 virtual CPUs and 28 GiB memory.
 Each VM service has a 32 GiB memory ceiling, including QEMU and disk-cache
 overhead. `idle-ci.slice` applies a 240 GiB memory high watermark and a 256 GiB
 hard limit to all VMs and the cache service. Guest memory totals 224 GiB; the
@@ -13,9 +13,10 @@ remaining allowance covers VM overhead and the shared service. Individual
 service limits are ceilings, not reservations. The slice caps CPU use at 128
 logical CPU equivalents and disables host swap for its processes.
 The host has 64 physical cores with two hardware threads per core. The guests
-share all 128 logical CPUs with equal weights. The 256 configured vCPUs allow
-four busy guests to use up to 32 CPU equivalents each, while eight equally busy
-guests share approximately 16 each, subject to other host workloads. Workers
+share all 128 logical CPUs with equal weights. Each VM's CPU quota permits up to
+64 logical CPU equivalents. The 512 configured vCPUs allow two busy guests to
+use up to 64 CPU equivalents each, while eight equally busy guests share
+approximately 16 each, subject to other host workloads. Workers
 01–04 serve Codex PRs through `codex-pr-linux-x64`, 05–06 serve client PRs through
 `idle-pr-linux-x64`, and 07–08 serve integration and release work through
 `idle-background-linux-x64`. Legacy labels remain for existing workflows.
@@ -27,7 +28,7 @@ the directory retains the original runner labels and the applied assignments.
 
 Every guest has a sparse 32 GiB root disk and a 256 GiB private working disk,
 retaining the filename `cache.qcow2` and mount point `/mnt/ci-cache`. Each guest
-has 8 GiB of swap on that disk, sixteen concurrent Bazel/Cargo build jobs and two
+has 8 GiB of swap on that disk, 64 concurrent Bazel/Cargo build jobs and two
 concurrent Bazel test jobs. Hooks before and after each job keep Bazel's disk
 cache below 32 GiB and require at least 24 GiB of free space before continuing.
 When the shared host cache is configured, CI disables the extra per-VM action
@@ -74,8 +75,8 @@ cloud-init seed and launch configuration. Give each guest a distinct
 `--state-dir`, `--name`, `--service-name` and `--ssh-port`. For example, the new
 workers use names `idle-ci-linux-01` through `idle-ci-linux-08`, service names
 `idle-ci-vm-01` through `idle-ci-vm-08`, and ports 22061 through 22068.
-Defaults match the uniform pool: 32 vCPUs, 28 GiB guest RAM, 32 GiB host limit,
-32 GiB root disk, 256 GiB working disk, and sixteen build workers.
+Defaults match the uniform pool: 64 vCPUs, 28 GiB guest RAM, 32 GiB host limit,
+32 GiB root disk, 256 GiB working disk, and 64 build workers.
 
 Existing disks and SSH keys are preserved, and the command refuses to rewrite
 the configuration of a running VM. Disk-size arguments only affect newly
