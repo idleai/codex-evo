@@ -124,5 +124,6 @@ jobs:
           RUST_SELECTED: ${{ needs.preflight.outputs.rust }}
           SDK_SELECTED: ${{ needs.preflight.outputs.sdk }}
         run: |
-          export OPTIONAL_SKIPPED="$(python3 -c 'import json,os; print(json.dumps([job for job,key in [("linux","RUST_SELECTED"),("sdk","SDK_SELECTED")] if os.environ[key] == "false"]))')"
+          OPTIONAL_SKIPPED="$(python3 -c 'import json,os; print(json.dumps([job for job,key in [("linux","RUST_SELECTED"),("sdk","SDK_SELECTED")] if os.environ[key] == "false"]))')"
+          export OPTIONAL_SKIPPED
           python3 .github/scripts/check_ci_results.py

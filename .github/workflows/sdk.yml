@@ -85,7 +85,7 @@ jobs:
             --remote-download-toplevel \
             -- \
             build \
-            --build_metadata=COMMIT_SHA=${GITHUB_SHA} \
+            --build_metadata="COMMIT_SHA=${GITHUB_SHA}" \
             --build_metadata=TAG_job=sdk \
             -- \
             //codex-rs/cli:codex \
