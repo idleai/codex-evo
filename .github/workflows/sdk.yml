@@ -85,6 +85,7 @@ jobs:
             --remote-download-toplevel \
             -- \
             build \
+            --platforms=//:local_linux \
             --build_metadata="COMMIT_SHA=${GITHUB_SHA}" \
             --build_metadata=TAG_job=sdk \
             -- \
@@ -95,6 +96,7 @@ jobs:
             ./.github/scripts/run-bazel-ci.sh \
               -- \
               cquery \
+              --platforms=//:local_linux \
               --output=files \
               -- \
               'set(//codex-rs/cli:codex //codex-rs/code-mode-host:codex-code-mode-host)' \
