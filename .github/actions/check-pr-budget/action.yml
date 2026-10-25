@@ -1,5 +1,5 @@
-name: Check PR feedback budget
-description: Include setup and queue time in the ten-minute PR feedback target
+name: Report PR feedback duration
+description: Include setup and queue time in the advisory ten-minute PR feedback target
 inputs:
   token:
     description: Repository token with actions read permission

@@ -35,14 +35,18 @@ def main():
     with urlopen(request, timeout=20) as response:
         run = json.load(response)
     elapsed = elapsed_seconds(run, datetime.now(timezone.utc))
-    message = f"PR feedback: {elapsed:.0f}s / 600s, including setup and queue time."
+    message = (
+        f"PR feedback: {elapsed:.0f}s (advisory target: 600s), "
+        "including setup and queue time."
+    )
     print(message)
     if summary := os.environ.get("GITHUB_STEP_SUMMARY"):
         with Path(summary).open("a") as stream:
             stream.write(message + "\n")
     if elapsed > 600:
-        raise SystemExit(
-            "The ten-minute PR budget was exceeded; inspect queue and job timings."
+        print(
+            "::notice::The ten-minute PR feedback target was exceeded; "
+            "inspect queue and job timings."
         )
 
 

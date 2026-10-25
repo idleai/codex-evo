@@ -29,13 +29,13 @@ the directory retains the original runner labels and the applied assignments.
 
 ## PR feedback and asynchronous validation
 
-PR feedback has a ten-minute target, measured from the current workflow attempt
-starting through `CI required`, including setup and queue time. The terminal
-check fails if that budget is exceeded. Codex allows four minutes for preflight,
-five for each parallel build/smoke job, and one for the terminal check. Client
-repositories allow two minutes for preflight, seven for checks, and one for the
-terminal check. Cold compilation or runner congestion can still exceed the
-target; a timeout never counts as a successful check.
+Codex aims for five-minute builds and ten-minute total PR feedback, measured
+from the current workflow attempt starting through `CI required`, including
+setup and queue time. These are advisory performance targets. The terminal job
+reports elapsed time and emits a notice when feedback takes longer; duration
+reporting does not fail the required check. Workflows do not set explicit job
+timeouts. Build and test failures, cancellations and unexpected skips still
+fail `CI required`.
 
 Codex PRs retain formatting, dependency policy, shipped-binary compilation,
 eleven Rust smoke targets, and scoped SDK smoke tests. Default-branch, scheduled

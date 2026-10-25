@@ -10,6 +10,10 @@ and app server. SDK checks run when SDK files change. Documentation-only changes
 do not allocate a Rust runner. `CI required` fails for failed, cancelled or
 unexpectedly skipped jobs.
 
+Five-minute builds and ten-minute total PR feedback are performance targets,
+not merge requirements. The terminal job reports elapsed time without failing
+slow attempts. Workflows do not set explicit job timeouts.
+
 Each Rust test binary uses four threads within the runner's two Bazel test
 slots, bounding concurrent subprocess-heavy integration cases.
 
