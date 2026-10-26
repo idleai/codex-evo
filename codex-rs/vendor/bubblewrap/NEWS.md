@@ -1,3 +1,112 @@
+bubblewrap 0.13.1
+=================
+
+Released: 2026-10-14
+
+Enhancements:
+
+  * bwrap now accepts multiple --sync-fd arguments and will handle
+    all of the fds.
+
+Bug fixes:
+
+  * O_PATH is used when opening parent directories in the new root,
+    fixing an error when read permission is missing. (#806, #855).
+
+Thanks: smcv, swick
+
+bubblewrap 0.13.0
+=================
+
+Released: 2026-09-22
+
+Dependencies:
+
+  * Linux kernel headers with `__NR_pivot_root` (Linux 2.3.41+)
+    are required at build-time on all architectures (#789).
+
+  * If compiled with `-Dassume_kernel=5.12.0` or newer,
+    then a kernel with the `mount_setattr` syscall is required at runtime,
+    and kernel headers with `__NR_mount_setattr` are required at build-time
+    on most architectures.
+    On the `x86_64`, `i386` and `aarch64` architectures,
+    a fallback is provided to be able to compile with pre-5.12 kernel headers.
+    (#756, #785)
+
+Enhancements:
+
+  * On kernels that support it (5.12+), use `mount_setattr()` to remount
+    filesystems with `ro`, `nodev` and/or `nosuid`. (#756)
+
+  * Arguments that expect a path argument (`--bind`, `--overlay-src`, etc.)
+    now reject empty strings.
+    Previously they would sometimes be treated as the root directory
+    due to implementation details, but this was unintended.
+    (#771)
+
+  * A new build option `-Ddebug_logging=true` can be used to enable
+    verbose debug logging (not recommended for distro builds).
+    These debug messages don't appear unless environment variable
+    `DEBUG_INVOCATION` is set at runtime.
+
+Bug fixes:
+
+  * Fix build failures with older gcc or older `-std` argument (#773, #786)
+
+  * Fix build failure with musl (#782)
+
+  * Fix test failure on systems that lack hostname(1) (#775)
+
+  * Fix test failure on systems with a mount point containing a backslash
+    (#778)
+
+  * Fix test failure on systems with older xdg-desktop-portal (#794)
+
+  * Don't leave a temporary file behind after running the test suite (#775)
+
+  * CI improvements
+
+Thanks: abhinavmir, ao2, smcv, vaibhav8a, xxyzz
+
+bubblewrap 0.12.0
+=================
+
+Released: 2026-08-26
+
+Dependencies:
+
+  * If compiled with `-Dassume_kernel=5.6.0` or newer,
+    then a kernel with the `openat2` syscall is required at runtime,
+    and kernel headers with `__NR_openat2` are required at build-time.
+
+Enhancements:
+
+ * The flag --not-a-security-boundary was added. If this is enabled
+   then failure of some sandbox setup steps (like remounting a
+   submount) are not fatal.
+
+ * The license has been updated from LGPL 2.0 (or later) to LGPL 2.1
+   (or later).
+
+ * This version removes the support for building a setuid
+   bubblewrap. Changes in this version made it difficult to support
+   and basically all modern linux distributions now support
+   unprivileged user namespaces to some extent.
+
+ * The assume_kernel build option was added, if specified no backwards
+   compatiblity for kernels older than this is built in (and will result
+   in hard failures at runtime). Currently specifying 5.6.0 or
+   later will disable the fallback implementation of
+   openat2(RESOLVE_IN_ROOT).
+
+Bug fixes:
+
+  * Bubblewrap now correctly resolves absolute symlinks during the
+    sandbox setup by using openat2 with RESOLVE_IN_ROOT (or a fallback
+    implementation). This fixes a security issue (GHSA-pxhw-h44j-8pfx)
+    where file or directories created during sandbox setup could
+    follow parent symlinks out of the sandbox.
+
 bubblewrap 0.11.2
 =================
 

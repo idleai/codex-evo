@@ -459,9 +459,9 @@ async fn file_system_elevated_relative_read_denial_uses_policy_cwd(
     implementation: FileSystemImplementation,
 ) -> Result<()> {
     let _account_guard = WindowsSandboxAccountTestGuard::acquire()?;
-    // Both implementations re-enter this test binary; the elevated backend finds its helpers
-    // next to that binary, while Cargo and Bazel provide them separately.
-    let test_exe = std::env::current_exe()?;
+    // Both implementations use the executor fixture; the elevated backend finds its helpers
+    // next to that executable, while Cargo and Bazel provide them separately.
+    let (test_exe, _) = common::current_test_binary_helper_paths()?;
     let resources = test_exe
         .parent()
         .context("Windows test executable should have a parent directory")?

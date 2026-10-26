@@ -35,6 +35,20 @@ async fn root_metadata_symlinks_cannot_reopen_approved_denials() {
     fs::write(private.join("sibling"), "sibling").unwrap();
     codex_utils_cargo_bin::copy_executable(&codex_linux_sandbox_exe(), &work.join("sandbox"))
         .unwrap();
+    let bundled = codex_linux_sandbox::find_bundled_bwrap_for_exe(
+        &codex_linux_sandbox_exe(),
+        &std::env::current_dir().unwrap(),
+        |name| std::env::var_os(name),
+    );
+    let resources = work.join("codex-resources");
+    fs::create_dir(&resources).unwrap();
+    codex_utils_cargo_bin::copy_executable(
+        bundled
+            .as_ref()
+            .map_or(bwrap.as_path(), AbsolutePathBuf::as_path),
+        &resources.join("bwrap"),
+    )
+    .unwrap();
 
     let path_entry = |path: &str, access| {
         FileSystemSandboxEntry::new(

@@ -1105,8 +1105,8 @@ fn close_fd_or_panic(fd: libc::c_int, context: &str) {
 }
 
 fn is_proc_mount_failure(stderr: &str) -> bool {
-    stderr.contains("Can't mount proc")
-        && stderr.contains("/newroot/proc")
+    (stderr.contains("Can't mount proc on /newroot/proc:")
+        || stderr.contains("Can't mount proc on /proc:"))
         && (stderr.contains("Invalid argument")
             || stderr.contains("Operation not permitted")
             || stderr.contains("Permission denied"))

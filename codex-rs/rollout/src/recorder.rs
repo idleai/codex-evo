@@ -146,23 +146,13 @@ enum RolloutCmd {
 }
 
 /// Observable state for the background rollout writer task.
+#[derive(Default)]
 struct RolloutWriterTask {
-    // The task, not just its caller, owns the lock until queued file writes finish.
-    _writer_lock: Option<Arc<crate::WriterLockGuard>>,
     handle: Mutex<Option<JoinHandle<()>>>,
     terminal_failure: Mutex<Option<Arc<IoError>>>,
 }
 
 impl RolloutWriterTask {
-    /// Create task observability state before spawning the writer.
-    fn new(writer_lock: Option<Arc<crate::WriterLockGuard>>) -> Self {
-        Self {
-            _writer_lock: writer_lock,
-            handle: Mutex::new(None),
-            terminal_failure: Mutex::new(None),
-        }
-    }
-
     /// Store the spawned task handle so it remains owned for the lifetime of recorder clones.
     fn set_handle(&self, handle: JoinHandle<()>) {
         let mut guard = self
@@ -1018,10 +1008,13 @@ impl RolloutRecorder {
         // Spawn a Tokio task that owns the file handle and performs async
         // writes. Using `tokio::fs::File` keeps everything on the async I/O
         // driver instead of blocking the runtime.
-        let writer_task = Arc::new(RolloutWriterTask::new(writer_lock));
+        let writer_task = Arc::new(RolloutWriterTask::default());
         let writer_task_for_spawn = Arc::clone(&writer_task);
         let rollout_path_for_spawn = rollout_path.clone();
         let handle = tokio::task::spawn(async move {
+            // Keep ownership through queued writes, then release it even when stopped
+            // recorder clones still hold the task's completion state.
+            let _writer_lock = writer_lock;
             let result = rollout_writer(state, rx).await;
             if let Err(err) = result {
                 // This is the terminal background-task failure path. Normal I/O failures stay inside

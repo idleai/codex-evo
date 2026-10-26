@@ -66,6 +66,62 @@ fn auth_owner_generation_distinguishes_refreshes_from_identity_changes() {
     }
 }
 
+#[test]
+fn network_revocation_wakes_requests_after_auth_owner_changes() {
+    use std::future::Future;
+    use std::sync::Mutex;
+    use std::task::Context;
+    use std::task::Wake;
+    use std::task::Waker;
+
+    struct RevokedRequest {
+        changes: watch::Receiver<AuthChangeState>,
+        observed: Mutex<Option<AuthChangeState>>,
+    }
+
+    impl Wake for RevokedRequest {
+        fn wake(self: Arc<Self>) {
+            *self.observed.lock().unwrap() = Some(*self.changes.borrow());
+        }
+    }
+
+    let mut manager = AuthManager::from_optional_auth_for_testing(/*auth*/ None);
+    let controller = NetworkPolicyController::default();
+    let policy = controller.policy();
+    Arc::get_mut(&mut manager).unwrap().auth_route_config =
+        AuthRouteConfig::from_http_client_factory(
+            manager
+                .http_client_factory()
+                .with_network_policy(policy.clone()),
+        );
+    manager.set_cached_auth(Some(chatgpt_auth("user-a", "workspace-a", "token-a")));
+    assert!(controller.publish(policy.revision(), DestinationPolicy::Unrestricted));
+    let permit = policy
+        .acquire(&"https://example.com/".parse().unwrap())
+        .unwrap();
+    let request = Arc::new(RevokedRequest {
+        changes: manager.auth_change_state_receiver(),
+        observed: Mutex::new(None),
+    });
+    let waker = Waker::from(request.clone());
+    let mut context = Context::from_waker(&waker);
+    let mut revoked = std::pin::pin!(permit.revoked());
+    assert!(revoked.as_mut().poll(&mut context).is_pending());
+
+    // Cancellation releases serialized RPCs. Their next admission check must
+    // already reject requests belonging to the previous authentication owner.
+    manager.set_cached_auth(Some(chatgpt_auth("user-b", "workspace-a", "token-b")));
+    assert_eq!(
+        *request.observed.lock().unwrap(),
+        Some(AuthChangeState {
+            generation: 2,
+            owner_generation: 2,
+            source_generation: 2,
+            login_generation: 2,
+        })
+    );
+}
+
 #[tokio::test]
 async fn auth_owner_generation_preserves_logout_and_switches_when_coalesced() {
     let home = tempfile::tempdir().unwrap();

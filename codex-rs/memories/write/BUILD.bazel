@@ -6,4 +6,9 @@ codex_rust_crate(
         "templates/**",
     ]),
     crate_name = "codex_memories_write",
+    extra_binaries = [
+        "//codex-rs/bwrap:bwrap",
+        "//codex-rs/cli:codex",
+        "//codex-rs/linux-sandbox:codex-linux-sandbox",
+    ],
 )

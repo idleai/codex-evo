@@ -115,7 +115,21 @@ for line in sys.stdin:
             Some(temporary.path().to_string_lossy().into_owned()),
             Arc::new(LocalStdioServerLauncher::new(std::env::current_dir()?)),
         )
-        .await?;
+        .await;
+        if cfg!(target_env = "musl") && launch == "shell fallback" {
+            // musl reports ENOEXEC for executable text without a shebang instead
+            // of starting a shell. Preserve that launch failure on this target.
+            let error = client.err().expect("musl should reject executable text");
+            // The client wraps transport errors, retaining the OS code in the message.
+            assert!(
+                error
+                    .to_string()
+                    .ends_with(&format!("(os error {})", libc::ENOEXEC)),
+                "unexpected executable-text launch error: {error}"
+            );
+            continue;
+        }
+        let client = client?;
         client
             .initialize(
                 InitializeRequestParams::new(

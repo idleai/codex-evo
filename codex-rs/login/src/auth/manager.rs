@@ -2896,11 +2896,6 @@ impl AuthManager {
         let source_changed =
             auth_changed_for_refresh && !super::source::same_source(previous, new_auth.as_ref());
         let login_changed = auth_changed_for_refresh && !same_login(previous, new_auth.as_ref());
-        if owner_changed {
-            self.auth_route_config
-                .application_network_policy()
-                .invalidate();
-        }
         if auth_changed_for_refresh {
             guard.permanent_refresh_failure = None;
         }
@@ -2919,6 +2914,16 @@ impl AuthManager {
                     state.login_generation += 1;
                 }
             });
+        }
+        if owner_changed {
+            // Publish the owner before cancellation releases queued RPCs. The
+            // auth write lock keeps credential/factory snapshots out until both
+            // the owner revision and network permissions have changed.
+            self.auth_route_config
+                .application_network_policy()
+                .invalidate();
+        }
+        if auth_changed_for_refresh {
             self.auth_change_tx.send_modify(|revision| *revision += 1);
         }
         changed
