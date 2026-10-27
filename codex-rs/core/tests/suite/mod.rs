@@ -89,6 +89,8 @@ mod exec_policy;
 mod extension_sandbox;
 mod external_auth;
 mod fork_thread;
+#[path = "frozen_execution_tests.rs"]
+mod frozen_execution;
 mod gcp;
 mod git_enrichment;
 mod guardian_authorization;
@@ -228,6 +230,8 @@ mod subagent_profiles;
 mod subagent_service_tier;
 mod token_budget;
 mod token_usage_rollout;
+#[path = "tool_admission_tests.rs"]
+mod tool_admission;
 mod tool_harness;
 mod tool_lifecycle;
 mod tool_parallelism;

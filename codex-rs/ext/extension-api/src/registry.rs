@@ -11,6 +11,7 @@ use crate::NoopExtensionEventSink;
 use crate::SkillInvocationContributor;
 use crate::ThreadLifecycleContributor;
 use crate::TokenUsageContributor;
+use crate::ToolAdmissionContributor;
 use crate::ToolContributor;
 use crate::ToolLifecycleContributor;
 use crate::TurnInputContributor;
@@ -39,6 +40,7 @@ impl<C: Sync> Default for ExtensionRegistryBuilder<C> {
                 mcp_server_contributors: Vec::new(),
                 turn_input_contributors: Vec::new(),
                 tool_contributors: Vec::new(),
+                tool_admission_contributors: Vec::new(),
                 tool_lifecycle_contributors: Vec::new(),
                 model_request_contributors: Vec::new(),
                 message_observers: Vec::new(),
@@ -136,6 +138,11 @@ impl<C: Sync> ExtensionRegistryBuilder<C> {
         self.registry.tool_contributors.push(contributor);
     }
 
+    /// Registers one additional tool-admission restriction.
+    pub fn tool_admission_contributor(&mut self, contributor: Arc<dyn ToolAdmissionContributor>) {
+        self.registry.tool_admission_contributors.push(contributor);
+    }
+
     /// Registers one tool-lifecycle contributor.
     pub fn tool_lifecycle_contributor(&mut self, contributor: Arc<dyn ToolLifecycleContributor>) {
         self.registry.tool_lifecycle_contributors.push(contributor);
@@ -170,6 +177,7 @@ pub struct ExtensionRegistry<C: Sync> {
     mcp_server_contributors: Vec<Arc<dyn McpServerContributor<C>>>,
     turn_input_contributors: Vec<Arc<dyn TurnInputContributor>>,
     tool_contributors: Vec<Arc<dyn ToolContributor>>,
+    tool_admission_contributors: Vec<Arc<dyn ToolAdmissionContributor>>,
     tool_lifecycle_contributors: Vec<Arc<dyn ToolLifecycleContributor>>,
     model_request_contributors: Vec<Arc<dyn ModelRequestContributor>>,
     message_observers: Vec<Arc<dyn MessageLifecycleContributor>>,
@@ -193,6 +201,7 @@ impl<C: Sync> ExtensionRegistry<C> {
                 mcp_server_contributors: self.mcp_server_contributors.clone(),
                 turn_input_contributors: self.turn_input_contributors.clone(),
                 tool_contributors: self.tool_contributors.clone(),
+                tool_admission_contributors: self.tool_admission_contributors.clone(),
                 tool_lifecycle_contributors: self.tool_lifecycle_contributors.clone(),
                 model_request_contributors: self.model_request_contributors.clone(),
                 message_observers: self.message_observers.clone(),
@@ -293,6 +302,11 @@ impl<C: Sync> ExtensionRegistry<C> {
     /// Returns response interceptor contributors in registration order.
     pub fn model_request_contributors(&self) -> &[Arc<dyn ModelRequestContributor>] {
         &self.model_request_contributors
+    }
+
+    /// Returns additional tool-admission restrictions in registration order.
+    pub fn tool_admission_contributors(&self) -> &[Arc<dyn ToolAdmissionContributor>] {
+        &self.tool_admission_contributors
     }
 
     /// Returns the registered tool-lifecycle contributors.

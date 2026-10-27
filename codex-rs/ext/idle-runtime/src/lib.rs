@@ -1,6 +1,8 @@
 //! Daemon-owned Idle workspace bindings, independent of model and client lifetimes.
 
 mod remote;
+mod runner;
+mod runner_policy;
 mod storage;
 
 pub use remote::GrantAccess;
@@ -8,6 +10,9 @@ pub use remote::GrantScope;
 pub use remote::IssuedGrant;
 pub use remote::RelayConfiguration;
 pub use remote::Secret;
+pub use runner::RunnerBinding;
+pub use runner::RunnerEnvironment;
+pub use runner_policy::RunnerPolicy;
 
 use serde::Deserialize;
 use serde::Serialize;
