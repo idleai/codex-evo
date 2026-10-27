@@ -476,6 +476,7 @@ pub(crate) struct ThreadRequestProcessor {
     pub(super) skills_watcher: Arc<SkillsWatcher>,
     pub(super) turn_cost_worker: Option<crate::turn_cost_worker::TurnCostWorkerHandle>,
     pub(super) initial_config_warnings: Arc<Vec<ConfigWarningNotification>>,
+    pub(super) idle_runtime: Arc<crate::idle_runtime::IdleRuntime>,
 }
 
 /// Whether resume attaches a client or restores a cold runtime during daemon startup.
@@ -516,6 +517,7 @@ impl ThreadRequestProcessor {
         turn_cost_worker: Option<crate::turn_cost_worker::TurnCostWorkerHandle>,
         initial_config_warnings: Vec<ConfigWarningNotification>,
         sample_responses: Arc<crate::thread_sample::SampleResponseRegistry>,
+        idle_runtime: Arc<crate::idle_runtime::IdleRuntime>,
     ) -> Self {
         Self {
             auth_manager,
@@ -537,6 +539,7 @@ impl ThreadRequestProcessor {
             skills_watcher,
             turn_cost_worker,
             initial_config_warnings: Arc::new(initial_config_warnings),
+            idle_runtime,
         }
     }
 
@@ -1191,6 +1194,7 @@ impl ThreadRequestProcessor {
         client_mcp_extensions: ClientMcpExtensions,
         request_context: RequestContext,
     ) -> Result<(), JSONRPCErrorError> {
+        let runner_access = request_context.idle_runner.clone();
         let ThreadStartParams {
             model,
             model_provider,
@@ -1253,6 +1257,10 @@ impl ThreadRequestProcessor {
             }
         }
         let runtime_workspace_roots = runtime_workspace_roots.map(resolve_runtime_workspace_roots);
+        let cwd = runner_access
+            .as_ref()
+            .map(|access| access.binding.checkout_root.display().to_string())
+            .or(cwd);
         let environment_requests =
             resolve_turn_environment_requests(self.thread_manager.as_ref(), environments)?;
         let mut typesafe_overrides = self.build_thread_config_overrides(
@@ -1286,6 +1294,7 @@ impl ThreadRequestProcessor {
         let initial_config_warnings = Arc::clone(&self.initial_config_warnings);
         let outgoing = Arc::clone(&listener_task_context.outgoing);
         let error_request_id = request_id.clone();
+        let runner = runner_access.map(|access| (Arc::clone(&self.idle_runtime), access));
         let thread_start_task = async move {
             if let Err(error) = Self::thread_start_task(
                 listener_task_context,
@@ -1310,6 +1319,7 @@ impl ThreadRequestProcessor {
                 experimental_raw_events,
                 request_trace,
                 initial_config_warnings,
+                runner,
             )
             .await
             {
@@ -1392,6 +1402,10 @@ impl ThreadRequestProcessor {
         experimental_raw_events: bool,
         request_trace: Option<W3cTraceContext>,
         initial_config_warnings: Arc<Vec<ConfigWarningNotification>>,
+        runner: Option<(
+            Arc<crate::idle_runtime::IdleRuntime>,
+            codex_idle_runtime::GrantAccess,
+        )>,
     ) -> Result<(), JSONRPCErrorError> {
         let thread_start_started_at = std::time::Instant::now();
         let requested_cwd = typesafe_overrides.cwd.clone();
@@ -1551,6 +1565,20 @@ impl ThreadRequestProcessor {
         let thread_id = reserved_thread_id
             .unwrap_or_else(|| listener_task_context.thread_manager.reserve_thread_id());
         start_options.reserved_thread_id = Some(thread_id);
+        if let Some((runtime, access)) = runner {
+            start_options.environments = Some(environment_requests.clone());
+            start_options.thread_extension_init = thread_extension_init;
+            runtime
+                .prepare_runner(
+                    thread_id,
+                    Some(access),
+                    /*parent*/ None,
+                    &mut start_options,
+                    &listener_task_context.thread_manager,
+                )
+                .await?;
+            thread_extension_init = std::mem::take(&mut start_options.thread_extension_init);
+        }
         // Startup can prewarm the Responses socket before start_thread returns.
         // Register the creating client first so that handshake can request attestation.
         listener_task_context
@@ -1573,7 +1601,10 @@ impl ThreadRequestProcessor {
                 dynamic_tools,
                 metrics_service_name: service_name,
                 parent_trace: request_trace,
-                environments: Some(environment_requests),
+                environments: start_options
+                    .environments
+                    .take()
+                    .or(Some(environment_requests)),
                 thread_extension_init,
                 client_mcp_extensions,
                 ..start_options
@@ -4032,6 +4063,15 @@ impl ThreadRequestProcessor {
             }
         };
         let (thread_history, resume_source_thread) = resume_result?;
+        if let InitialHistory::Resumed(resumed) = &thread_history
+            && self.idle_runtime.has_runner(resumed.conversation_id)?
+        {
+            crate::idle_runtime::runner_requests::validate(
+                "thread/resume",
+                &serde_json::to_value(params)
+                    .map_err(|_| invalid_request("Invalid runner resume"))?,
+            )?;
+        }
         // Path-based resume can use an empty request thread ID. Coordinate once its real
         // identity is known; unrelated loaded threads never wait for this cold startup.
         let _goal_resume_guard = if let InitialHistory::Resumed(resumed) = &thread_history {
@@ -4341,22 +4381,36 @@ impl ThreadRequestProcessor {
             }
         }
         let response_history = thread_history.clone();
-
-        match self
-            .thread_manager
-            .start_thread(StartThreadOptions {
-                initial_history: thread_history,
-                parent_trace: match target {
-                    ThreadResumeTarget::Client(request_id) => {
-                        self.request_trace_context(request_id).await
-                    }
-                    ThreadResumeTarget::DaemonRecovery(_) => None,
-                },
-                client_mcp_extensions,
-                ..StartThreadOptions::new(config)
-            })
-            .await
-        {
+        let parent_trace = match target {
+            ThreadResumeTarget::Client(request_id) => self.request_trace_context(request_id).await,
+            ThreadResumeTarget::DaemonRecovery(_) => None,
+        };
+        let runner_id = match &thread_history {
+            InitialHistory::Resumed(resumed)
+                if self.idle_runtime.has_runner(resumed.conversation_id)? =>
+            {
+                Some(resumed.conversation_id)
+            }
+            _ => None,
+        };
+        let mut options = StartThreadOptions {
+            initial_history: thread_history,
+            parent_trace,
+            client_mcp_extensions,
+            ..StartThreadOptions::new(config)
+        };
+        if let Some(thread_id) = runner_id {
+            self.idle_runtime
+                .prepare_runner(
+                    thread_id,
+                    /*access*/ None,
+                    /*parent*/ None,
+                    &mut options,
+                    &self.thread_manager,
+                )
+                .await?;
+        }
+        match self.thread_manager.start_thread(options).await {
             Ok(NewThread {
                 thread_id,
                 thread: codex_thread,
@@ -4691,6 +4745,13 @@ impl ThreadRequestProcessor {
         };
 
         if let Some((existing_thread_id, existing_thread, mut source_thread)) = running_thread {
+            if self.idle_runtime.has_runner(existing_thread_id)? {
+                crate::idle_runtime::runner_requests::validate(
+                    "thread/resume",
+                    &serde_json::to_value(params)
+                        .map_err(|_| invalid_request("Invalid runner resume"))?,
+                )?;
+            }
             let paginated_resume =
                 matches!(source_thread.history_mode, ThreadHistoryMode::Paginated);
             let existing_thread_rollout_path = existing_thread.rollout_path();
@@ -5264,6 +5325,8 @@ impl ThreadRequestProcessor {
                 "`experimentalDisablePredictionMcp` requires `experimentalPredictionMode: true`",
             ));
         }
+        let runner_params =
+            serde_json::to_value(&params).map_err(|_| invalid_request("Invalid runner fork"))?;
         let has_config_overrides = params.model.is_some()
             || params.model_provider.is_some()
             || params.profile.is_some()
@@ -5427,6 +5490,9 @@ impl ThreadRequestProcessor {
             .await;
         }
         let source_thread_id = source_thread.thread_id;
+        if self.idle_runtime.has_runner(source_thread_id)? {
+            crate::idle_runtime::runner_requests::validate("thread/fork", &runner_params)?;
+        }
         let source_thread_name = source_thread
             .name
             .as_deref()
@@ -5698,7 +5764,7 @@ impl ThreadRequestProcessor {
             .await?
         };
 
-        let fork_options = StartThreadOptions {
+        let mut fork_options = StartThreadOptions {
             thread_source,
             // Portable history omits session metadata, so retain its storage format explicitly.
             history_mode: portable_history.then_some(source_thread.history_mode),
@@ -5706,6 +5772,21 @@ impl ThreadRequestProcessor {
             reserved_thread_id,
             ..options
         };
+        if self.idle_runtime.has_runner(source_thread_id)? {
+            let id = fork_options
+                .reserved_thread_id
+                .unwrap_or_else(|| self.thread_manager.reserve_thread_id());
+            fork_options.reserved_thread_id = Some(id);
+            self.idle_runtime
+                .prepare_runner(
+                    id,
+                    /*access*/ None,
+                    Some(source_thread_id),
+                    &mut fork_options,
+                    &self.thread_manager,
+                )
+                .await?;
+        }
         let new_thread = if portable_history {
             self.thread_manager
                 .fork_thread_from_history(

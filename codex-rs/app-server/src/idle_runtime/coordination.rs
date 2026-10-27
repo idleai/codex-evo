@@ -1,6 +1,7 @@
 use super::wire;
 use codex_idle_runtime::GrantAccess;
 use codex_idle_runtime::GrantScope;
+use codex_idle_runtime::RunnerBinding;
 use codex_idle_runtime::WorkspaceBinding;
 use codex_idle_runtime::WorkspaceService;
 use serde_json::Value;
@@ -29,6 +30,18 @@ struct Work {
     grant: Option<GrantAccess>,
     request: Value,
     response: oneshot::Sender<io::Result<Value>>,
+    dispatch: Dispatch,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Dispatch {
+    Client,
+    Runner,
+}
+
+pub(super) enum RunnerRequest {
+    Register,
+    Authorize,
 }
 
 struct Worker {
@@ -75,6 +88,58 @@ impl Coordination {
         grant: Option<GrantAccess>,
         request: Value,
     ) -> io::Result<Value> {
+        if !matches!(
+            request.get("kind").and_then(Value::as_str),
+            Some("status" | "upload" | "commit" | "call")
+        ) {
+            return Err(io::Error::other(
+                "Operation requires a trusted daemon dispatcher",
+            ));
+        }
+        self.enqueue(binding, client_id, grant, request, Dispatch::Client)
+            .await
+    }
+
+    pub(super) async fn runner(
+        &self,
+        binding: &RunnerBinding,
+        request: RunnerRequest,
+    ) -> io::Result<Value> {
+        let access = self
+            .service
+            .runner_access(binding)
+            .map_err(|_| wire::invalid())?;
+        let request = match request {
+            RunnerRequest::Register => {
+                json!({"kind":"register_runner","session_id":binding.thread_id,"parent":binding.parent})
+            }
+            RunnerRequest::Authorize => {
+                json!({"kind":"authorize_runner","session_id":binding.thread_id,"write":!binding.policy.write_roots.is_empty()})
+            }
+        };
+        let result = self
+            .enqueue(
+                binding.workspace.clone(),
+                binding.client_id.clone(),
+                Some(access),
+                request,
+                Dispatch::Runner,
+            )
+            .await?;
+        result
+            .get("Ok")
+            .cloned()
+            .ok_or_else(|| io::Error::other("Native workspace authority denied runner admission"))
+    }
+
+    async fn enqueue(
+        &self,
+        binding: WorkspaceBinding,
+        client_id: String,
+        grant: Option<GrantAccess>,
+        request: Value,
+        dispatch: Dispatch,
+    ) -> io::Result<Value> {
         let input = self.worker(binding).await?;
         let (response, received) = oneshot::channel();
         input
@@ -83,6 +148,7 @@ impl Coordination {
                 grant,
                 request,
                 response,
+                dispatch,
             })
             .map_err(|_| io::Error::other("Idle coordination queue is full"))?;
         tokio::time::timeout(Duration::from_secs(25), received)
@@ -187,7 +253,11 @@ async fn run(
             service.grant_access(&grant.grant_id).is_ok_and(|current| {
                 current.client_id == work.client_id
                     && current.binding == binding
-                    && current.scope == GrantScope::CoordinationOwner
+                    && current.scope
+                        == match work.dispatch {
+                            Dispatch::Client => GrantScope::CoordinationOwner,
+                            Dispatch::Runner => GrantScope::Runner,
+                        }
             })
         });
         let available = service.status().is_ok_and(|status| {
@@ -222,6 +292,7 @@ struct Process {
     child: Child,
     input: ChildStdout,
     output: ChildStdin,
+    runner_authorization: bool,
 }
 
 impl Process {
@@ -229,6 +300,18 @@ impl Process {
         service: &WorkspaceService,
         binding: &WorkspaceBinding,
         directory: &Path,
+    ) -> io::Result<Self> {
+        match Self::start_version(service, binding, directory, /*version*/ 2).await {
+            Ok(process) => Ok(process),
+            Err(_) => Self::start_version(service, binding, directory, /*version*/ 1).await,
+        }
+    }
+
+    async fn start_version(
+        service: &WorkspaceService,
+        binding: &WorkspaceBinding,
+        directory: &Path,
+        version: u32,
     ) -> io::Result<Self> {
         let helper_path = service
             .coordination_helper()
@@ -255,26 +338,41 @@ impl Process {
         if wire::read::<Value>(&mut input).await? != Some(json!({"version":1})) {
             return Err(wire::invalid());
         }
-        wire::write(&mut output, &json!({"version":1,"state_directory":directory,"destination":{
+        let mut start = json!({"version":version,"state_directory":directory,"destination":{
             "target":{"host_id":status.host_id,"checkout_id":binding.checkout_id},
             "workspace_id":binding.workspace_id,"repository_id":binding.repository_id,"chain_id":binding.chain_id,"checkout_root":binding.checkout_root
-        }})).await?;
-        if wire::read::<Value>(&mut input).await? != Some(json!({"ready":true})) {
+        }});
+        if version == 2 {
+            start["runtime_id"] = json!(status.runtime_id);
+        }
+        wire::write(&mut output, &start).await?;
+        let ready = if version == 2 {
+            json!({"ready":true,"runner_authorization":1})
+        } else {
+            json!({"ready":true})
+        };
+        if wire::read::<Value>(&mut input).await? != Some(ready) {
             return Err(wire::invalid());
         }
         Ok(Self {
             child,
             input,
             output,
+            runner_authorization: version == 2,
         })
     }
 
     async fn call(&mut self, work: &Work) -> io::Result<Value> {
-        wire::write(
-            &mut self.output,
-            &json!({"client_id":work.client_id,"request":work.request}),
-        )
-        .await?;
+        if work.dispatch == Dispatch::Runner && !self.runner_authorization {
+            return Err(io::Error::other(
+                "Idle helper does not support runner authorization",
+            ));
+        }
+        let mut frame = json!({"client_id":work.client_id,"request":work.request});
+        if work.dispatch == Dispatch::Runner {
+            frame["source"] = json!("daemon");
+        }
+        wire::write(&mut self.output, &frame).await?;
         wire::read(&mut self.input).await?.ok_or_else(wire::invalid)
     }
 

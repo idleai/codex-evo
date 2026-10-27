@@ -557,6 +557,11 @@ enabled = false
                         http_client_factory: good_config.http_client_factory(),
                         queue_service: None,
                         turn_start_admission: None,
+                        idle_runtime: Arc::new(crate::idle_runtime::IdleRuntime::new(
+                            &good_config.codex_home,
+                            "idle-test".into(),
+                            /*turn_start_admission*/ None,
+                        )),
                     },
                 ),
                 Arc::new(CodexHomeUserInstructionsProvider::new(

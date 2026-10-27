@@ -148,7 +148,7 @@ pub(crate) struct MessageProcessor {
     models_refresh_worker: ModelsRefreshWorker,
     turn_cost_worker: Option<TurnCostWorker>,
     skills_watcher: Arc<SkillsWatcher>,
-    idle_runtime: crate::idle_runtime::IdleRuntime,
+    idle_runtime: Arc<crate::idle_runtime::IdleRuntime>,
     account_processor: Arc<AccountRequestProcessor>,
     apps_processor: AppsRequestProcessor,
     catalog_processor: CatalogRequestProcessor,
@@ -328,10 +328,13 @@ impl MessageProcessor {
             ),
         );
         let goal_service = Arc::new(GoalService::new());
-        let idle_runtime =
-            crate::idle_runtime::IdleRuntime::new(&config.codex_home, installation_id.clone());
         let turn_admission = TurnAdmission::default();
         let turn_start_admission: Arc<dyn TurnStartAdmission> = Arc::new(turn_admission.clone());
+        let idle_runtime = Arc::new(crate::idle_runtime::IdleRuntime::new(
+            &config.codex_home,
+            installation_id.clone(),
+            Some(Arc::clone(&turn_start_admission)),
+        ));
         let extension_event_sink =
             app_server_extension_event_sink(outgoing.clone(), thread_state_manager.clone());
         let mut queue_service = None;
@@ -368,6 +371,7 @@ impl MessageProcessor {
                         http_client_factory: config.http_client_factory(),
                         queue_service: queue_service.clone(),
                         turn_start_admission: Some(Arc::clone(&turn_start_admission)),
+                        idle_runtime: Arc::clone(&idle_runtime),
                     },
                 ),
                 Arc::new(CodexHomeUserInstructionsProvider::new(
@@ -544,7 +548,9 @@ impl MessageProcessor {
             turn_cost_worker.as_ref().map(TurnCostWorker::handle),
             config_warnings,
             sample_responses,
+            Arc::clone(&idle_runtime),
         );
+        idle_runtime.monitor_runners(Arc::downgrade(&thread_manager));
         let turn_processor = TurnRequestProcessor::new(
             auth_manager,
             Arc::clone(&thread_manager),
@@ -937,10 +943,20 @@ impl MessageProcessor {
     /// Handle a standalone JSON-RPC response originating from the peer.
     pub(crate) async fn process_response(
         &self,
+        origin: crate::transport::ConnectionOrigin,
         connection_id: ConnectionId,
         response: JSONRPCResponse,
     ) {
         let JSONRPCResponse { id, result, .. } = response;
+        let thread_id = self.outgoing.pending_request_thread(&id).await;
+        if self
+            .idle_runtime
+            .runner_response(origin, connection_id, thread_id, &result)
+            .await
+            .is_err()
+        {
+            return;
+        }
         self.outgoing
             .notify_client_response(connection_id, id, result)
             .await
@@ -962,11 +978,15 @@ impl MessageProcessor {
         // connection outbound-ready. Websocket JSON-RPC calls pass `None` so
         // lib.rs can deliver connection-scoped initialize notifications first.
         outbound_initialized: Option<&AtomicBool>,
-        request_context: RequestContext,
+        mut request_context: RequestContext,
     ) -> Result<(), JSONRPCErrorError> {
         let connection_id = connection_request_id.connection_id;
         self.idle_runtime
             .authorize_request(session.origin, connection_id, &codex_request)?;
+        request_context.idle_runner = self
+            .idle_runtime
+            .runner_request(session.origin, connection_id, &codex_request)
+            .await?;
         if let ClientRequest::Initialize { request_id, params } = codex_request {
             let connection_initialized = self
                 .initialize_processor
