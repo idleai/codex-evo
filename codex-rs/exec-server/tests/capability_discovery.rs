@@ -3,7 +3,6 @@ mod common;
 #[path = "common/fake_bwrap.rs"]
 mod fake_bwrap;
 
-#[cfg(target_os = "linux")]
 use anyhow::Context as _;
 use base64::Engine as _;
 use base64::engine::general_purpose::STANDARD;
@@ -1056,6 +1055,14 @@ async fn sandboxed_discovery_batches_roots_without_combining_different_permissio
     let workspace = tempfile::tempdir()?;
     let first_root = workspace.path().join("first");
     let second_root = workspace.path().join("second");
+    // Keep manifest lookup within the fixture roots. Each ancestor probe in the
+    // fallback path starts another sandboxed filesystem helper.
+    for root in [&first_root, &second_root] {
+        write_file(
+            &root.join(".codex-plugin/plugin.json"),
+            r#"{"name":"fixture"}"#,
+        )?;
+    }
     write_file(
         &first_root.join("skills/first/SKILL.md"),
         "---\nname: first\ndescription: First skill.\n---\n",
@@ -1113,7 +1120,8 @@ async fn sandboxed_discovery_batches_roots_without_combining_different_permissio
             },
         ],
     )
-    .await?;
+    .await
+    .context("discover roots with shared sandbox permissions")?;
     assert_eq!(
         response
             .roots
@@ -1169,7 +1177,8 @@ async fn sandboxed_discovery_batches_roots_without_combining_different_permissio
                 },
             ],
         )
-        .await?;
+        .await
+        .context("discover roots after the batched helper fails")?;
         assert_eq!(
             fallback
                 .roots
@@ -1229,7 +1238,8 @@ async fn sandboxed_discovery_batches_roots_without_combining_different_permissio
             },
         ],
     )
-    .await?;
+    .await
+    .context("discover roots with separate sandbox permissions")?;
     assert_eq!(
         response
             .roots
