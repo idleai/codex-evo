@@ -2,6 +2,7 @@ import io
 import json
 from pathlib import Path
 import subprocess
+import sys
 import tarfile
 import tempfile
 import unittest
@@ -9,7 +10,63 @@ from unittest.mock import patch
 
 from npm_alpha_tag import npm_alpha_tag
 import publish_r2_release as r2
-from releases import is_valid_release_version, should_make_latest, should_update_version
+from releases import (
+    is_valid_release_version,
+    should_make_latest,
+    should_update_version,
+    version_from_tag,
+)
+
+
+class ReleaseTagTest(unittest.TestCase):
+    def test_supported_tags_preserve_the_runtime_version(self) -> None:
+        for prefix in ("codex-evo-v", "rust-v"):
+            for version in ("0.164.0", "0.164.0-alpha.12.2", "0.164.0-beta.1"):
+                with self.subTest(prefix=prefix, version=version):
+                    self.assertEqual(version_from_tag(prefix + version), version)
+
+    def test_unrecognized_or_invalid_tags_are_rejected(self) -> None:
+        for tag in (
+            "v0.164.0",
+            "product-linux-0.164.0",
+            "rust-vrust-v0.164.0",
+            "codex-evo-v",
+            "codex-evo-v0.164",
+            "codex-evo-v0.164.0-alpha.12.2.3",
+            "codex-evo-v0.164.0-alpha.12-idle.2",
+        ):
+            with self.subTest(tag=tag):
+                with self.assertRaises(ValueError):
+                    version_from_tag(tag)
+
+    def test_tag_command_prints_the_runtime_version(self) -> None:
+        result = subprocess.run(
+            [
+                sys.executable,
+                str(Path(__file__).with_name("releases.py")),
+                "--tag",
+                "codex-evo-v0.164.0-alpha.12.2",
+            ],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        self.assertEqual(result.stdout, "0.164.0-alpha.12.2\n")
+
+    def test_tag_command_does_not_output_an_invalid_version(self) -> None:
+        result = subprocess.run(
+            [
+                sys.executable,
+                str(Path(__file__).with_name("releases.py")),
+                "--tag",
+                "codex-evo-v0.164.0-unknown.2",
+            ],
+            capture_output=True,
+            text=True,
+        )
+        self.assertNotEqual(result.returncode, 0)
+        self.assertEqual(result.stdout, "")
+        self.assertIn("invalid Codex release tag", result.stderr)
 
 
 class VersionComparisonTest(unittest.TestCase):

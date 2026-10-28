@@ -33,7 +33,11 @@ variable uses hosted Linux. Busy local workers do not cause automatic hosted
 overflow. The workflow routes external fork PRs to hosted runners.
 
 Release tags build Linux GNU packages with Bazel and publish them on GitHub
-after checksum verification. Existing published assets remain available. Publishing npm/Python or
+after full CI and checksum verification. Fork releases use `codex-evo-v<version>`;
+`rust-v<version>` tags remain supported. The tagged commit must declare the same
+version in `codex-rs/Cargo.toml`. Alpha and beta versions publish as prereleases.
+Use a separate release commit to keep the development branch at `0.0.0`.
+Existing published assets remain available. Publishing npm/Python or
 other platform packages requires a separate, explicitly configured release path.
 
 The repository's `CI required` ruleset is staged for activation after this policy

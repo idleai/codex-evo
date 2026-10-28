@@ -15,6 +15,16 @@ def is_valid_release_version(version: str) -> bool:
     return _VERSION_RE.fullmatch(version) is not None
 
 
+def version_from_tag(tag: str) -> str:
+    for prefix in ("codex-evo-v", "rust-v"):
+        if tag.startswith(prefix):
+            version = tag.removeprefix(prefix)
+            if is_valid_release_version(version):
+                return version
+            break
+    raise ValueError(f"invalid Codex release tag: {tag}")
+
+
 def is_valid_stable_release_version(version: str) -> bool:
     return is_valid_release_version(version) and "-" not in version
 
@@ -60,12 +70,24 @@ def should_make_latest(version: str, latest: dict) -> bool:
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("version")
-    parser.add_argument(
+    mode = parser.add_mutually_exclusive_group()
+    mode.add_argument(
+        "--tag",
+        action="store_true",
+        help="Read a Codex release tag and print its runtime version.",
+    )
+    mode.add_argument(
         "--check-github",
         choices=("latest", "canary"),
         help="Compare with the latest release JSON or canary Cargo.toml on stdin.",
     )
     args = parser.parse_args()
+    if args.tag:
+        try:
+            print(version_from_tag(args.version))
+        except ValueError as error:
+            parser.error(str(error))
+        raise SystemExit(0)
     if args.check_github is None:
         raise SystemExit(0 if is_valid_release_version(args.version) else 1)
     if args.check_github == "latest":
