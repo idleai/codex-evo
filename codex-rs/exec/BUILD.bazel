@@ -8,6 +8,7 @@ codex_rust_crate(
         "//codex-rs/cli:codex",
         "//codex-rs/linux-sandbox:codex-linux-sandbox",
     ],
+    integration_compile_data_extra = ["tests/fixtures/apply_patch_freeform_final.txt"],
     test_shard_counts = {
         "exec-all-test": 8,
     },

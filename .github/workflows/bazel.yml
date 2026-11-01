@@ -51,7 +51,8 @@ jobs:
           ./.github/scripts/run-bazel-ci.sh --print-failed-action-summary -- build \
             --platforms=//:local_linux -- \
             //codex-rs/cli:codex //codex-rs/app-server:codex-app-server \
-            //codex-rs/code-mode-host:codex-code-mode-host
+            //codex-rs/code-mode-host:codex-code-mode-host \
+            //codex-rs/exec-server:codex-exec-server
       - name: Test selected Linux packages
         env:
           TEST_QUERY: ${{ inputs.query }}

@@ -58,7 +58,7 @@ jobs:
         run: echo "npm_config_store_dir=$RUNNER_TEMP/pnpm-preflight-store" >> "$GITHUB_ENV"
       - uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f # v6.3.0
         with:
-          node-version: 22
+          node-version-file: .nvmrc
           cache: pnpm
           # Script-free installs must not populate the SDK's prepared packages.
           cache-dependency-path: |
