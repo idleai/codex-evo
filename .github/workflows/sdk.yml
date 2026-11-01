@@ -165,7 +165,12 @@ jobs:
           uv run --only-group dev --frozen --no-sync ruff format --check .
           args=()
           if [[ "$FULL" != true ]]; then
-            args=(tests/test_client_rpc_methods.py tests/test_app_server_lifecycle.py tests/test_async_client_behavior.py)
+            args=(
+              tests/test_client_rpc_methods.py
+              tests/test_app_server_lifecycle.py
+              tests/test_async_client_behavior.py
+              tests/test_artifact_workflow_and_binaries.py
+            )
           fi
           uv run --only-group dev --frozen --no-sync pytest "${args[@]}"
 

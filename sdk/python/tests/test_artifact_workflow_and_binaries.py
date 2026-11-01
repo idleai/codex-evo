@@ -152,12 +152,23 @@ def test_root_format_driver_covers_all_formatter_groups(
         "--others",
         "--exclude-standard",
     ]
+    rust_sources = ("codex-rs/cli/src/main.rs", "tools/example.rs")
+    for source in rust_sources:
+        source_path = tmp_path / source
+        source_path.parent.mkdir(parents=True, exist_ok=True)
+        source_path.write_text("fn main() {}\n")
 
     # The Python SDK CI image has no Git; keep discovery mocked at the process boundary.
     def fake_check_output(args, *, cwd):
         assert cwd == tmp_path
-        assert args == git_ls_files_args
-        return b"MODULE.bazel\0README.md\0third_party/v8/libcxx.BUILD.bazel\0"
+        if args == git_ls_files_args:
+            return b"MODULE.bazel\0README.md\0third_party/v8/libcxx.BUILD.bazel\0"
+        assert args == git_ls_files_args + [
+            "--",
+            "*.rs",
+            ":(exclude)third_party/vendor/**",
+        ]
+        return "\0".join((*rust_sources, "codex-rs/deleted.rs", "")).encode()
 
     monkeypatch.setattr(script, "REPO_ROOT", tmp_path)
     monkeypatch.setattr(script.subprocess, "check_output", fake_check_output)
@@ -217,10 +228,21 @@ def test_root_format_driver_covers_all_formatter_groups(
     )
     assert formatters[0].commands[-1].args == ("just", "--unstable", "--fmt")
     assert checks[0].commands[-1].args == ("just", "--unstable", "--fmt", "--check")
-    cargo_fmt_args = ("cargo", "fmt", "--", "--config", "imports_granularity=Item")
-    assert formatters[1].commands == (script.Command(cargo_fmt_args, tmp_path / "codex-rs"),)
+    rustfmt_args = (
+        "rustfmt",
+        "--edition",
+        "2024",
+        "--config-path",
+        str(tmp_path / "codex-rs" / "rustfmt.toml"),
+        "--config",
+        "imports_granularity=Item,skip_children=true",
+    )
+    rust_paths = ("../tools/example.rs", "cli/src/main.rs")
+    assert formatters[1].commands == (
+        script.Command(rustfmt_args + rust_paths, tmp_path / "codex-rs"),
+    )
     assert checks[1].commands == (
-        script.Command(cargo_fmt_args + ("--check",), tmp_path / "codex-rs"),
+        script.Command(rustfmt_args + ("--check",) + rust_paths, tmp_path / "codex-rs"),
     )
     format_buildifier_args = formatters[2].commands[-1].args
     check_buildifier_args = checks[2].commands[-1].args
