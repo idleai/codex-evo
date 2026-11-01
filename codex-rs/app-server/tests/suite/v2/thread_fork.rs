@@ -452,8 +452,8 @@ stream_max_retries = 0
     assert!(response.thread.turns.iter().all(|turn| {
         turn.items.iter().all(|item| {
             matches!(
-                item,
-                ThreadItem::UserMessage { .. } | ThreadItem::AgentMessage { .. }
+                &item.payload,
+                ThreadItemPayload::UserMessage { .. } | ThreadItemPayload::AgentMessage { .. }
             )
         })
     }));
