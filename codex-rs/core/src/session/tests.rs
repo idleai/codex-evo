@@ -6904,11 +6904,13 @@ async fn response_metadata_builders_capture_fresh_mcp_attribution() {
 
 #[tokio::test]
 async fn responses_metadata_uses_selected_harness_analytics_client() {
+    let analytics_server = wiremock::MockServer::start().await;
     for enabled in [true, false] {
         let (mut session, mut turn_context) = make_session_and_context().await;
         session.services.analytics_events_client = AnalyticsEventsClient::new(
             Arc::clone(&session.services.auth_manager),
-            turn_context.config.chatgpt_base_url.clone(),
+            // The fork allows analytics capture only through an explicit test destination.
+            analytics_server.uri(),
             Some(enabled),
         );
         Arc::make_mut(&mut turn_context.config).analytics_enabled = Some(!enabled);

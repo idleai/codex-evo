@@ -43,6 +43,14 @@ async fn local_provider() -> Result<(MockServer, TempDir)> {
     Ok((server, home))
 }
 
+fn normalize_doctor_version(stdout: &str) -> String {
+    let prefix = format!("Codex Doctor v{}\n", env!("CARGO_PKG_VERSION"));
+    let body = stdout
+        .strip_prefix(&prefix)
+        .expect("Doctor should report the compiled version");
+    format!("Codex Doctor v<VERSION>\n{body}")
+}
+
 fn local_command(home: &TempDir) -> Result<Command> {
     let mut command = Command::new(codex_utils_cargo_bin::cargo_bin("codex")?);
     command
@@ -220,6 +228,7 @@ async fn network_only_human_output() -> Result<()> {
         .output()?;
     let stdout = String::from_utf8(output.stdout)?;
     assert!(output.status.success(), "{stdout}");
+    let stdout = normalize_doctor_version(&stdout);
     insta::assert_snapshot!("network_only_human_output", stdout);
     Ok(())
 }
@@ -237,6 +246,7 @@ async fn network_only_config_failure_human_output() -> Result<()> {
     let stdout = String::from_utf8(output.stdout)?;
     assert_eq!(output.status.code(), Some(1));
     assert!(!stdout.contains("sk-config-credential-fixture"));
+    let stdout = normalize_doctor_version(&stdout);
     // Config loading may canonicalize the directory, rendering may shorten it,
     // and Windows uses backslashes.
     // Normalize the rendered config-file row while retaining its label and filename.
