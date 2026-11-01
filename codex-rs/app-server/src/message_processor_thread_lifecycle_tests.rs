@@ -685,6 +685,7 @@ decision = "prompt-user"
         for connection_id in [incompatible_id, unrelated_id] {
             processor
                 .process_response(
+                    ConnectionOrigin::WebSocket,
                     connection_id,
                     JSONRPCResponse {
                         id: request_id.clone(),
@@ -715,6 +716,7 @@ decision = "prompt-user"
         // their own coverage; declining here needs no Linux sandbox executable.
         processor
             .process_response(
+                ConnectionOrigin::WebSocket,
                 capable_id,
                 JSONRPCResponse {
                     id: request_id.clone(),

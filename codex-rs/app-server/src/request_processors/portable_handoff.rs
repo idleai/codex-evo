@@ -1,5 +1,5 @@
 use super::build_legacy_api_turns_from_rollout_items;
-use codex_app_server_protocol::ThreadItem;
+use codex_app_server_protocol::ThreadItemPayload;
 use codex_app_server_protocol::Turn;
 use codex_app_server_protocol::UserInput;
 use codex_protocol::models::ContentItem;
@@ -190,6 +190,7 @@ fn portable_response_item_turns(items: &[RolloutItem]) -> Vec<PortableTurn> {
                 }
             }
             RolloutItem::EventMsg(_)
+            | RolloutItem::DynamicToolsUpdated { .. }
             | RolloutItem::Compacted(_)
             | RolloutItem::TokenUsageRecord(_)
             | RolloutItem::RetainedContext(_)
@@ -212,8 +213,8 @@ fn portable_turn(turn: Turn) -> Option<PortableTurn> {
     let mut user_parts = Vec::new();
     let mut assistant_parts = Vec::new();
     for item in turn.items {
-        match item {
-            ThreadItem::UserMessage { content, .. } => {
+        match item.payload {
+            ThreadItemPayload::UserMessage { content, .. } => {
                 user_parts.extend(content.into_iter().filter_map(|input| match input {
                     UserInput::Text { text, .. } if !text.trim().is_empty() => Some(text),
                     UserInput::Text { .. }
@@ -225,27 +226,27 @@ fn portable_turn(turn: Turn) -> Option<PortableTurn> {
                     | UserInput::Mention { .. } => None,
                 }));
             }
-            ThreadItem::AgentMessage { text, .. } if !text.trim().is_empty() => {
+            ThreadItemPayload::AgentMessage { text, .. } if !text.trim().is_empty() => {
                 assistant_parts.push(text);
             }
-            ThreadItem::HookPrompt { .. }
-            | ThreadItem::AgentMessage { .. }
-            | ThreadItem::Plan { .. }
-            | ThreadItem::Reasoning { .. }
-            | ThreadItem::CommandExecution { .. }
-            | ThreadItem::FileChange { .. }
-            | ThreadItem::McpToolCall { .. }
-            | ThreadItem::DynamicToolCall { .. }
-            | ThreadItem::FunctionCallOutput { .. }
-            | ThreadItem::CollabAgentToolCall { .. }
-            | ThreadItem::SubAgentActivity { .. }
-            | ThreadItem::WebSearch(_)
-            | ThreadItem::ImageView { .. }
-            | ThreadItem::Sleep(_)
-            | ThreadItem::ImageGeneration(_)
-            | ThreadItem::EnteredReviewMode { .. }
-            | ThreadItem::ExitedReviewMode { .. }
-            | ThreadItem::ContextCompaction { .. } => {}
+            ThreadItemPayload::HookPrompt { .. }
+            | ThreadItemPayload::AgentMessage { .. }
+            | ThreadItemPayload::Plan { .. }
+            | ThreadItemPayload::Reasoning { .. }
+            | ThreadItemPayload::CommandExecution { .. }
+            | ThreadItemPayload::FileChange { .. }
+            | ThreadItemPayload::McpToolCall { .. }
+            | ThreadItemPayload::DynamicToolCall { .. }
+            | ThreadItemPayload::FunctionCallOutput { .. }
+            | ThreadItemPayload::CollabAgentToolCall { .. }
+            | ThreadItemPayload::SubAgentActivity { .. }
+            | ThreadItemPayload::WebSearch(_)
+            | ThreadItemPayload::ImageView { .. }
+            | ThreadItemPayload::Sleep(_)
+            | ThreadItemPayload::ImageGeneration(_)
+            | ThreadItemPayload::EnteredReviewMode { .. }
+            | ThreadItemPayload::ExitedReviewMode { .. }
+            | ThreadItemPayload::ContextCompaction { .. } => {}
         }
     }
 
