@@ -17,10 +17,7 @@ async fn dropping_server_releases_backend_with_an_open_mcp_session() -> color_ey
         AppEventSender::new(events),
         status,
         /*managed_requirement*/ None,
-        ToolServices {
-            task_tools: true,
-            worktrees: None,
-        },
+        /*worktrees*/ None,
     )
     .await?;
     drop(client);

@@ -5,9 +5,9 @@ Do not restore upstream workflow matrices without an explicit policy change.
 
 Pull requests run hosted preflight checks before allocating one Linux GNU Bazel
 job. That job tests changed Rust packages and the core Idle runtime, app server,
-daemon, authorization and Linux sandbox packages, and compiles the shipped CLI
-and app server. SDK checks run when SDK files change. Documentation-only changes
-do not allocate a Rust runner. `CI required` fails for failed, cancelled or
+daemon, authorization and Linux sandbox packages, and compiles the shipped CLI,
+app server and execution server. SDK checks run when SDK files change.
+Documentation-only changes do not allocate a Rust runner. `CI required` fails for failed, cancelled or
 unexpectedly skipped jobs.
 
 Five-minute builds and ten-minute total PR feedback are performance targets,

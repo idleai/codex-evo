@@ -404,6 +404,9 @@ if [[ -n "${BUILDBUDDY_API_KEY:-}" ]]; then
   echo "BuildBuddy API key is available; using remote Bazel configuration."
 else
   echo "BuildBuddy API key is not available; using local Bazel configuration."
+  if [[ "${bazel_args[0]}" == "test" ]]; then
+    bazel_run_args+=("--test_env=INSTA_UPDATE=no")
+  fi
 fi
 if (( ${#post_config_bazel_args[@]} > 0 )); then
   bazel_run_args+=("${post_config_bazel_args[@]}")

@@ -103,6 +103,7 @@ impl IdleCommand {
             )?,
         };
         let args = RemoteAppServerConnectArgs {
+            required_human_approval: false,
             endpoint: RemoteAppServerEndpoint::UnixSocket { socket_path },
             client_name: "codex-idle-owner".into(),
             client_version: env!("CARGO_PKG_VERSION").into(),

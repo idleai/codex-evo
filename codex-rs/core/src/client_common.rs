@@ -145,6 +145,7 @@ pub(crate) fn rewrite_codex_agent_messages_as_user_messages(items: &mut [Respons
 }
 
 pub struct ResponseStream {
+    pub(crate) routing_affinity: Option<codex_http_client::ChatGptRoutingAffinity>,
     pub(crate) rx_event: mpsc::Receiver<Result<ResponseEvent>>,
     pub(crate) interrupt: Option<oneshot::Sender<codex_api::ResponseInterrupt>>,
     /// Signals the mapper task that the consumer stopped polling before the
