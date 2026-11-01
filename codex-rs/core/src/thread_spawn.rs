@@ -31,6 +31,9 @@ pub struct ThreadCreateRequest {
     pub task_name: String,
     /// `None` starts fresh; `FullHistory` uses native fork preparation.
     pub fork_mode: Option<SpawnAgentForkMode>,
+    pub explicit_fork: bool,
+    pub profile: Option<String>,
+    pub service_tier: Option<String>,
     pub agent_type: Option<String>,
     pub model: Option<String>,
     pub reasoning_effort: Option<ReasoningEffort>,
@@ -66,6 +69,9 @@ impl ThreadSpawnRequest {
             ThreadCreateRequest {
                 task_name: self.task_name,
                 fork_mode: self.fork_mode,
+                explicit_fork: self.explicit_fork,
+                profile: self.profile,
+                service_tier: self.service_tier,
                 agent_type: self.agent_type,
                 model: self.model,
                 reasoning_effort: self.reasoning_effort,

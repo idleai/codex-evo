@@ -158,6 +158,9 @@ fn create_request(name: &str, fork_history: bool) -> ThreadCreateRequest {
     ThreadCreateRequest {
         task_name: name.into(),
         fork_mode: fork_history.then_some(SpawnAgentForkMode::FullHistory),
+        explicit_fork: true,
+        profile: None,
+        service_tier: None,
         agent_type: None,
         model: None,
         reasoning_effort: None,
