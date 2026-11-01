@@ -3,4 +3,6 @@ load("//:defs.bzl", "codex_rust_crate")
 codex_rust_crate(
     name = "thread-store",
     crate_name = "codex_thread_store",
+    # History materialization and SQLite lifecycle coverage can exceed five minutes.
+    unit_test_timeout = "long",
 )
