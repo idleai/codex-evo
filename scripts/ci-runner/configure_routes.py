@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Assign the existing eight workers to Codex, client PRs and background work."""
+"""Assign eight workers to Codex PRs and shared client/background work."""
 
 import argparse
 import json
@@ -7,7 +7,9 @@ from pathlib import Path
 import subprocess
 
 
-ROLE_LABELS = {"codex-pr-linux-x64", "idle-pr-linux-x64", "idle-background-linux-x64"}
+SHARED_LABEL = "idle-shared-linux-x64"
+SHARED_ALIASES = {"idle-pr-linux-x64", "idle-background-linux-x64"}
+ROLE_LABELS = {"codex-pr-linux-x64", SHARED_LABEL, *SHARED_ALIASES}
 REPOSITORIES = (
     "codex-evo",
     "editchain",
@@ -16,6 +18,7 @@ REPOSITORIES = (
     "web-ui",
     "vscode-extension",
     "offstage",
+    "memos",
 )
 
 
@@ -30,23 +33,28 @@ def routing_plan(runners):
     plan = []
     for index, name in enumerate(names, 1):
         runner = by_name[name]
-        role = (
-            "codex-pr-linux-x64"
-            if index <= 4
-            else "idle-pr-linux-x64"
-            if index <= 6
-            else "idle-background-linux-x64"
-        )
+        role = "codex-pr-linux-x64" if index <= 4 else SHARED_LABEL
         labels = {
             label["name"] for label in runner["labels"] if label["type"] == "custom"
         }
-        # Keep legacy labels for existing workflows and repositories outside
-        # this rollout. Repository variables select the new allocations.
         labels = (labels - ROLE_LABELS) | {role}
+        # Queued jobs and older workflow defaults can still select either
+        # previous label; both now reach all four shared workers.
+        if role == SHARED_LABEL:
+            labels.update(SHARED_ALIASES)
         plan.append(
             {"id": runner["id"], "name": name, "role": role, "labels": sorted(labels)}
         )
     return plan
+
+
+def repository_routes(repository):
+    pr_route = (
+        ("CODEX_LINUX_RUNNER", "codex-pr-linux-x64")
+        if repository == "codex-evo"
+        else ("IDLE_LINUX_RUNNER", SHARED_LABEL)
+    )
+    return (pr_route, ("IDLE_BACKGROUND_RUNNER", SHARED_LABEL))
 
 
 def api(path, *, method="GET", body=None):
@@ -101,16 +109,7 @@ def main():
             body={"labels": runner["labels"]},
         )
     for repository in REPOSITORIES:
-        name = (
-            "CODEX_LINUX_RUNNER" if repository == "codex-evo" else "IDLE_LINUX_RUNNER"
-        )
-        label = (
-            "codex-pr-linux-x64" if repository == "codex-evo" else "idle-pr-linux-x64"
-        )
-        for variable, value in (
-            (name, label),
-            ("IDLE_BACKGROUND_RUNNER", "idle-background-linux-x64"),
-        ):
+        for variable, value in repository_routes(repository):
             subprocess.run(
                 [
                     "gh",
@@ -127,9 +126,7 @@ def main():
     (args.record_directory / "routing.json").write_text(
         json.dumps(plan, indent=2) + "\n"
     )
-    print(
-        "Configured four Codex PR workers, two client PR workers and two background workers."
-    )
+    print("Configured four Codex PR workers and four shared client/background workers.")
 
 
 if __name__ == "__main__":
