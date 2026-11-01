@@ -174,17 +174,51 @@ impl IdleRuntime {
             .flatten();
         if let Some(binding) = binding {
             if let Some(access) = &access {
-                if access.scope != GrantScope::Runner
-                    || access.binding != binding.workspace
-                    || access.client_id != binding.client_id
-                    || access.grant_id != binding.grant_id
-                {
+                if access.scope != GrantScope::Runner || access.binding != binding.workspace {
                     return Err(invalid_request("This connection cannot access the runner"));
+                }
+                if access.client_id != binding.client_id || access.grant_id != binding.grant_id {
+                    if !matches!(
+                        method,
+                        "thread/read"
+                            | "thread/resume"
+                            | "thread/unsubscribe"
+                            | "thread/turns/list"
+                            | "thread/items/list"
+                    ) {
+                        return Err(invalid_request(
+                            "Invited contributors submit through the attributed session queue",
+                        ));
+                    }
+                    self.coordination
+                        .runner(
+                            &binding,
+                            super::coordination::RunnerRequest::Observe(access.client_id.clone()),
+                        )
+                        .await
+                        .map_err(|_| {
+                            invalid_request("Session observation access was removed or expired")
+                        })?;
                 }
             } else {
                 authorize(origin, /*version*/ 1)?;
             }
             validate(method, params)?;
+            if matches!(method, "turn/start" | "turn/steer" | "thread/fork") {
+                let direct = self.coordination.runner(
+                    &binding,
+                    super::coordination::RunnerRequest::Work(serde_json::json!({"kind":"direct_input","session_id":binding.thread_id})),
+                ).await;
+                match direct {
+                    Ok(Value::Bool(true)) => {}
+                    Err(error) if error.kind() == std::io::ErrorKind::Unsupported => {}
+                    _ => {
+                        return Err(invalid_request(
+                            "Use the Sessions screen to submit an attributed prompt to this shared runner",
+                        ));
+                    }
+                }
+            }
             if matches!(method, "thread/resume" | "thread/fork") {
                 self.coordination
                     .runner(&binding, super::coordination::RunnerRequest::Register)

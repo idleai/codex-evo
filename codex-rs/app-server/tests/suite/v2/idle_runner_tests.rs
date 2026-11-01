@@ -138,6 +138,16 @@ async fn runner_rpc_rejects_override_routes_and_keeps_binding_after_restart_and_
         .build_initialized()
         .await?;
     let mut remote = connect(&mut owner, &checkout, &chain).await?;
+    let sessions = rpc(
+        &mut remote,
+        "idle/session/call",
+        json!({"protocolVersion":1,"request":"{\"kind\":\"snapshot\"}"}),
+    )
+    .await?;
+    assert!(
+        sessions.pointer("/result/response").is_some(),
+        "The authenticated session call must reach the handler even when the helper needs an update: {sessions}"
+    );
     let started = rpc(&mut remote, "thread/start", json!({})).await?;
     let id = started
         .pointer("/result/thread/id")
