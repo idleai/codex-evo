@@ -296,6 +296,8 @@ async fn waits_for_a_live_writer_before_migrating() {
 
 #[tokio::test]
 async fn waits_for_rollout_maintenance_before_migrating() {
+    // The gate checks lock ordering; allow database work to finish on busy runners.
+    const FIXTURE_TIMEOUT: Duration = Duration::from_secs(10);
     let home = TempDir::new().expect("create Codex home");
     let thread_id = ThreadId::new();
     let path = write_rollout(home.path(), thread_id, ThreadHistoryMode::Legacy);
@@ -314,7 +316,7 @@ async fn waits_for_rollout_maintenance_before_migrating() {
     });
 
     // Observe real lock contention instead of assuming the task reached it after 50 ms.
-    tokio::time::timeout(Duration::from_secs(2), async {
+    tokio::time::timeout(FIXTURE_TIMEOUT, async {
         tokio::select! {
             result = &mut migration => panic!("migration should wait for rollout maintenance: {result:?}"),
             _ = gate.retry_started.notified() => {}
@@ -334,7 +336,7 @@ async fn waits_for_rollout_maintenance_before_migrating() {
     drop(maintenance_guard);
     // Drive the retry explicitly so the completion budget does not include the production backoff.
     gate.retry_allowed.notify_one();
-    tokio::time::timeout(Duration::from_secs(2), migration)
+    tokio::time::timeout(FIXTURE_TIMEOUT, migration)
         .await
         .expect("migration should retry rollout maintenance")
         .expect("join startup migration");

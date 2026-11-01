@@ -3015,6 +3015,8 @@ mod tests {
     #[test_case::test_case(true; "health_check_timed_out")]
     #[tokio::test]
     async fn remote_websocket_client_resumes_session(health_check_timeout: bool) {
+        // The health RPC timeout is under test, not fixture scheduling latency.
+        const FIXTURE_TIMEOUT: Duration = Duration::from_secs(10);
         let listener = TcpListener::bind("127.0.0.1:0")
             .await
             .expect("listener should bind");
@@ -3063,8 +3065,8 @@ mod tests {
         let client = LazyRemoteExecServerClient::new(
             ExecServerTransportParams::WebSocketUrl {
                 websocket_url,
-                connect_timeout: Duration::from_secs(1),
-                initialize_timeout: Duration::from_secs(1),
+                connect_timeout: FIXTURE_TIMEOUT,
+                initialize_timeout: FIXTURE_TIMEOUT,
                 http_headers: HeaderMap::new(),
             },
             HttpClientFactory::new(OutboundProxyPolicy::ReqwestDefault),
@@ -3077,7 +3079,7 @@ mod tests {
                 .expect_err("unanswered health check should time out");
             assert!(error.to_string().contains("timed out"));
         }
-        timeout(Duration::from_secs(1), resumed_rx)
+        timeout(FIXTURE_TIMEOUT, resumed_rx)
             .await
             .expect("session resume should not time out")
             .expect("session resume should signal");
