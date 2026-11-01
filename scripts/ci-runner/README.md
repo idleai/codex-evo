@@ -18,12 +18,16 @@ share all 128 logical CPUs with equal weights. Each VM's CPU quota permits up to
 64 logical CPU equivalents. The 512 configured vCPUs allow two busy guests to
 use up to 64 CPU equivalents each, while eight equally busy guests share
 approximately 16 each, subject to other host workloads. Workers
-01–04 serve Codex PRs through `codex-pr-linux-x64`, 05–06 serve client PRs through
-`idle-pr-linux-x64`, and 07–08 serve integration and release work through
-`idle-background-linux-x64`. Legacy labels remain for existing workflows.
+01–04 serve Codex PRs through `codex-pr-linux-x64`. Workers 05–08 form one shared
+pool for other repositories' PRs, main-branch validation, schedules, releases and
+product builds through `idle-shared-linux-x64`. Both `IDLE_LINUX_RUNNER` in the
+other repositories and `IDLE_BACKGROUND_RUNNER` in every participating repository
+select that shared label. The previous `idle-pr-linux-x64` and
+`idle-background-linux-x64` labels remain as aliases on all four shared workers
+for queued jobs and older workflow defaults. Other legacy labels are retained.
 
 `configure_routes.py --record-directory <directory>` previews these assignments.
-Add `--apply` to update labels and the seven participating repositories' runner
+Add `--apply` to update labels and the eight participating repositories' runner
 variables. It does not alter VM sizing. The plan is validated before any update;
 the directory retains the original runner labels and the applied assignments.
 
@@ -48,8 +52,9 @@ exercise one relevant browser fixture.
 
 PR updates cancel superseded PR runs. Default-branch validation and coordinated
 product builds finish their current run, with a newer pending candidate kept by
-GitHub's concurrency queue. Reserved PR workers keep those longer jobs out of
-the PR runner queue.
+GitHub's concurrency queue. Codex PRs retain their four reserved workers. Other
+repositories' PRs and background work can use any available worker in the shared
+pool; neither workload has separately reserved capacity there.
 
 `async-failures.yml` watches completed default-branch and release workflows and
 calls `report-async-failure.yml`. Its hosted job reads workflow/job metadata and
@@ -240,16 +245,14 @@ routing in these workflows. The VM also separates job files from the host.
 For the first check, give an idle worker an additional `idle-linux-pilot` label
 and set repository variable `CODEX_LINUX_PILOT_RUNNER=idle-linux-pilot`. Run
 `self-hosted-linux-check.yml` on this branch. After the actual build and test
-pass, set `CODEX_LINUX_RUNNER=codex-linux-x64` to route the Linux x64 Bazel test,
-lint, release verification, SDK, V8 and argument-comment-lint jobs to it. Other
-platforms and lightweight metadata jobs retain their current runners.
-
-The other repositories use `IDLE_LINUX_RUNNER=idle-linux-x64` with the same
-fork-PR guard and their original hosted label as a fallback. Validate each
+pass, apply `configure_routes.py` to set `CODEX_LINUX_RUNNER=codex-pr-linux-x64`
+for Codex PRs, `IDLE_LINUX_RUNNER=idle-shared-linux-x64` for the other repositories,
+and `IDLE_BACKGROUND_RUNNER=idle-shared-linux-x64` throughout the participating
+repositories. The workflows retain their fork-PR guards. Validate each
 repository's full Linux job on a branch before adopting its workflow change.
 
-Delete a repository's routing variable to route subsequent jobs back to
-GitHub-hosted Linux. Already queued jobs keep their original assignment. Before
+Repository routing variables choose the runner label. Already queued jobs keep
+their selected labels, and both previous pool labels reach workers 05–08. Before
 maintenance, remove that worker's job-routing labels, wait for its GitHub busy
 flag to clear, and check that its guest has no active job or Rust build. Stop
 the guest runner service before unregistering or changing registration. Stop
