@@ -126,9 +126,7 @@ def main():
     (args.record_directory / "routing.json").write_text(
         json.dumps(plan, indent=2) + "\n"
     )
-    print(
-        "Configured four Codex PR workers and four shared client/background workers."
-    )
+    print("Configured four Codex PR workers and four shared client/background workers.")
 
 
 if __name__ == "__main__":

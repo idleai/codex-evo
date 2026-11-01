@@ -54,7 +54,9 @@ class RoutingTests(unittest.TestCase):
         applied = [
             dict(
                 worker,
-                labels=[{"name": label, "type": "custom"} for label in worker["labels"]],
+                labels=[
+                    {"name": label, "type": "custom"} for label in worker["labels"]
+                ],
             )
             for worker in plan
         ]
