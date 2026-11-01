@@ -4339,7 +4339,25 @@ impl ThreadRequestProcessor {
                         }
                         profile.apply(&mut request_overrides, &mut typesafe_overrides)
                     }
-                    None => self.config_manager.clone(),
+                    None => {
+                        let base = self
+                            .config_manager
+                            .load_non_project_config()
+                            .await
+                            .map_err(|err| config_load_error(&err))?;
+                        if let Some(metadata) = config_state.persisted_metadata.as_ref()
+                            && metadata.model_provider != base.model_provider_id
+                            && metadata.model.as_ref().is_some_and(|model| {
+                                crate::config_manager::configured_picker_profiles(&base)
+                                    .is_ok_and(|profiles| profiles.contains_key(model))
+                            })
+                        {
+                            return Err(invalid_request(
+                                "Start a new chat to select a different provider, or use a portable profile handoff.",
+                            ));
+                        }
+                        self.config_manager.clone()
+                    }
                 };
                 let config = config_manager
                     .load_for_resume(
@@ -4370,17 +4388,6 @@ impl ThreadRequestProcessor {
                     )
                     .await
                     .map_err(|err| config_load_error(&err))?;
-                if let Some(metadata) = config_state.persisted_metadata.as_ref()
-                    && metadata.model_provider != config.model_provider_id
-                    && metadata.model.as_ref().is_some_and(|model| {
-                        crate::config_manager::configured_picker_profiles(&config)
-                            .is_ok_and(|profiles| profiles.contains_key(model))
-                    })
-                {
-                    return Err(invalid_request(
-                        "Start a new chat to select a different provider, or use a portable profile handoff.",
-                    ));
-                }
                 *prepared_config = Some(PreparedResumeConfig {
                     state: config_state,
                     config,

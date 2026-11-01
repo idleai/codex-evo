@@ -90,7 +90,9 @@ async fn standalone_initializes_reports_version_and_runs_helpers() -> anyhow::Re
         assert_eq!(response["id"], 1);
         assert!(response["result"]["sessionId"].is_string(), "{response}");
         let environment = response["result"]["environmentInfo"].clone();
-        assert_eq!(environment["executorVersion"], env!("CARGO_PKG_VERSION"));
+        // This test launches an unbundled source binary. Runtime release metadata
+        // comes from codex-package.json, independently of the Cargo version stamp.
+        assert_eq!(environment["executorVersion"], "0.0.0");
         let initialized = json!({"method": "initialized", "params": {}});
         let info = json!({"id": 2, "method": "environment/info", "params": {}});
         stdin
