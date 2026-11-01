@@ -159,6 +159,8 @@ fn test_model_provider() -> SharedModelProvider {
 fn github_copilot_headers_mark_user_text_requests() {
     let input = vec![ResponseItem::Message {
         id: None,
+        status: None,
+        encrypted_content: None,
         role: "user".to_string(),
         content: vec![ContentItem::InputText {
             text: "hello".to_string(),
@@ -184,15 +186,21 @@ fn github_copilot_headers_mark_agent_vision_requests() {
     let input = vec![
         ResponseItem::Message {
             id: None,
+            status: None,
+            encrypted_content: None,
             role: "assistant".to_string(),
             content: vec![ContentItem::OutputText {
                 text: "I need to inspect that image.".to_string(),
+                annotations: None,
+                logprobs: None,
             }],
             phase: None,
             internal_chat_message_metadata_passthrough: None,
         },
         ResponseItem::Message {
             id: None,
+            status: None,
+            encrypted_content: None,
             role: "user".to_string(),
             content: vec![ContentItem::InputImage {
                 image: ImageReference::Inline {

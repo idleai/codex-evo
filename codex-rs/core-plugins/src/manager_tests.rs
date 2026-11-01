@@ -190,6 +190,7 @@ fn curated_repo_sync_stays_deferred_for_remote_chatgpt_catalog_and_github_copilo
     let product_sku = None;
     let github_copilot_config = PluginsConfigInput::new(
         unrestricted_config_layer_stack(),
+        Default::default(),
         "openai".to_string(),
         /*plugins_enabled*/ true,
         /*remote_plugin_enabled*/ false,
@@ -6192,6 +6193,7 @@ plugins = true
     manager.maybe_start_remote_plugin_caches_refresh(
         &config,
         Some(auth.clone()),
+        /*prefetch_recommendations*/ true,
         /*on_effective_plugins_changed*/ None,
     );
     manager.maybe_start_remote_installed_plugin_bundle_sync(

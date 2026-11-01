@@ -489,7 +489,7 @@ async fn status_snapshot_shows_github_copilot_account_without_chatgpt_usage_link
     );
     let sanitized =
         sanitize_directory(render_lines(&composite.display_lines(/*width*/ 80))).join("\n");
-    assert!(!sanitized.contains("chatgpt.com/codex/settings/usage"));
+    assert!(!sanitized.contains("chatgpt.com/"));
     assert_snapshot!(sanitized);
 }
 

@@ -292,8 +292,13 @@ mod tests {
         let registry = builder.build();
         let session_store = ExtensionData::new("session");
         let thread_store = ExtensionData::new("11111111-1111-4111-8111-111111111111");
+        let step_store = ExtensionData::new("step");
+        thread_store.insert(WorkspaceRoutingContext::new(
+            "https://chatgpt.com/backend-api".to_string(),
+        ));
+        step_store.insert(WebSearchMode::Live);
         thread_store.insert(WebSearchExtensionConfig {
-            available: true,
+            provider_supports_search: true,
             provider: ModelProviderInfo::create_openai_provider(/*base_url*/ None),
             http_client_factory: HttpClientFactory::new(OutboundProxyPolicy::ReqwestDefault),
             settings: Default::default(),
@@ -302,7 +307,9 @@ mod tests {
         let tools = registry
             .tool_contributors()
             .iter()
-            .flat_map(|contributor| contributor.tools(&session_store, &thread_store))
+            .flat_map(|contributor| {
+                contributor.tools_for_step(&session_store, &thread_store, &step_store)
+            })
             .collect::<Vec<_>>();
 
         assert!(tools.is_empty());
