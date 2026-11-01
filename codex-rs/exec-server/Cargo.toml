@@ -4,6 +4,11 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 
+[[bin]]
+name = "codex-exec-server-test-helper"
+path = "src/bin/test_helper.rs"
+test = false
+
 [lib]
 doctest = false
 
@@ -50,6 +55,7 @@ codex-websocket-client = { workspace = true }
 dirs = { workspace = true }
 futures = { workspace = true }
 http = { workspace = true }
+notify = { workspace = true }
 opentelemetry = { workspace = true }
 prost = "0.14.3"
 serde = { workspace = true, features = ["derive"] }
@@ -70,8 +76,12 @@ tokio = { workspace = true, features = [
 tokio-util = { workspace = true, features = ["io", "rt"] }
 tokio-tungstenite = { workspace = true }
 tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
 url = { workspace = true }
 uuid = { workspace = true, features = ["v4"] }
+
+[target.'cfg(target_os = "linux")'.dependencies]
+codex-linux-sandbox = { workspace = true }
 
 [target.'cfg(unix)'.dependencies]
 codex-uds = { workspace = true }
@@ -80,12 +90,14 @@ rustix = { workspace = true, features = ["fs"] }
 tempfile = { workspace = true }
 
 [target.'cfg(windows)'.dependencies]
-windows-sys = { version = "0.52", features = [
+codex-windows-sandbox = { workspace = true }
+codex-mxc-sandbox = { workspace = true }
+which = { workspace = true }
+windows-sys = { workspace = true, features = [
     "Win32_Foundation",
     "Win32_Security",
     "Win32_Storage_FileSystem",
     "Win32_System_IO",
-    "Win32_System_Kernel",
     "Win32_System_Pipes",
     "Win32_System_Threading",
 ] }
@@ -93,8 +105,8 @@ windows-sys = { version = "0.52", features = [
 [dev-dependencies]
 anyhow = { workspace = true }
 codex-exec-server-test-support = { workspace = true }
-codex-test-binary-support = { workspace = true }
 codex-utils-cargo-bin = { workspace = true }
+codex-windows-sandbox-test-support = { workspace = true }
 ctor = { workspace = true }
 http = { workspace = true }
 opentelemetry_sdk = { workspace = true }
@@ -106,5 +118,4 @@ tempfile = { workspace = true }
 test-case = "3.3.1"
 tokio = { workspace = true, features = ["test-util"] }
 tracing-opentelemetry = { workspace = true }
-tracing-subscriber = { workspace = true }
 wiremock = { workspace = true }

@@ -2,13 +2,15 @@ name: sdk
 
 on:
   workflow_call:
+    inputs:
+      full:
+        description: Include the complete SDK integration and conformance suites
+        type: boolean
+        default: true
 
 jobs:
   python-sdk-installation:
-    runs-on:
-      group: ${{ github.event.repository.name }}-runners
-      labels: ${{ github.event.repository.name }}-linux-x64
-    timeout-minutes: 10
+    runs-on: ubuntu-24.04
     steps:
       - name: Checkout repository
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
@@ -28,7 +30,7 @@ jobs:
             python:3.12-slim \
             sh -euxc '
               python -m venv /tmp/build
-              /tmp/build/bin/python -m pip install uv==0.11.3
+              /tmp/build/bin/python -m pip install --only-binary=:all: --require-hashes -r tests/requirements-uv.txt
               /tmp/build/bin/uv build --wheel --out-dir /tmp/dist
               python -m venv /tmp/installed
               /tmp/build/bin/uv pip install --python /tmp/installed/bin/python /tmp/dist/*.whl
@@ -36,10 +38,7 @@ jobs:
             '
 
   sdks:
-    runs-on:
-      group: ${{ github.event.repository.name }}-runners
-      labels: ${{ github.event.repository.name }}-linux-x64
-    timeout-minutes: 20
+    runs-on: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository && vars.CODEX_LINUX_RUNNER || github.event_name != 'pull_request' && vars.IDLE_BACKGROUND_RUNNER || 'ubuntu-24.04' }}
     environment:
       name: bazel
       deployment: false
@@ -61,11 +60,18 @@ jobs:
         with:
           run_install: false
 
+      - name: Select the SDK dependency store
+        run: echo "npm_config_store_dir=$RUNNER_TEMP/pnpm-sdk-store" >> "$GITHUB_ENV"
+
       - name: Setup Node.js
         uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f # v6.3.0
         with:
-          node-version: 22
+          node-version-file: .nvmrc
           cache: pnpm
+          cache-dependency-path: |
+            pnpm-lock.yaml
+            pnpm-workspace.yaml
+            .github/workflows/sdk.yml
 
       - name: Prepare Bazel CI
         id: setup_bazel
@@ -89,7 +95,8 @@ jobs:
             --remote-download-toplevel \
             -- \
             build \
-            --build_metadata=COMMIT_SHA=${GITHUB_SHA} \
+            --platforms=//:local_linux \
+            --build_metadata="COMMIT_SHA=${GITHUB_SHA}" \
             --build_metadata=TAG_job=sdk \
             -- \
             //codex-rs/cli:codex \
@@ -99,6 +106,7 @@ jobs:
             ./.github/scripts/run-bazel-ci.sh \
               -- \
               cquery \
+              --platforms=//:local_linux \
               --output=files \
               -- \
               'set(//codex-rs/cli:codex //codex-rs/code-mode-host:codex-code-mode-host)' \
@@ -133,23 +141,36 @@ jobs:
         run: pnpm -r --filter ./sdk/typescript run lint
 
       - name: Test SDK packages
-        run: pnpm -r --filter ./sdk/typescript run test
+        env:
+          FULL: ${{ inputs.full }}
+        run: |
+          args=()
+          if [[ "$FULL" != true ]]; then
+            args=(--runTestsByPath tests/exec.test.ts tests/abort.test.ts tests/runStreamed.test.ts)
+          fi
+          pnpm -r --filter ./sdk/typescript run test "${args[@]}"
 
       - name: Install uv
-        uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
+        uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
         with:
-          version: "0.11.3"
+          version: "0.13.5"
 
       - name: Test Python SDK against the same CLI
         working-directory: sdk/python
+        env:
+          FULL: ${{ inputs.full }}
         run: |
           uv sync --only-group dev --frozen
           uv run --only-group dev --frozen --no-sync ruff check --output-format=github .
           uv run --only-group dev --frozen --no-sync ruff format --check .
-          uv run --only-group dev --frozen --no-sync pytest
+          args=()
+          if [[ "$FULL" != true ]]; then
+            args=(tests/test_client_rpc_methods.py tests/test_app_server_lifecycle.py tests/test_async_client_behavior.py)
+          fi
+          uv run --only-group dev --frozen --no-sync pytest "${args[@]}"
 
       - name: Save bazel repository cache
-        if: always() && !cancelled() && steps.build_bazel.outcome == 'success' && steps.setup_bazel.outputs.repository-cache-hit != 'true'
+        if: always() && !cancelled() && runner.environment == 'github-hosted' && steps.build_bazel.outcome == 'success' && steps.setup_bazel.outputs.repository-cache-hit != 'true'
         continue-on-error: true
         uses: actions/cache/save@668228422ae6a00e4ad889ee87cd7109ec5666a7 # v5.0.4
         with:

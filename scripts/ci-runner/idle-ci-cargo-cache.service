@@ -1,0 +1,25 @@
+[Unit]
+Description=Shared Cargo cache HTTP endpoint
+Requires=idle-ci-cargo-store.service
+After=idle-ci-cargo-store.service
+
+[Service]
+Type=simple
+Slice=idle-ci.slice
+ExecStart=%h/.local/share/codex-ci-runner/bin/caddy run --config %h/.local/share/codex-ci-runner/cargo-cache.Caddyfile --adapter caddyfile
+Environment=GOMAXPROCS=2
+Environment=XDG_CONFIG_HOME=%h/.local/share/codex-ci-runner/caddy-config
+Environment=XDG_DATA_HOME=%h/.local/share/codex-ci-runner/caddy-data
+Restart=on-failure
+RestartSec=5
+CPUQuota=200%
+CPUWeight=20
+MemoryHigh=384M
+MemoryMax=512M
+MemorySwapMax=0
+IOWeight=20
+NoNewPrivileges=yes
+UMask=0077
+
+[Install]
+WantedBy=default.target

@@ -25,7 +25,7 @@ async fn build_prompt_input_includes_context_and_user_message() -> Result<()> {
         .codex_home(codex_home.path().to_path_buf())
         .harness_overrides(ConfigOverrides {
             cwd: Some(cwd.path().to_path_buf()),
-            codex_self_exe: Some(std::env::current_exe()?),
+            codex_self_exe: Some(core_test_support::find_codex_helper_exe()?),
             ..ConfigOverrides::default()
         })
         .build()
@@ -46,6 +46,8 @@ async fn build_prompt_input_includes_context_and_user_message() -> Result<()> {
     .await?;
 
     let expected_user_message = ResponseItem::Message {
+        status: None,
+        encrypted_content: None,
         id: None,
         role: "user".to_string(),
         content: vec![ContentItem::InputText {
@@ -68,7 +70,8 @@ async fn build_prompt_input_includes_context_and_user_message() -> Result<()> {
         };
 
         content.iter().any(|content_item| {
-            let (ContentItem::InputText { text } | ContentItem::OutputText { text }) = content_item
+            let (ContentItem::InputText { text } | ContentItem::OutputText { text, .. }) =
+                content_item
             else {
                 return false;
             };

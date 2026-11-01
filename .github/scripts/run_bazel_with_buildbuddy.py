@@ -137,10 +137,35 @@ def bazel_args_with_remote_config(
     )
     if command_idx is None:
         raise ValueError("expected a Bazel command")
+    runs_build_actions = args[command_idx] in {
+        "build",
+        "test",
+        "run",
+        "coverage",
+        "cquery",
+        "aquery",
+    }
 
     config = remote_config(args, env)
     if config is None:
         configured_args = bazel_args_without_remote_execution(args)
+        if env.get("GITHUB_ACTIONS") == "true":
+            local_args = ["--config=ci-local"]
+            if env.get("RUNNER_ENVIRONMENT") == "self-hosted" and runs_build_actions:
+                for env_name, option in (
+                    ("CODEX_BAZEL_JOBS", "--jobs"),
+                    ("CODEX_BAZEL_TEST_JOBS", "--local_test_jobs"),
+                ):
+                    value = env.get(env_name)
+                    if value:
+                        if not value.isdecimal() or int(value) < 1:
+                            raise ValueError(f"{env_name} must be a positive integer")
+                        local_args.append(f"{option}={value}")
+            configured_args = [
+                *configured_args[: command_idx + 1],
+                *local_args,
+                *configured_args[command_idx + 1 :],
+            ]
     else:
         # `remote_config()` returns a configuration only when this key is present.
         api_key = env["BUILDBUDDY_API_KEY"]
@@ -163,17 +188,49 @@ def bazel_args_with_remote_config(
     except ValueError:
         separator_idx = len(configured_args)
 
+    shared_runner_cache = env.get("RUNNER_ENVIRONMENT") == "self-hosted" and bool(
+        env.get("IDLE_CI_REMOTE_CACHE")
+    )
     cache_args = [
         f"{option_prefix}{env[env_name]}"
         for env_name, option_prefix in (
             ("BAZEL_REPO_CONTENTS_CACHE", "--repo_contents_cache="),
             ("BAZEL_REPOSITORY_CACHE", "--repository_cache="),
+            ("BAZEL_DISK_CACHE", "--disk_cache="),
         )
         if env.get(env_name)
+        and (env_name != "BAZEL_DISK_CACHE" or runs_build_actions)
+        and (env_name != "BAZEL_DISK_CACHE" or not shared_runner_cache)
         and not any(
             arg.startswith(option_prefix) for arg in configured_args[:separator_idx]
         )
     ]
+    if (
+        shared_runner_cache
+        and runs_build_actions
+        and not any(
+            arg.startswith("--disk_cache=") for arg in configured_args[:separator_idx]
+        )
+    ):
+        # Disk-cache collection runs between Bazel commands. Duplicating a full
+        # build there can fill the VM before collection starts; use the host cache.
+        cache_args.append("--disk_cache=")
+    if (
+        env.get("RUNNER_ENVIRONMENT") == "self-hosted"
+        and env.get("BAZEL_DISK_CACHE")
+        and runs_build_actions
+    ):
+        # setup-bazel rewrites ~/.bazelrc, so runner bootstrap settings there
+        # cannot enforce disk-cache limits on a persistent worker.
+        for flag in (
+            "--experimental_disk_cache_gc_max_size=32G",
+            "--experimental_disk_cache_gc_idle_delay=1s",
+        ):
+            prefix = flag.split("=", 1)[0] + "="
+            if not any(
+                arg.startswith(prefix) for arg in configured_args[:separator_idx]
+            ):
+                cache_args.append(flag)
     return [
         *configured_args[:separator_idx],
         *cache_args,

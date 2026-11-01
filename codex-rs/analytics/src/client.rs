@@ -66,6 +66,7 @@ use codex_app_server_protocol::TurnStatus;
 use codex_app_server_protocol::item_event_to_server_notification;
 use codex_login::AuthManager;
 use codex_login::CodexAuth;
+use codex_model_provider::ChatgptBaseUrl;
 use codex_plugin::PluginId;
 use codex_plugin::PluginTelemetryMetadata;
 use codex_protocol::ThreadId;
@@ -129,7 +130,7 @@ enum AnalyticsEventsDestination {
 }
 
 impl AnalyticsEventsDestination {
-    fn from_base_url(base_url: String) -> Self {
+    fn from_base_url(base_url: ChatgptBaseUrl) -> Self {
         let capture_file = analytics_capture_file_from_env();
         let capture = Self::from_capture_file(capture_file);
         if capture.is_enabled() {
@@ -137,7 +138,9 @@ impl AnalyticsEventsDestination {
         }
 
         #[cfg(debug_assertions)]
-        if is_literal_loopback_url(&base_url) {
+        if let ChatgptBaseUrl::Configured(base_url) = &base_url
+            && is_literal_loopback_url(base_url)
+        {
             return Self::LoopbackHttp {
                 url: format!(
                     "{}/codex/analytics-events/events",
@@ -336,10 +339,10 @@ impl AnalyticsEventsClient {
 
     pub fn new(
         auth_manager: Arc<AuthManager>,
-        base_url: String,
+        base_url: impl Into<ChatgptBaseUrl>,
         analytics_enabled: Option<bool>,
     ) -> Self {
-        let destination = AnalyticsEventsDestination::from_base_url(base_url);
+        let destination = AnalyticsEventsDestination::from_base_url(base_url.into());
         Self {
             queue: (analytics_enabled != Some(false) && destination.is_enabled())
                 .then(|| AnalyticsEventsQueue::new(Arc::clone(&auth_manager), destination)),
@@ -459,22 +462,29 @@ impl AnalyticsEventsClient {
         completed_at_ms: i64,
     ) {
         let thread_id = item.sender_thread_id.to_string();
-        let completed_item = TurnItem::CollabAgentToolCall(item.clone()).into();
+        let completed_item = codex_app_server_protocol::ThreadItemPayload::from(
+            TurnItem::CollabAgentToolCall(item.clone()),
+        );
         item.status = CollabAgentToolCallStatus::InProgress;
 
-        self.track_notification(&ServerNotification::ItemStarted(ItemStartedNotification {
-            item: TurnItem::CollabAgentToolCall(item).into(),
-            thread_id: thread_id.clone(),
-            turn_id: turn_id.clone(),
-            started_at_ms,
-        }));
+        self.track_notification(&ServerNotification::ItemStarted(
+            ItemStartedNotification::new(
+                thread_id.clone(),
+                turn_id.clone(),
+                codex_app_server_protocol::ThreadItemPayload::from(TurnItem::CollabAgentToolCall(
+                    item,
+                )),
+                started_at_ms,
+            ),
+        ));
         self.track_notification(&ServerNotification::ItemCompleted(
-            ItemCompletedNotification {
-                item: completed_item,
+            ItemCompletedNotification::new(
                 thread_id,
                 turn_id,
+                completed_item,
+                Some(started_at_ms),
                 completed_at_ms,
-            },
+            ),
         ));
     }
 
@@ -495,9 +505,10 @@ impl AnalyticsEventsClient {
         tracking: &GuardianReviewTrackContext,
         result: GuardianReviewAnalyticsResult,
         completed_at_ms: u64,
+        elapsed: Duration,
     ) {
         self.record_fact(AnalyticsFact::Custom(CustomAnalyticsFact::GuardianReview(
-            Box::new(tracking.event_params(result, completed_at_ms)),
+            Box::new(tracking.event_params(result, completed_at_ms, elapsed)),
         )));
     }
 
@@ -603,6 +614,13 @@ impl AnalyticsEventsClient {
         self.record_fact(AnalyticsFact::Custom(CustomAnalyticsFact::Compaction(
             Box::new(event),
         )));
+    }
+
+    pub fn track_realtime_session_updated(&self, thread_id: String, realtime_session_id: String) {
+        self.record_fact(AnalyticsFact::RealtimeSessionUpdated {
+            thread_id,
+            realtime_session_id,
+        });
     }
 
     pub fn track_guardian_v2_event(&self, event: GuardianV2Event) {
@@ -834,6 +852,24 @@ impl AnalyticsEventsClient {
 
     /// Records analytics-relevant notifications without cloning ignored variants.
     pub fn track_notification(&self, notification: &ServerNotification) {
+        match notification {
+            ServerNotification::ThreadRealtimeStarted(started) => {
+                self.record_fact(AnalyticsFact::RealtimeSessionStarted {
+                    thread_id: started.thread_id.clone(),
+                    realtime_session_id: started.realtime_session_id.clone(),
+                    started_at: crate::now_unix_seconds(),
+                });
+                return;
+            }
+            ServerNotification::ThreadRealtimeClosed(closed) => {
+                self.record_fact(AnalyticsFact::RealtimeSessionClosed {
+                    thread_id: closed.thread_id.clone(),
+                    closed_at: crate::now_unix_seconds(),
+                });
+                return;
+            }
+            _ => {}
+        }
         if let ServerNotification::ThreadRealtimeItemAdded(handoff) = notification {
             if handoff.item.get("type").and_then(serde_json::Value::as_str)
                 == Some("handoff_request")
@@ -849,8 +885,6 @@ impl AnalyticsEventsClient {
             ServerNotification::ThreadArchived(_)
                 | ServerNotification::ThreadClosed(_)
                 | ServerNotification::ThreadUnarchived(_)
-                | ServerNotification::ThreadRealtimeStarted(_)
-                | ServerNotification::ThreadRealtimeClosed(_)
                 | ServerNotification::TurnStarted(_)
                 | ServerNotification::TurnCompleted(_)
                 | ServerNotification::TurnDiffUpdated(_)
@@ -885,6 +919,7 @@ fn session_event_to_analytics_notification(
                 thread_id: thread_id.to_string(),
                 turn: Turn {
                     started_at: started.started_at,
+                    root_turn_id: started.root_turn_id.clone(),
                     ..analytics_turn(&started.turn_id, TurnStatus::InProgress)
                 },
             })
@@ -933,7 +968,7 @@ fn session_event_to_analytics_notification(
     match &notification {
         ServerNotification::ItemStarted(ItemStartedNotification { item, .. })
         | ServerNotification::ItemCompleted(ItemCompletedNotification { item, .. }) => {
-            tracked_tool_item_id(item)?;
+            tracked_tool_item_id(&item.payload)?;
         }
         _ => {}
     }
@@ -943,6 +978,7 @@ fn session_event_to_analytics_notification(
 fn analytics_turn(turn_id: &str, status: TurnStatus) -> Turn {
     Turn {
         id: turn_id.to_string(),
+        root_turn_id: None,
         items: Vec::new(),
         items_view: TurnItemsView::NotLoaded,
         status,

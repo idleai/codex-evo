@@ -1,3 +1,218 @@
+# Idle workspace attachment and coordination (experimental)
+
+Initialize with `capabilities.experimentalApi: true`, then call
+`idle/runtime/status/read` with `{"protocolVersion":1}` to read the daemon's
+installation identity, current runtime identity, version, supported Idle
+capabilities and saved workspace bindings. `hostId` remains stable within
+`CODEX_HOME`; `runtimeId` changes on app-server restart.
+
+`idle/workspace/attach` accepts an explicit local owner installation:
+
+```json
+{
+  "protocolVersion": 1,
+  "binding": {
+    "workspaceId": "workspace:example",
+    "repositoryId": "repository:example",
+    "checkoutId": "checkout:example",
+    "chainId": "chain:example",
+    "checkoutRoot": "/absolute/checkout",
+    "chainDirectory": "/absolute/existing-chain"
+  }
+}
+```
+
+Both directories must already exist. Both methods return a shared `status`
+object. Repeating an identical attachment is
+idempotent. A conflicting checkout identity, root or chain directory is rejected.
+Repository manifests do not create attachments. Saved bindings live in private,
+atomically replaced `CODEX_HOME/idle-runtime/workspaces.json`, with one process
+owner. Missing or redirected directories retain their binding with
+`available: false`.
+
+Local owners use stdio, embedded clients or the restricted local control socket.
+Remote Idle clients use the daemon's dedicated Dev Tunnels channel. Each private
+invitation authorizes one client and one existing workspace binding. The daemon
+checks its saved grant before every request. A normal grant permits initialization,
+workspace attachment and status. An explicit coordination-owner grant also
+permits `idle/coordination/call` for that client and checkout. TCP WebSocket and Codex Remote Control
+connections cannot use these Idle methods, regardless of `clientInfo.name`.
+
+The daemon owns an `idle-host --runtime-relay` child process with bounded private
+pipes. That helper uses the existing host-tools Dev Tunnels SDK on a separate
+runtime port, renews its host connection and restores its saved tunnel after a
+restart. The runtime grant is checked independently of the relay connect token.
+Invitations expire, and revocation closes existing runtime connections. Closing
+VS Code does not stop the daemon or remove its workspace binding.
+
+### Connect from VS Code
+
+Build this branch's `codex` CLI and the companion host-tools `idle-host` binary.
+Install the companion VS Code extension; during development, point
+`idle.native.hostPath` at the new `idle-host` on the client machine.
+
+1. In a trusted VS Code workspace, run **Idle: Copy Compute Connection Request**.
+   Save that public JSON as `request.json` on the compute machine.
+2. On the compute machine, start the updated daemon with
+   `codex app-server daemon start`. Its owner must have an authenticated GitHub
+   CLI installation for Dev Tunnels management.
+3. Approve the exact checkout and chain directory:
+
+   ```sh
+   codex app-server idle host --request request.json \
+     --checkout-root /absolute/checkout --chain-directory /absolute/chain \
+     --relay-helper /absolute/idle-host --github-cli /absolute/gh \
+     --output /private/new-invitation.txt
+   ```
+
+4. Paste the private file's contents into **Idle: Connect Compute Host** in
+   VS Code. **Compute hosts** shows the daemon's machine name and current status.
+
+Use `codex app-server idle status` to inspect local bindings,
+`codex app-server idle revoke --grant-id ID` to revoke an invitation, and
+`codex app-server idle stop` to remove the owned tunnel while keeping Codex
+running. The CLI prints the grant ID when it creates an invitation. An expired
+invitation must be replaced by the owner. `--socket-path /absolute/socket` selects
+a non-default local daemon for any of these commands.
+
+To move coordination, first sync the tracked `.idle/workspace` definitions to
+the compute checkout. Create an invitation with `--coordination-owner`, connect
+it in the editor, then run **Idle: Move Workspace Coordination to Compute Host**.
+The version 2 invitation explicitly grants coordination access; existing
+version 1 invitations retain their attachment-only scope.
+
+`idle/coordination/call` accepts `protocolVersion`, `checkoutId`, `clientId` and
+a `request` JSON string. It returns a `response` JSON string containing the
+native result. Strings preserve native integer values through JavaScript
+clients. The `workspaceCoordination` capability is advertised only to local
+owners and clients with the explicit coordination-owner scope. Request strings
+are bounded to 256 KiB; native results are bounded to 500 KiB and return `busy`
+when larger. The private transport retains its one-MiB frame limit.
+
+The daemon owns one `idle-host --runtime-authority` worker per workspace,
+independently of connected editors and the relay. Each worker holds an exclusive
+state lock and uses the daemon's approved checkout and private state directory.
+The transfer freezes the editor's coordinator, retires its control lease and
+preserves grants, revisions, cursors and recorded write results. The accepted
+transfer receipt and state are committed together. Retries reuse that receipt
+without replacing later writes. Subsequent configuration changes update the
+compute checkout; the source coordinator retains a durable route and rejects
+local writes. The daemon restores accepted coordinators after restart even
+when no editor is connected.
+
+Grant checks run again when a queued call reaches its worker. Expiry, revocation,
+missing checkout directories and a failed worker report unavailability; they
+do not permit another local writer. Worker failures are restarted without
+replaying an uncertain mutation. History sharing remains separate. Runner
+execution, model control and general file/process access remain separate work.
+
+Unsupported Idle protocol versions return `-32602`; unnegotiated experimental
+methods and unauthorized transports return `-32600`. Unreadable, conflicting or
+unsupported saved state is rejected without resetting the registry. Unused
+installations create no Idle files.
+
+# Managed human command checkpoints (experimental)
+
+A matching managed `requirements.toml` prefix rule with `decision = "prompt-user"`
+requires a fresh human decision, including when the thread uses automatic review.
+Prefix matching, exact-path precedence, and executable mappings stay unchanged. Clients
+supporting this workflow must initialize with `experimentalApi: true` and
+`requiredHumanApproval: true`.
+
+The server sends `item/commandExecution/requestApproval` with `kind: "humanCommand"`,
+a unique `approvalId`, and the command to display. Only `accept`, `decline`, and
+`cancel` are valid responses. Session and persistent approvals cannot satisfy the
+checkpoint. Only capable clients receive or answer these requests. Pending prompts
+use the normal approval replay flow when a capable client reconnects. With no capable
+connection when approval is requested, the command is rejected. The prompt itself
+does not start an execution item; normal command execution events report execution
+after approval.
+
+# Thread memory summary (experimental)
+
+`thread/memory/read` takes `{threadId}` for a loaded thread and returns
+`{summary}`. Start or resume the thread first. The summary uses that thread's
+resolved memory version, including thread-specific configuration overrides.
+It is `null` when memory use is disabled or the selected summary is missing,
+unreadable, or blank. It never falls back to the other memory version.
+
+# Thread list exclusions
+
+`thread/list` accepts `excludedThreadIds`, an optional array of up to 100
+thread ID strings. Omitted, null, or empty lists do not exclude anything.
+Invalid IDs or more than 100 entries return JSON-RPC error `-32602`;
+duplicates count toward that bound and no entries are silently truncated.
+
+Exclusions apply before the returned result limit, along with the existing
+source, provider, archive, project, section and cwd filters. Pages refill to
+the requested limit (at most 100) unless history is exhausted. Send the same
+exclusions and filters with each returned cursor. Clients that display a saved
+manual order can load those summaries separately, then exclude the entire saved
+ID set when listing the remainder. This field does not save or sort that order.
+
+DB-only requests (`useStateDbOnly: true`) return JSON-RPC error `-32603`
+when the local state DB cannot serve the query, even for an empty cwd filter.
+Listing also returns `-32603` if the store repeats a cursor while filling a page.
+These errors are not evidence that history is exhausted; callers can retry.
+A successful response with `nextCursor: null` still indicates exhaustion.
+Default scan-and-repair requests retain their filesystem fallback.
+
+# Thread section moves
+
+After a successful `thread/section/move`, the app-server broadcasts
+`thread/section/changed` to its connected clients. The notification carries
+`threadId` and the destination `sectionId`, which is null for a removal.
+Moves within a section also emit this event so clients can refresh its order.
+
+# Shutdown admission errors
+
+When graceful shutdown rejects new work, app-server returns JSON-RPC error
+`-32600` with `data: {"reason":"serverShuttingDown"}`. Clients can use the
+reason to distinguish shutdown from other invalid requests.
+
+# Thread read state (experimental)
+
+Local durable ordinary user threads expose a `readState` on the
+`thread/read` response. `thread/list` returns `readStates`, a map from eligible
+thread IDs on the returned page to their receipts. Null (or absent on older servers)
+means durable read state is unavailable; a missing map entry means that row is
+ineligible. Ephemeral, not-yet-persisted, service and product-owned threads are
+ineligible. Shared `Thread` objects, including search and lifecycle responses,
+carry no receipts. After start, resume or fork, use `thread/read` to obtain the
+current receipt.
+Each local thread has one receipt, with the same storage ownership as the thread.
+
+A read state is `{firstUnread, revision}`. `firstUnread` is null when read,
+`{type:"threadStart"}` for an explicit unread mark (even for an empty thread),
+or `{type:"turn", turnId}` for the earliest eligible completed result.
+`revision` is an opaque string, scoped to this thread.
+
+Only newly delivered, durable, visible terminal results advance read state,
+before `turn/completed`. Every new result changes the revision, even when an
+older turn remains the first unread position. Reverting a paginated thread
+clears a removed position; explicit thread-start marks survive. Loading snapshots
+never acknowledges activity; empty threads start read and forked history does
+not publish inherited turns as new results.
+
+Enabling `initialize.capabilities.experimentalApi` permits updating read state and
+receiving its notifications.
+
+`thread/readState/update` takes `{threadId, expectedRevision, operation}`,
+where operation is `{type:"read"}` or `{type:"unread"}`.
+Use the revision of the row or transcript actually seen. An unread edit
+starts at `threadStart`; a read edit clears the position. Both require an
+exact revision match, and both conflicts return `-32600` with
+`{reason:"readStateConflict", readState:<current>}` as error data.
+Do not blindly retry: the original action may precede an unseen result or
+another window's mark. Unavailable threads fail; writes never change recency.
+
+Started, resumed or forked threads send `thread/readState/changed` alongside
+ordinary thread events; thread/unsubscribe or disconnect stops delivery.
+Clients can filter this method with the existing notification opt-out setting.
+Revisions are equality tokens, not clocks: never compare or merge them across
+threads or hosts. When concurrent responses disagree, refresh with `thread/read`.
+Offscreen threads converge on page refresh.
+
 # Guardian circuit-breaker errors
 
 Set `auto_review.circuit_break_action = "strict"` to include `TooManyDenials` in
@@ -101,6 +316,14 @@ discovery finds no project-root marker, Git checkout, or project-local `.codex`
 directory. Starting a task there does not preapprove project configuration added
 later. Existing trust decisions and permission checks for projects are unchanged.
 
+# Review delivery
+
+`review/start` runs the review on the supplied thread and returns that same
+`reviewThreadId`. Clients can omit `delivery`, send `null`, or specify `"inline"`.
+Clients that used `"detached"` should call `thread/start` and pass the new thread id
+to `review/start`. To keep the original conversation history with custom review
+instructions, use `thread/fork` followed by `turn/start`.
+
 # Thread removal
 
 `thread/archive` and `thread/delete` reject attempts to remove a live internal
@@ -110,6 +333,15 @@ after a client tries to archive or delete it.
 
 After the owner releases the worker, its saved conversation can be archived or
 deleted normally. Ordinary client-controlled threads keep their existing behavior.
+
+## Environment information (experimental)
+
+`environment/info` connects to a configured environment by `environmentId` and
+returns its detected `shell` plus its default `cwd` as a canonical
+environment-native `file:` URI. Connection failures are returned as request
+errors. After connecting, the live metadata request has a 30-second timeout. A
+timeout closes the probed connection and starts normal session recovery without
+retrying the failed request.
 
 ## User verification (experimental)
 
@@ -135,13 +367,13 @@ Local UI clients use five methods. They require the existing
 `unavailable/providerUnavailable` on unsupported platforms or without the required
 ChatGPT account identity.
 
-| Method | Params | Result |
-| --- | --- | --- |
-| `userVerification/status` | `{}` | `{credentialId, unavailableReason, unavailableMessage}` |
-| `userVerification/enroll` | `{}` | `{credentialId, algorithm?, publicKey?}` |
-| `userVerification/delete` | `{}` | `{}` |
-| `userVerification/verify` | `{challenge, title, description}` | `{proof: {credentialId, signature}}` |
-| `userVerification/cancel` | `{requestId}` | `{}` |
+| Method                    | Params                            | Result                                                  |
+| ------------------------- | --------------------------------- | ------------------------------------------------------- |
+| `userVerification/status` | `{}`                              | `{credentialId, unavailableReason, unavailableMessage}` |
+| `userVerification/enroll` | `{}`                              | `{credentialId, algorithm?, publicKey?}`                |
+| `userVerification/delete` | `{}`                              | `{}`                                                    |
+| `userVerification/verify` | `{challenge, title, description}` | `{proof: {credentialId, signature}}`                    |
+| `userVerification/cancel` | `{requestId}`                     | `{}`                                                    |
 
 Status reads local readiness without prompting or contacting a backend. A null
 `unavailableReason` means local checks passed, not that registration is valid.
@@ -200,14 +432,61 @@ any files were compressed; failures are reported through existing logs and metri
 There are no progress notifications or cancellation API. Clients sharing this
 Codex home must support compressed rollout files, including shared histories.
 
-## Managed model provider requirements
+## Model provider admission
+
+`configRequirements/read` reports `supportsIndependentSpeedModes: true` when
+`features.fast_mode` and `features.ultrafast_mode` independently control Fast and
+Ultra Fast. Older servers omit this field and use Fast mode as a shared speed
+gate. Missing individual feature requirements impose no additional restriction;
+the model catalog still determines which service tiers a model supports.
 
 Existing threads retain their provider configuration. Input RPCs reject requests when managed
 `model_provider` or `model_providers` requirements no longer match that configuration, or cannot
 be loaded. This covers turn start/steer, review, compaction, manual queue start, and active goal
 updates. Realtime connections use separate routing configuration and are not checked here.
-Interrupt, realtime stop, and goal pause/clear remain available. User and project
-configuration changes alone do not invalidate existing threads.
+Interrupt, realtime stop, and goal pause/clear remain available.
+
+Resume and input RPCs also reject a thread whose saved provider differs from the current
+configured provider, including profile and app-server launch overrides. The JSON-RPC error's
+`data` contains `ModelProviderError`: `modelProviderMismatch` has `modelProvider` and
+`currentModelProvider`, `modelProviderNotConfigured` identifies a missing provider, and
+`modelProviderPolicyConflict` identifies a mandatory-policy conflict. Clients can still use
+`thread/read` to display history and disable the composer with the error's explanation.
+Changing the resume request's provider does not bypass validation of the saved provider;
+switch the configured provider back to continue the chat. Input is also rejected when the
+current provider configuration cannot be loaded. Older clients retain their normal error
+fallback for unrecognized structured error variants.
+
+## Managed network requirements
+
+In `requirements.toml`, put shared network constraints directly in `[permissions.network]`,
+alongside `[permissions.filesystem]`:
+
+```toml
+[permissions.network]
+enabled = true
+```
+
+`[network_proxy]` and its compatibility alias `[experimental_network]` still work.
+Do not mix either with `[permissions.network]`, even across requirements layers. A single
+layer cannot use both top-level names; across layers the top-level names merge with normal
+precedence. `configRequirements/read` returns the result in `requirements.network`.
+
+In `config.toml`, `[features.network_proxy]` configures the proxy, while
+`[permissions.<profile>.network]` configures a profile's network settings. Managed requirements
+remain separate and override conflicting profile settings. They can start the proxy without
+enabling the feature; feature settings apply only when the feature is enabled.
+
+In `requirements.toml`, `network` is reserved, like `filesystem`. Rename any managed profile
+named `network` and update its references before upgrading. An empty `[permissions.network]`
+is rejected because it is indistinguishable from an old empty profile. Omit the table when
+there are no shared network settings. A profile named `network` is still allowed in `config.toml`.
+
+Policy publishers must continue using `[experimental_network]` until every client and policy
+validation layer supports the chosen new spelling. Older clients or intermediaries may ignore or
+strip constraints in `[network_proxy]` or `[permissions.network]`; intermediaries may also skip
+host-local validation. This reader change does not migrate or
+version-gate published policy bundles.
 
 # Portable profile forks (experimental)
 
@@ -244,12 +523,26 @@ AWS profile `credential_process` commands are run by the AWS SDK; their network 
 the application's HTTP policy. Configured credential exporters and AWS reauthentication commands
 require unrestricted application policy; policy revocation cancels their active work.
 
+After Bedrock login or setup, clients can call the experimental
+`account/bedrock/checkGovCloudRequirements` with `{}`. The server reloads configuration and
+requirements and returns `{ isGovCloud, shouldWarn }`. An explicitly configured official
+Bedrock endpoint hostname determines the region; with no URL or a custom proxy URL, the check
+resolves the AWS region using the current authentication state. It does not reload saved
+credentials or change login policy.
+For GovCloud, the advisory check requires API-only login and enabled managed application
+network restrictions with an explicit allow entry for the active Bedrock endpoint's domain.
+Non-Bedrock providers and commercial regions return both fields as `false`. Configuration or
+region resolution failures return an RPC error. This check does not block login or certify
+the entire network configuration.
+
 ## Stored thread attachments
 
 - `thread/attachment/add` — add a durable resource reference to a stored thread without loading it. Repeated writes with the same attachment type and identity key return the existing attachment.
 - `thread/attachment/list` — list attachments for one stored thread in a cursor-paginated request, including a thread that is not loaded.
+- `thread/attachmentOwner/list` — find stored threads with an exact attachment type and identity key, with cursor pagination and an optional archive filter.
 - `thread/attachment/remove` — remove an attachment by its thread, attachment type, and identity key; returns `{}`.
 - `thread/attachment/updated` — notification broadcast after an attachment is created or removed; contains the thread, attachment identity, attachment id, and operation.
+
 ### Example: Manage stored thread attachments
 
 Attachments record the resources currently associated with a thread, independently of conversation history. Clients can add, remove, and list attachments for one stored thread at a time without resuming those threads. Adding or removing an attachment does not create or delete the underlying resource or rewrite history. An attachment is idempotently identified by its thread, `attachmentType`, and `identityKey`. For pull requests, clients should reuse the canonical application identity `JSON.stringify([canonicalHostname, lowercaseOwner, lowercaseRepository, pullRequestNumber])` so addition and removal agree across surfaces.
@@ -305,11 +598,25 @@ Attachments record the resources currently associated with a thread, independent
 
 `thread/attachment/list` accepts one `threadId` and returns at most 100 attachments per page, ordered by creation time and attachment id. Continue with `nextCursor` and the same `threadId` until the cursor is `null`. Each thread can retain up to 100 attachments. Removing an attachment frees a slot for a new attachment.
 
+`thread/attachmentOwner/list` performs the reverse lookup: pass `attachmentType` and `identityKey` to get `data: [{threadId, archived}]` and `nextCursor`. Omit `archived` (or pass `null`) to include both active and archived threads; `false` selects active threads and `true` selects archived threads. Use the same identity and archive filter on subsequent cursor pages. The lookup covers only this app-server's configured thread store, not other hosts or stores. Results describe current membership and are not an atomic resource-cleanup check: attachments can change after a lookup.
+
 A non-ephemeral fork copies the source thread's current attachments, even when forking at an earlier turn. The copies have new attachment IDs and creation timestamps, but retain the same resource identities and payloads. Clients use `forkedFromId` on `thread/started` to detect forks and call `thread/attachment/list` with the new thread ID to load their attachments. Fork copying does not emit per-attachment updates; explicit add/remove operations still do. Copying is awaited before publishing the fork, but is best effort: a copy failure is logged and the conversation fork succeeds without attachments. Membership can then change independently on either thread; the referenced resources themselves are not copied. Resuming a fork does not repeat the copy.
 
 Attachment creation and deletion requests using the same thread ID are serialized across connections. The requesting client receives its response before the compact update is broadcast, and duplicate creates or absent deletes do not emit updates. Deleting the owning thread removes its attachments under the same lifecycle exclusion; queued attachment mutations then report that the thread was not found.
 
 # Thread plugin settings
+
+Plugin summaries returned by `plugin/list`, `plugin/installed`, `plugin/read`,
+and `plugin/share/list` report effective `enabled` state. When
+`plugins._default.enabled` is configured, an explicit
+`plugins."<plugin-name>@<marketplace-name>".enabled` overrides that default;
+a plugin disabled at its source remains disabled. Omitting the default preserves
+existing source and account enablement. Other plugin settings, including remembered
+tool approvals, inherit the activation default unless `enabled` is explicitly set.
+`plugin/search` retains its discovery behavior: results report `enabled: false`
+while preserving their installation state.
+Remote `plugin/install` still installs a policy-disabled package, but skips MCP and
+Apps authentication setup without writing an `enabled` override.
 
 `thread/settings/update` and `turn/start` accept `disabledPluginIds`, a list of
 `PluginSummary.id` values from `plugin/list`, in the
@@ -365,6 +672,23 @@ Existing rollouts may contain historical `ThreadRolledBack` events. Their replay
 and migration remain supported so resuming, reading, and forking those threads
 preserves the surviving history. This disk compatibility does not require restoring
 support for new `thread/rollback` requests.
+
+# MCP configuration reload
+
+`config/mcpServer/reload` returns an error when a loaded thread rejects the
+refreshed enterprise policy. The rejected thread retains its previous configuration
+layers with enterprise MCP disabled. Other planned thread refreshes are processed
+before the rejection is reported, so an error does not imply that no changes were
+applied. Correct the policy before retrying the reload.
+
+# Enterprise sign-in
+
+Call `mcpServer/oauth/login` with a directly configured server's `name` and its
+connected `threadId`. Open the returned `authorizationUrl` and match
+`mcpServer/oauthLogin/completed` by `loginId`. Starting another enterprise sign-in
+cancels the previous attempt and waits for its callback listener to close. Use
+`account/login/cancel` to cancel explicitly. Start a fresh session after success to
+use the saved grant.
 
 # Selected workspace routing
 
@@ -495,6 +819,11 @@ execution and sandbox policies.
 
 # Item history anchors
 
+Live notifications and turn history return the same `ThreadItem`. Each item has
+`startedAtMs` and `completedAtMs` beside `type` and `id`. Each timestamp is in
+Unix milliseconds, or `null` when the producer has not recorded it. Clients
+reading older servers may also encounter items that omit these fields.
+
 `thread/items/list` accepts an optional nullable `cursor`: either an opaque string
 from a previous response or an item anchor such as
 `{"type":"item","itemId":"item-123"}`. An item anchor resumes exclusively after
@@ -508,3 +837,76 @@ and out-of-scope item IDs return invalid params (`-32602`) with
 Omitted or null cursors preserve normal first-page behavior. Continue anchored
 pages with the returned opaque string `nextCursor`; response fields and
 `backwardsCursor` semantics are unchanged.
+
+## Workspace switching (experimental)
+
+For a managed ChatGPT login, `accountSession/list` returns an opaque
+`sessionId` for that login and its selected workspace. Set
+`refreshWorkspaceMetadata` to fetch the user's memberships.
+
+Call `accountSession/switch` with that `sessionId` and the target workspace's
+`accountId`. Core checks the membership, stops loaded threads, exchanges the
+session token and validates the new workspace's routing. Clients receive
+`thread/closed` for unloaded threads and `account/updated` after a successful
+switch. Selecting the current workspace leaves its threads running.
+
+The server remembers the selected workspace on refresh. If routing validation
+fails, Core attempts to restore the previous workspace while the same credentials
+are still current.
+
+Clients that can open a browser may pass `allowBrowserLogin: true`. If the
+workspace requires SSO, the response contains `loginId` and `authUrl`. Open
+that URL and wait for `account/login/completed`. The browser can reuse an
+existing SSO session. Core accepts the callback only for the requesting login
+and target workspace. Cancel through `account/login/cancel` to keep the current
+workspace. Government workspaces require a separate sign-in.
+
+# GCP provider account
+
+The experimental `account/gcp/setup` method configures the built-in Vertex AI provider.
+
+- `projectId` (required) — Google Cloud project ID.
+- `location` (optional) — Defaults to `global`.
+- `credentialFile` (optional) — Absolute path to a credential file on the app-server
+  host. Omit it or pass `null` to clear the saved path in the active user
+  configuration and use Application Default Credentials (ADC), including
+  `GOOGLE_APPLICATION_CREDENTIALS`.
+
+If the active profile inherits `model_providers.gcp.credential_file` from the base
+`config.toml`, clearing the profile’s own setting would expose the base path again.
+Setup returns an error without saving changes. To use ADC, remove the inherited
+setting from the file named in the error and retry.
+
+Setup rejects a GCP `base_url` override or higher-priority settings that conflict
+with the request. It fetches an access token before saving the settings and
+selecting GCP, then returns `{}`. The next `model/list` reloads the catalog.
+`account/read` reports `{ "account": { "type": "gcp" }, "requiresOpenaiAuth": false }`.
+Use a model request to verify Vertex model access.
+
+Credential failures include `error.data.reason`.
+
+- `gcloudNotInstalled` — The app-server could not find `gcloud` on its PATH.
+- `credentialFileInvalid` — The path is invalid or the file is unreadable. For
+  default `gcloud` auth, setup also checks for a JSON object with a nonempty string `type`.
+- `authCommandFailed` — The token command failed, including when ADC is missing
+  or a token refresh fails.
+
+For personal sign-in, users can run `gcloud auth application-default login` on
+the app-server host and retry setup.
+
+## Managed OpenTelemetry configuration
+
+`configRequirements/read` exposes managed `otel` settings. `config/read` applies
+those settings to the effective configuration and omits ordinary origins for
+managed fields. Configuration writes that overlap managed settings are rejected.
+
+Exporter header values are redacted in effective config, source layers, managed
+requirements, and write-override metadata. Runtime exporters retain the original values.
+
+Managed span attributes and tracestate metadata are included in effective config
+and requirements reads. Unmanaged metadata remains writable.
+
+Tracestate requirements merge individual fields within each member. For example,
+requiring `otel.tracestate.vendor.tenant` preserves an ordinary `vendor.region`.
+Only required fields and edits to their ancestors are protected; sibling fields
+retain their origins and remain writable.

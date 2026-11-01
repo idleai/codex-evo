@@ -2,6 +2,8 @@
 module.exports = {
   preset: "ts-jest/presets/default-esm",
   testEnvironment: "node",
+  // CLI integration tests need startup headroom on shared runners.
+  testTimeout: 30_000,
   extensionsToTreatAsEsm: [".ts"],
   setupFilesAfterEnv: ["<rootDir>/tests/setupCodexHome.ts"],
   moduleNameMapper: {

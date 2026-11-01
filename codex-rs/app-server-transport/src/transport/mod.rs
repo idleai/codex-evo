@@ -43,8 +43,11 @@ pub use remote_control::take_remote_control_disabled_env;
 pub use stdio::start_stdio_connection;
 pub use unix_socket::AppServerStartupLock;
 pub use unix_socket::DaemonShutdownAccess;
+pub use unix_socket::DaemonSocketFileGuard;
 pub use unix_socket::acquire_app_server_startup_lock;
+pub use unix_socket::bind_private_daemon_socket;
 pub use unix_socket::start_control_socket_acceptor;
+pub use unix_socket::verified_local_daemon_socket;
 pub use websocket::start_websocket_acceptor;
 
 const INTERNAL_ERROR_CODE: i64 = -32603;
@@ -198,13 +201,18 @@ pub enum TransportEvent {
 pub enum ConnectionOrigin {
     Stdio,
     InProcess,
+    /// Owner-restricted local control socket; distinct from a TCP WebSocket listener.
+    LocalSocket,
+    /// Workspace-scoped connection authenticated by the Idle runtime grant service.
+    IdleRemote,
     WebSocket,
     RemoteControl,
 }
 
 static CONNECTION_ID_COUNTER: AtomicU64 = AtomicU64::new(0);
 
-fn next_connection_id() -> ConnectionId {
+/// Allocate an identity shared by built-in transports and daemon-owned adapters.
+pub fn next_connection_id() -> ConnectionId {
     ConnectionId(CONNECTION_ID_COUNTER.fetch_add(1, Ordering::Relaxed))
 }
 

@@ -33,6 +33,62 @@ const PROTECTED_MODEL: &str = "gpt-5.2";
 const REVIEW_INSTRUCTIONS: &str = "Protected-model automatic review instructions.";
 const PERMISSION_INSTRUCTIONS: &str = "Protected-model read-only instructions.";
 
+#[test_case(SettingsOperation::Standalone; "standalone settings")]
+#[test_case(SettingsOperation::StandaloneWithReply; "standalone settings with reply")]
+#[test_case(SettingsOperation::TurnStart; "turn-start settings")]
+#[tokio::test]
+async fn frozen_permission_profile_rejects_later_widening(
+    operation: SettingsOperation,
+) -> Result<()> {
+    let server = responses::start_mock_server().await;
+    let response = responses::mount_sse_once(
+        &server,
+        responses::sse(vec![
+            responses::ev_response_created("response"),
+            responses::ev_completed("response"),
+        ]),
+    )
+    .await;
+    let test = test_codex()
+        .with_config(|config| {
+            let approval = config.permissions.approval_policy.clone();
+            config
+                .permissions
+                .set_permission_profile(PermissionProfile::read_only())
+                .expect("read-only profile is allowed");
+            config
+                .permissions
+                .freeze_permission_profile()
+                .expect("freeze current profile");
+            assert_eq!(config.permissions.approval_policy, approval);
+        })
+        .build_with_auto_env(&server)
+        .await?;
+    let initial = test.codex.thread_settings_snapshot().await;
+    for permission_profile in [
+        PermissionProfile::Disabled,
+        PermissionProfile::workspace_write(),
+    ] {
+        operation
+            .submit(
+                &test.codex,
+                ThreadSettingsOverrides {
+                    permission_profile: Some(permission_profile),
+                    ..Default::default()
+                },
+            )
+            .await
+            .expect_err("frozen permissions cannot be widened");
+        assert_eq!(test.codex.thread_settings_snapshot().await, initial);
+        assert!(response.requests().is_empty());
+    }
+    test.submit_text_turn("continue with the fixed profile")
+        .await?;
+    assert_eq!(response.requests().len(), 1);
+    assert_eq!(test.codex.thread_settings_snapshot().await, initial);
+    Ok(())
+}
+
 #[derive(Clone, Copy)]
 enum SettingsOperation {
     Standalone,
@@ -86,7 +142,7 @@ impl SettingsOperation {
                         .with_thread_settings(thread_settings),
                     )
                     .await?;
-                let TurnInputSubmission::Started { turn_id } = result else {
+                let TurnInputSubmission::Started { turn_id, .. } = result else {
                     anyhow::bail!("expected a new turn, got {result:?}");
                 };
                 turn_id
@@ -137,11 +193,15 @@ async fn protected_model_settings_use_the_proposed_permissions(
         on_request_auto_review: Some(REVIEW_INSTRUCTIONS.to_string()),
         never: None,
         unless_trusted: None,
+        granular: None,
+        ..Default::default()
     });
     messages.permissions = Some(PermissionMessages {
         danger_full_access: None,
         workspace_write: None,
         read_only: Some(PERMISSION_INSTRUCTIONS.to_string()),
+        approved_prefixes: None,
+        ..PermissionMessages::default()
     });
     let test = test_codex()
         .with_model(INITIAL_MODEL)

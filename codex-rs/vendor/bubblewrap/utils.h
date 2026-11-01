@@ -33,13 +33,22 @@
 #include <sys/types.h>
 #include <sys/stat.h>
 
-#if 0
+#ifdef BWRAP_DEBUG
+extern bool bwrap_is_debugging;
 #define debug(...) bwrap_log (LOG_DEBUG, __VA_ARGS__)
 #else
 #define debug(...)
 #endif
 
 #define UNUSED __attribute__((__unused__))
+
+#define BWRAP_KERNEL_VERSION(a, b, c) (((a) << 16) + ((b) << 8) + (c))
+#ifdef HAVE_ASSUMED_KERNEL
+#  define ASSUMED_KERNEL \
+     BWRAP_KERNEL_VERSION (ASSUMED_KERNEL_MAJOR, ASSUMED_KERNEL_MINOR, ASSUMED_KERNEL_PATCH)
+#else
+#  define ASSUMED_KERNEL 0
+#endif
 
 #define N_ELEMENTS(arr) (sizeof (arr) / sizeof ((arr)[0]))
 
@@ -60,6 +69,7 @@
 #endif
 
 extern bool bwrap_level_prefix;
+extern int proc_fd;
 
 void  bwrap_log (int severity,
                  const char *format,
@@ -82,6 +92,7 @@ void *xcalloc (size_t nmemb, size_t size);
 void *xrealloc (void  *ptr,
                 size_t size);
 char *xstrdup (const char *str);
+char *xstrndup(const char *str, size_t n);
 void  strfreev (char **str_array);
 void  xclearenv (void);
 void  xsetenv (const char *name,
@@ -101,10 +112,9 @@ bool  has_path_prefix (const char *str,
                        const char *prefix);
 bool  path_equal (const char *path1,
                   const char *path2);
-int   fdwalk (int                     proc_fd,
-              int                     (*cb)(void *data,
-                                  int fd),
-              void                   *data);
+int   fdwalk (int (*cb)(void *data,
+                        int fd),
+              void *data);
 char *load_file_data (int     fd,
                       size_t *size);
 char *load_file_at (int         dirfd,
@@ -127,7 +137,7 @@ int   ensure_file (const char *path,
                    mode_t      mode);
 int   ensure_dir (const char *path,
                   mode_t      mode);
-int   get_file_mode (const char *pathname);
+int   get_file_mode (int fd);
 int   mkdir_with_parents (const char *pathname,
                           mode_t      mode,
                           bool        create_last);
@@ -135,8 +145,8 @@ void create_pid_socketpair (int sockets[2]);
 void send_pid_on_socket (int socket);
 int  read_pid_from_socket (int socket);
 char *get_oldroot_path (const char *path);
-char *get_newroot_path (const char *path);
 char *readlink_malloc (const char *pathname);
+char *fd_to_proc_path (int fd);
 
 /* syscall wrappers */
 int   raw_clone (unsigned long flags,
@@ -147,6 +157,24 @@ char *label_mount (const char *opt,
                    const char *mount_label);
 int   label_exec (const char *exec_label);
 int   label_create_file (const char *file_label);
+
+extern bool opt_force_openat_fallback;
+extern bool opt_force_mount_setattr_fallback;
+
+int safe_openat (int dirfd,
+                 const char *rootfs,
+                 const char *path,
+                 int flags,
+                 int mode);
+char *chroot_realpath (const char *chroot,
+                       const char *path,
+                       char resolved_path[]);
+
+static inline bool
+is_empty_string (const char *s)
+{
+  return s == NULL || s[0] == '\0';
+}
 
 const char *mount_strerror (int errsv);
 
@@ -183,6 +211,14 @@ cleanup_fdp (int *fdp)
 #define cleanup_fd __attribute__((cleanup (cleanup_fdp)))
 #define cleanup_strv __attribute__((cleanup (cleanup_strvp)))
 
+static inline int
+steal_fd (int *fdp)
+{
+  int fd = *fdp;
+  *fdp = -1;
+  return fd;
+}
+
 static inline void *
 steal_pointer (void *pp)
 {
@@ -198,6 +234,43 @@ steal_pointer (void *pp)
 /* type safety */
 #define steal_pointer(pp) \
   (0 ? (*(pp)) : (steal_pointer) (pp))
+
+typedef struct {
+  int    *fds;
+  size_t  len;
+  size_t  alloc;
+} FdSet;
+
+static inline int
+fdset_add (FdSet *set, int fd)
+{
+  if (set->len == set->alloc)
+    {
+      set->alloc = set->alloc ? set->alloc * 2 : 4;
+      set->fds = xrealloc (set->fds, set->alloc * sizeof (int));
+    }
+  set->fds[set->len++] = fd;
+  return fd;
+}
+
+static inline void
+cleanup_fdsetp (FdSet *set)
+{
+  size_t i;
+
+  for (i = 0; i < set->len; i++)
+    if (set->fds[i] >= 0)
+      close (set->fds[i]);
+  free (set->fds);
+}
+
+#define cleanup_fdset __attribute__((cleanup (cleanup_fdsetp)))
+
+static inline char *
+fdset_add_to_proc_path (FdSet *set, int fd)
+{
+  return fd_to_proc_path (fdset_add (set, fd));
+}
 
 typedef struct _StringBuilder StringBuilder;
 
@@ -215,3 +288,35 @@ void strappendf (StringBuilder *dest,
                  ...);
 void strappend_escape_for_mount_options (StringBuilder *dest,
                                          const char    *src);
+
+#ifndef MOUNT_ATTR_RDONLY
+
+#include <linux/types.h>
+
+struct mount_attr
+{
+  __u64 attr_set;
+  __u64 attr_clr;
+  __u64 propagation;
+  __u64 userns_fd;
+};
+
+#define MOUNT_ATTR_RDONLY       0x00000001
+#define MOUNT_ATTR_NOSUID       0x00000002
+#define MOUNT_ATTR_NODEV        0x00000004
+#define MOUNT_ATTR_NOEXEC       0x00000008
+#define MOUNT_ATTR__ATIME       0x00000070
+#define MOUNT_ATTR_RELATIME     0x00000000
+#define MOUNT_ATTR_NOATIME      0x00000010
+#define MOUNT_ATTR_STRICTATIME  0x00000020
+#define MOUNT_ATTR_NODIRATIME   0x00000080
+#define MOUNT_ATTR_IDMAP        0x00100000
+#define MOUNT_ATTR_NOSYMFOLLOW  0x00200000
+#endif
+
+#ifndef AT_RECURSIVE
+#define AT_RECURSIVE  0x8000
+#endif
+
+int mount_setattr_wrapper (int dirfd, const char *path, unsigned int flags,
+                           struct mount_attr *attr, size_t size);

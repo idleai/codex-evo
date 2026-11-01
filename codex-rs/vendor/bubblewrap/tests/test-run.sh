@@ -70,10 +70,6 @@ for ALT in "" "--unshare-user-try" "--unshare-pid" "--unshare-user-try --unshare
     else
         ok_skip "not sure what unreadable file to use"
     fi
-
-    # bind dest in symlink (https://github.com/projectatomic/bubblewrap/pull/119)
-    $RUN $ALT --dir /tmp/dir --symlink dir /tmp/link --bind /etc /tmp/link true
-    ok "can bind a destination over a symlink"
 done
 
 # Test symlink behaviour
@@ -175,6 +171,34 @@ if $RUN --unshare-pid --bind /source-enoent /dest true 2>err.txt; then
 fi
 assert_file_has_content err.txt "^bwrap: Can't find source path.*source-enoent"
 ok "error prefixing"
+
+# Test that an empty path argument is rejected. Empty paths used to be
+# interpreted as the root directory, so for example --bind-try "" DEST
+# silently gave the sandbox access to the whole filesystem.
+for opt in --bind --bind-try --dev-bind --dev-bind-try --ro-bind --ro-bind-try; do
+    if $RUN "$opt" "" /mnt true 2>err.txt; then
+        assert_not_reached "$opt accepted an empty source"
+    fi
+    assert_file_has_content err.txt "^bwrap: $opt does not take an empty path argument"
+
+    if $RUN "$opt" / "" true 2>err.txt; then
+        assert_not_reached "$opt accepted an empty destination"
+    fi
+    assert_file_has_content err.txt "^bwrap: $opt does not take an empty path argument"
+done
+
+for opt in --chdir --dev --dir --mqueue --proc --remount-ro --tmpfs; do
+    if $RUN "$opt" "" true 2>err.txt; then
+        assert_not_reached "$opt accepted an empty path"
+    fi
+    assert_file_has_content err.txt "^bwrap: $opt does not take an empty path argument"
+done
+
+if $RUN --symlink /usr "" true 2>err.txt; then
+    assert_not_reached "--symlink accepted an empty destination"
+fi
+assert_file_has_content err.txt "^bwrap: --symlink does not take an empty path argument"
+ok "empty path arguments are rejected"
 
 if ! ${is_uidzero}; then
     # When invoked as non-root, check that by default we have no caps left
@@ -296,6 +320,7 @@ if command -v mktemp > /dev/null; then
     else
         ok_skip "/mnt does not exist or is a symlink"
     fi
+    rm "$tempfile"
 else
     ok_skip "mktemp not found"
     ok_skip "mktemp not found"
@@ -688,5 +713,14 @@ else
 
     fi
 fi
+
+# Smoke-test --not-a-security-boundary
+#
+# Setting up an unavailable automount and triggering the right conditions is
+# complicated to do here, but we can at least check that the option is there,
+# and that it stays there.
+
+$RUN --not-a-security-boundary true
+ok "Accepts --not-a-security-boundary"
 
 done_testing

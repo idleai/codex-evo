@@ -8,7 +8,6 @@ use std::fs;
 use std::os::fd::AsRawFd;
 use std::os::fd::FromRawFd;
 use std::os::fd::OwnedFd;
-use std::os::unix::fs::PermissionsExt;
 use std::os::unix::fs::symlink;
 use std::process::Command;
 use std::sync::Arc;
@@ -93,8 +92,7 @@ for line in sys.stdin:
     let wrapper = temporary.path().join("executable-text");
     // No shebang: exercise Command's shell fallback after native macOS spawn
     // returns ENOEXEC, including the fallback descriptor cleanup.
-    fs::write(&wrapper, "exec \"$@\"\n")?;
-    fs::set_permissions(&wrapper, fs::Permissions::from_mode(/*mode*/ 0o755))?;
+    codex_utils_cargo_bin::write_executable(&wrapper, "exec \"$@\"\n")?;
     for (launch, program, mut args) in [
         ("absolute", python.clone().into_os_string(), Vec::new()),
         ("relative", OsString::from("./python-fixture"), Vec::new()),
@@ -117,7 +115,21 @@ for line in sys.stdin:
             Some(temporary.path().to_string_lossy().into_owned()),
             Arc::new(LocalStdioServerLauncher::new(std::env::current_dir()?)),
         )
-        .await?;
+        .await;
+        if cfg!(target_env = "musl") && launch == "shell fallback" {
+            // musl reports ENOEXEC for executable text without a shebang instead
+            // of starting a shell. Preserve that launch failure on this target.
+            let error = client.err().expect("musl should reject executable text");
+            // The client wraps transport errors, retaining the OS code in the message.
+            assert!(
+                error
+                    .to_string()
+                    .ends_with(&format!("(os error {})", libc::ENOEXEC)),
+                "unexpected executable-text launch error: {error}"
+            );
+            continue;
+        }
+        let client = client?;
         client
             .initialize(
                 InitializeRequestParams::new(
@@ -142,7 +154,7 @@ for line in sys.stdin:
             .call_tool(
                 "probe".to_string(),
                 /*arguments*/ None,
-                /*meta*/ None,
+                |_| Ok(None),
                 Some(Duration::from_secs(/*secs*/ 5)),
             )
             .await?;
@@ -170,8 +182,7 @@ async fn local_stdio_preserves_exec_failure_reporting() -> Result<()> {
     let temporary = tempfile::tempdir()?;
     let script = temporary.path().join("missing-interpreter");
     let interpreter = temporary.path().join("does-not-exist");
-    fs::write(&script, format!("#!{}\n", interpreter.display()))?;
-    fs::set_permissions(&script, fs::Permissions::from_mode(/*mode*/ 0o755))?;
+    codex_utils_cargo_bin::write_executable(&script, &format!("#!{}\n", interpreter.display()))?;
 
     // Program resolution succeeds, but exec fails. Descriptor cleanup must
     // preserve the internal error pipe so launch reports the failure directly.

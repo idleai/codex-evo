@@ -28,6 +28,10 @@
 #include <selinux/selinux.h>
 #endif
 
+#ifndef __NR_pivot_root
+#error Linux kernel headers with __NR_pivot_root are required
+#endif
+
 #ifndef HAVE_SELINUX_2_3
 /* libselinux older than 2.3 weren't const-correct */
 #define setexeccon(x) setexeccon ((security_context_t) x)
@@ -35,7 +39,12 @@
 #define security_check_context(x) security_check_context ((security_context_t) x)
 #endif
 
+#ifdef BWRAP_DEBUG
+bool bwrap_is_debugging = false;
+#endif
+
 bool bwrap_level_prefix = false;
+int proc_fd = -1;
 
 __attribute__((format(printf, 2, 0))) static void
 bwrap_logv (int severity,
@@ -43,6 +52,11 @@ bwrap_logv (int severity,
             va_list args,
             const char *detail)
 {
+#ifdef BWRAP_DEBUG
+  if (severity == LOG_DEBUG && !bwrap_is_debugging)
+    return;
+#endif
+
   if (bwrap_level_prefix)
     fprintf (stderr, "<%d>", severity);
 
@@ -137,7 +151,7 @@ fork_intermediate_child (void)
   if (pid == -1)
     die_with_error ("Can't fork for --pidns");
 
-  /* Parent is an process not needed */
+  /* The parent process is not needed */
   if (pid != 0)
     exit (0);
 }
@@ -184,6 +198,20 @@ xstrdup (const char *str)
   assert (str != NULL);
 
   res = strdup (str);
+  if (res == NULL)
+    die_oom ();
+
+  return res;
+}
+
+char *
+xstrndup (const char *str, size_t n)
+{
+  char *res;
+
+  assert (str != NULL);
+
+  res = strndup (str, n);
   if (res == NULL)
     die_oom ();
 
@@ -369,8 +397,8 @@ xasprintf (const char *format,
 }
 
 int
-fdwalk (int proc_fd, int (*cb)(void *data,
-                               int   fd), void *data)
+fdwalk (int (*cb)(void *data,
+                  int   fd), void *data)
 {
   int open_max;
   int fd;
@@ -666,11 +694,11 @@ load_file_at (int         dfd,
 
 /* Sets errno on error (< 0) */
 int
-get_file_mode (const char *pathname)
+get_file_mode (int fd)
 {
   struct stat buf;
 
-  if (stat (pathname, &buf) !=  0)
+  if (fstat (fd, &buf) !=  0)
     return -1;
 
   return buf.st_mode & S_IFMT;
@@ -869,14 +897,6 @@ get_oldroot_path (const char *path)
   return strconcat ("/oldroot/", path);
 }
 
-char *
-get_newroot_path (const char *path)
-{
-  while (*path == '/')
-    path++;
-  return strconcat ("/newroot/", path);
-}
-
 int
 raw_clone (unsigned long flags,
            void         *child_stack)
@@ -893,12 +913,7 @@ raw_clone (unsigned long flags,
 int
 pivot_root (const char * new_root, const char * put_old)
 {
-#ifdef __NR_pivot_root
   return syscall (__NR_pivot_root, new_root, put_old);
-#else
-  errno = ENOSYS;
-  return -1;
-#endif
 }
 
 char *
@@ -957,6 +972,12 @@ mount_strerror (int errsv)
       default:
         return strerror (errsv);
     }
+}
+
+char *
+fd_to_proc_path (int fd)
+{
+  return xasprintf ("/proc/self/fd/%d", fd);
 }
 
 /*
@@ -1082,4 +1103,35 @@ strappend_escape_for_mount_options (StringBuilder *dest, const char *src)
         }
       src++;
     }
+}
+
+
+/* Enable mount_setattr for systems where the kernel is new enough but
+ * the glibc may lag behind, like it might happen with the Steam runtime.
+ *
+ * This could be expanded for other architectures, but these seem like
+ * the most likely to be backported to old LTS operating systems */
+#ifndef __NR_mount_setattr
+# if (defined(__x86_64__) && defined(__LP64__)) \
+     || defined(__i386__) \
+     || (defined(__aarch64__) && defined(__LP64__))
+#   define __NR_mount_setattr 442
+# endif
+#endif
+
+int
+mount_setattr_wrapper (int dirfd, const char *path, unsigned int flags,
+                       struct mount_attr *attr, size_t size)
+{
+#ifdef __NR_mount_setattr
+  return syscall (__NR_mount_setattr, dirfd, path, flags, attr, size);
+#else
+  (void) dirfd;
+  (void) path;
+  (void) flags;
+  (void) attr;
+  (void) size;
+  errno = ENOSYS;
+  return -1;
+#endif
 }

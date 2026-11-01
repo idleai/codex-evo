@@ -22,6 +22,8 @@ use codex_extension_api::ResponseItem;
 use codex_extension_api::SkillInvocationContributor;
 use codex_extension_api::ThreadLifecycleContributor;
 use codex_extension_api::TokenUsageContributor;
+use codex_extension_api::ToolAdmissionContributor;
+use codex_extension_api::ToolAdmissionInput;
 use codex_extension_api::ToolCall;
 use codex_extension_api::ToolContributor;
 use codex_extension_api::ToolExecutor;
@@ -33,11 +35,15 @@ use codex_extension_api::TurnItemContributor;
 use codex_extension_api::TurnLifecycleContributor;
 use codex_protocol::items::HookPromptItem;
 use codex_protocol::items::TurnItem;
+use codex_protocol::protocol::EnvironmentConfigState;
 use codex_protocol::protocol::Event;
 use codex_protocol::protocol::EventMsg;
 use codex_protocol::protocol::SessionSource;
 use codex_protocol::protocol::SubAgentSource;
+use codex_protocol::protocol::TurnEnvironmentRequest;
+use codex_protocol::protocol::TurnEnvironmentSelection;
 use codex_protocol::protocol::WarningEvent;
+use codex_utils_path_uri::PathUri;
 use pretty_assertions::assert_eq;
 
 struct AllContributors;
@@ -56,6 +62,7 @@ fn mcp_contribution_context_identifies_the_running_thread() {
         "codex_work_cca",
         &[],
         /*executor_capability_discovery*/ None,
+        /*executor_capability_discovery_v2*/ None,
     )
     .with_session_source(&session_source);
 
@@ -63,6 +70,45 @@ fn mcp_contribution_context_identifies_the_running_thread() {
     assert_eq!(
         McpServerContributionContext::global(&config).session_source(),
         None
+    );
+}
+
+#[test]
+fn mcp_context_preserves_selected_executor_order_and_unavailability() {
+    let config = ();
+    let environments = vec![
+        TurnEnvironmentSelection::new(
+            TurnEnvironmentRequest {
+                environment_id: "starting-primary".to_owned(),
+                cwd: PathUri::parse("file:///workspace").expect("workspace URI"),
+                workspace_roots: Vec::new(),
+                config: EnvironmentConfigState::Pending,
+            },
+            &[],
+        ),
+        TurnEnvironmentSelection::new(
+            TurnEnvironmentRequest {
+                environment_id: "ready-secondary".to_owned(),
+                cwd: PathUri::parse("file:///other").expect("workspace URI"),
+                workspace_roots: Vec::new(),
+                config: EnvironmentConfigState::FromThread,
+            },
+            &[],
+        ),
+    ];
+    let context = McpServerContributionContext::global(&config);
+    assert_eq!(context.selected_environments(), None);
+    assert_eq!(
+        context
+            .with_selected_environments(&[])
+            .selected_environments(),
+        Some([].as_slice())
+    );
+    assert_eq!(
+        context
+            .with_selected_environments(&environments)
+            .selected_environments(),
+        Some(environments.as_slice())
     );
 }
 
@@ -141,6 +187,15 @@ impl ToolContributor for AllContributors {
 
 impl ToolLifecycleContributor for AllContributors {}
 
+impl ToolAdmissionContributor for AllContributors {
+    fn admit<'a>(
+        &'a self,
+        _input: ToolAdmissionInput<'a>,
+    ) -> ExtensionFuture<'a, Result<(), String>> {
+        Box::pin(std::future::ready(Ok(())))
+    }
+}
+
 impl TurnItemContributor for AllContributors {
     fn contribute<'a>(
         &'a self,
@@ -165,10 +220,11 @@ impl ApprovalReviewContributor for AllContributors {
 }
 
 impl codex_extension_api::SynchronousApprovalReviewer for AllContributors {
-    fn review(
-        &self,
+    fn review<'a>(
+        &'a self,
         _reason: codex_protocol::approvals::GuardianReviewReason,
-    ) -> ExtensionFuture<'_, Option<codex_protocol::protocol::ReviewDecision>> {
+        _async_approval: Option<codex_extension_api::ExtensionFuture<'a, ()>>,
+    ) -> ExtensionFuture<'a, Option<codex_protocol::protocol::ReviewDecision>> {
         Box::pin(std::future::ready(Some(
             codex_protocol::protocol::ReviewDecision::Approved,
         )))
@@ -187,10 +243,11 @@ async fn build_round_trips_every_contributor_category() {
     builder.prompt_contributor(contributor.clone());
     builder.turn_input_contributor(contributor.clone());
     builder.tool_contributor(contributor.clone());
+    builder.tool_admission_contributor(contributor.clone());
     builder.tool_lifecycle_contributor(contributor.clone());
     builder.turn_item_contributor(contributor.clone());
     builder.approval_review_contributor(contributor);
-    let registry = builder.build();
+    let registry = builder.build().to_builder().build();
 
     assert_eq!(registry.thread_lifecycle_contributors().len(), 1);
     assert_eq!(registry.turn_lifecycle_contributors().len(), 1);
@@ -200,10 +257,12 @@ async fn build_round_trips_every_contributor_category() {
     assert_eq!(registry.context_contributors().len(), 1);
     assert_eq!(registry.turn_input_contributors().len(), 1);
     assert_eq!(registry.tool_contributors().len(), 1);
+    assert_eq!(registry.tool_admission_contributors().len(), 1);
     assert_eq!(registry.tool_lifecycle_contributors().len(), 1);
     assert_eq!(registry.turn_item_contributors().len(), 1);
     let thread_store = ExtensionData::new("thread");
     let input = codex_extension_api::ApprovalDecisionInput {
+        serving_assessment: None,
         permissions: Some(&Default::default()),
         approval_id: "approval-1",
         tool_call_id: None,

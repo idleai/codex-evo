@@ -18,6 +18,7 @@ use pretty_assertions::assert_eq;
 use rand::RngCore;
 use windows_sys::Win32::Foundation::ERROR_ACCESS_DENIED;
 use windows_sys::Win32::Foundation::ERROR_FILE_NOT_FOUND;
+use windows_sys::Win32::Foundation::ERROR_KEY_DELETED;
 use windows_sys::Win32::Foundation::ERROR_SUCCESS;
 use windows_sys::Win32::Foundation::WAIT_OBJECT_0;
 use windows_sys::Win32::NetworkManagement::NetManagement as network;
@@ -54,7 +55,7 @@ impl ProfileFixture {
             let sid = string_from_sid_bytes(&self.user.sid).map_err(anyhow::Error::msg)?;
             let deadline = Instant::now() + Duration::from_secs(10);
             loop {
-                let mut key = 0;
+                let mut key = std::ptr::null_mut();
                 let status = unsafe {
                     registry::RegOpenKeyExW(
                         registry::HKEY_USERS,
@@ -67,8 +68,16 @@ impl ProfileFixture {
                 if status == ERROR_FILE_NOT_FOUND {
                     break;
                 }
-                ensure!(status == ERROR_SUCCESS, "read owned profile hive: {status}");
-                unsafe { registry::RegCloseKey(key) };
+                if status == ERROR_SUCCESS {
+                    unsafe { registry::RegCloseKey(key) };
+                } else {
+                    // Unloading first marks the hive for deletion. Keep waiting
+                    // until it is absent before testing profile removal.
+                    ensure!(
+                        status == ERROR_KEY_DELETED,
+                        "read owned profile hive: {status}"
+                    );
+                }
                 ensure!(Instant::now() < deadline, "owned profile did not unload");
                 std::thread::sleep(Duration::from_millis(50));
             }
@@ -199,7 +208,7 @@ fn profile_cleanup_preserves_account_until_profile_can_be_deleted() -> Result<()
     fixture.user.remove()?;
     assert_eq!(local_user_flags(name)?, None);
     assert!(!path.exists());
-    let mut key = 0;
+    let mut key = std::ptr::null_mut();
     let status = unsafe {
         registry::RegOpenKeyExW(
             registry::HKEY_LOCAL_MACHINE,

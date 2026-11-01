@@ -42,7 +42,8 @@ rust_binary(
 
 wine_rust_test(
     name = "wine-test-support-unit-tests",
-    timeout = "short",
+    # A cold Wine prefix and PowerShell startup can exceed the short timeout.
+    timeout = "moderate",
     crate = ":wine_test_support",
     windows_binaries = {
         "wine-smoke": ":windows-smoke",

@@ -23,8 +23,6 @@ use std::path::PathBuf;
 use std::process::Command;
 use std::sync::Arc;
 use std::time::Duration;
-#[cfg(target_os = "linux")]
-use std::time::UNIX_EPOCH;
 
 use anyhow::Context;
 use anyhow::Result;
@@ -306,11 +304,23 @@ async fn file_system_no_follow_metadata_preserves_linux_birthtime(
     let tmp = TempDir::new()?;
     let file = tmp.path().join("created.txt");
     std::fs::write(&file, "created")?;
-    let expected = match std::fs::metadata(&file)?.created() {
-        Ok(created) => Some(i64::try_from(
-            created.duration_since(UNIX_EPOCH)?.as_millis(),
-        )?),
-        Err(error) if error.kind() == std::io::ErrorKind::Unsupported => None,
+    // Rust's musl metadata does not expose the birthtime returned by statx.
+    let expected = match rustix::fs::statx(
+        rustix::fs::CWD,
+        &file,
+        rustix::fs::AtFlags::empty(),
+        rustix::fs::StatxFlags::BTIME,
+    ) {
+        Ok(metadata) if metadata.stx_mask & rustix::fs::StatxFlags::BTIME.bits() != 0 => {
+            let created = Duration::new(
+                u64::try_from(metadata.stx_btime.tv_sec)?,
+                metadata.stx_btime.tv_nsec,
+            );
+            let created_at_ms = i64::try_from(created.as_millis())?;
+            assert!(created_at_ms > 0);
+            created_at_ms
+        }
+        Ok(_) | Err(rustix::io::Errno::NOSYS | rustix::io::Errno::PERM) => 0,
         Err(error) => return Err(error.into()),
     };
 
@@ -325,12 +335,7 @@ async fn file_system_no_follow_metadata_preserves_linux_birthtime(
         )
         .await?;
 
-    if let Some(expected) = expected {
-        assert!(expected > 0);
-        assert_eq!(metadata.created_at_ms, expected);
-    } else {
-        assert_eq!(metadata.created_at_ms, 0);
-    }
+    assert_eq!(metadata.created_at_ms, expected);
     Ok(())
 }
 

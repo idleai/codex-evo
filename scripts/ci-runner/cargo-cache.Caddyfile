@@ -1,0 +1,25 @@
+{
+	admin off
+	auto_https off
+	persist_config off
+}
+
+:18501 {
+	bind 127.0.0.1
+
+	@entry path_regexp entry "^/[0-9a-f]/[0-9a-f]/[0-9a-f]/([0-9a-f]{64})$"
+	handle @entry {
+		rewrite * /ac/{re.entry.1}
+		reverse_proxy 127.0.0.1:18502
+	}
+	handle /.sccache_check {
+		rewrite * /ac/0000000000000000000000000000000000000000000000000000000000000000
+		reverse_proxy 127.0.0.1:18502
+	}
+	handle /status {
+		reverse_proxy 127.0.0.1:18502
+	}
+	handle {
+		respond 404
+	}
+}

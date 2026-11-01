@@ -28,15 +28,17 @@ use codex_protocol::openai_models::ReasoningEffort;
 use codex_protocol::openai_models::ReasoningEffortPreset;
 use tokio::sync::TryLockError;
 
+use crate::ProviderCapabilities;
+use crate::RemoteCompactionSupport;
 use crate::ResolvedResponsesProvider;
 use crate::WorkspaceRoutingContext;
+use crate::auth::ProviderAuthScope;
+use crate::auth::ResolvedProviderAuth;
 use crate::auth::resolve_provider_auth;
 use crate::provider::ModelProvider;
 use crate::provider::ModelProviderFuture;
 use crate::provider::ProviderAccountResult;
 use crate::provider::ProviderAccountState;
-use crate::provider::ProviderCapabilities;
-use crate::provider::RemoteCompactionSupport;
 use crate::provider::SharedModelProvider;
 
 const AUTH_CHANGED_MESSAGE: &str =
@@ -93,6 +95,7 @@ impl ModelProvider for GitHubCopilotModelProvider {
             return ProviderCapabilities {
                 namespace_tools: false,
                 codex_agent_messages: false,
+                reasoning_summaries: false,
                 image_generation: false,
                 web_search: false,
                 external_web_access: false,
@@ -102,6 +105,7 @@ impl ModelProvider for GitHubCopilotModelProvider {
         ProviderCapabilities {
             namespace_tools: true,
             codex_agent_messages: false,
+            reasoning_summaries: false,
             image_generation: false,
             web_search: false,
             external_web_access: false,
@@ -167,6 +171,34 @@ impl ModelProvider for GitHubCopilotModelProvider {
         })
     }
 
+    fn api_provider_for_auth(
+        &self,
+        auth: Option<&CodexAuth>,
+    ) -> codex_protocol::error::Result<Provider> {
+        self.current_auth()?;
+        if !matches!(auth, Some(CodexAuth::GitHubCopilot(auth)) if auth == &self.expected_auth) {
+            return Err(CodexErr::UnsupportedOperation(
+                AUTH_CHANGED_MESSAGE.to_string(),
+            ));
+        }
+        self.info
+            .to_api_provider(Some(codex_protocol::auth::AuthMode::GitHubCopilot))
+    }
+
+    fn route_responses_api_provider<'a>(
+        &'a self,
+        _provider: Provider,
+        auth: Option<&'a CodexAuth>,
+        _routing_context: &'a WorkspaceRoutingContext,
+    ) -> ModelProviderFuture<'a, codex_protocol::error::Result<ResolvedResponsesProvider>> {
+        Box::pin(async move {
+            Ok(ResolvedResponsesProvider {
+                provider: self.api_provider_for_auth(auth)?,
+                redirect_policy: ClientRedirectPolicy::Reject,
+            })
+        })
+    }
+
     fn responses_api_provider<'a>(
         &'a self,
         _routing_context: &'a WorkspaceRoutingContext,
@@ -198,6 +230,13 @@ impl ModelProvider for GitHubCopilotModelProvider {
             let auth = self.current_auth()?;
             resolve_provider_auth(Some(&auth), &self.info)
         })
+    }
+
+    fn api_auth_for_scope(
+        &self,
+        _scope: ProviderAuthScope,
+    ) -> ModelProviderFuture<'_, codex_protocol::error::Result<ResolvedProviderAuth>> {
+        Box::pin(async move { self.api_auth().await.map(ResolvedProviderAuth::new) })
     }
 
     fn models_manager(
@@ -265,6 +304,39 @@ impl GitHubCopilotAwareModelsManager {
 }
 
 impl ModelsManager for GitHubCopilotAwareModelsManager {
+    fn for_originator(&self, originator: &str) -> Option<SharedModelsManager> {
+        self.inner.for_originator(originator).map(|inner| {
+            Arc::new(Self {
+                inner,
+                auth_manager: Arc::clone(&self.auth_manager),
+                fallback_to_copilot_default_on_auth_switch: self
+                    .fallback_to_copilot_default_on_auth_switch,
+            }) as SharedModelsManager
+        })
+    }
+
+    fn model_catalog_with_origins(
+        &self,
+        refresh_strategy: RefreshStrategy,
+        http_client_factory: HttpClientFactory,
+    ) -> ModelsManagerFuture<'_, Vec<codex_models_manager::CatalogModel>> {
+        match self.github_copilot_catalog() {
+            Some(catalog) => Box::pin(async move {
+                catalog
+                    .models
+                    .into_iter()
+                    .map(|model| codex_models_manager::CatalogModel {
+                        model: Arc::new(model),
+                        origin: codex_models_manager::ModelOrigin::Provider,
+                    })
+                    .collect()
+            }),
+            None => self
+                .inner
+                .model_catalog_with_origins(refresh_strategy, http_client_factory),
+        }
+    }
+
     fn set_api_key_model_discovery_enabled(&self, enabled: bool) {
         self.inner.set_api_key_model_discovery_enabled(enabled);
     }
@@ -284,7 +356,11 @@ impl ModelsManager for GitHubCopilotAwareModelsManager {
                 http_client_factory,
             );
         };
-        let manager = StaticModelsManager::new(Some(Arc::clone(&self.auth_manager)), catalog);
+        let manager = StaticModelsManager::new(
+            Some(Arc::clone(&self.auth_manager)),
+            catalog,
+            codex_models_manager::ModelOrigin::Provider,
+        );
         let allow_provider_model_fallback =
             allow_provider_model_fallback || self.fallback_to_copilot_default_on_auth_switch;
         Box::pin(async move {
@@ -303,11 +379,15 @@ impl ModelsManager for GitHubCopilotAwareModelsManager {
         &'a self,
         model: &'a str,
         config: &'a ModelsManagerConfig,
-    ) -> ModelsManagerFuture<'a, ModelInfo> {
+    ) -> ModelsManagerFuture<'a, codex_models_manager::CatalogModel> {
         let Some(catalog) = self.github_copilot_catalog() else {
             return self.inner.get_model_info(model, config);
         };
-        let manager = StaticModelsManager::new(Some(Arc::clone(&self.auth_manager)), catalog);
+        let manager = StaticModelsManager::new(
+            Some(Arc::clone(&self.auth_manager)),
+            catalog,
+            codex_models_manager::ModelOrigin::Provider,
+        );
         Box::pin(async move { manager.get_model_info(model, config).await })
     }
 

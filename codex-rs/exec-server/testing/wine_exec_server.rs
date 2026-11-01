@@ -29,6 +29,9 @@ impl WineExecServer {
 
         exec_server
             .scope(async move {
+                tokio::fs::create_dir_all(wine_prefix.join("drive_c/codex-home"))
+                    .await
+                    .context("create the Windows executor's Codex home")?;
                 let mut lines = BufReader::new(stdout).lines();
                 let exec_server_url = loop {
                     let line = lines

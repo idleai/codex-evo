@@ -18,6 +18,7 @@ use codex_protocol::permissions::FileSystemSandboxPolicyContext;
 use codex_protocol::permissions::FileSystemSpecialPath;
 use codex_protocol::permissions::NetworkSandboxPolicy;
 use codex_utils_absolute_path::AbsolutePathBuf;
+use codex_utils_cargo_bin::cargo_bin;
 use pretty_assertions::assert_eq;
 use std::collections::HashMap;
 use std::io::Read;
@@ -27,7 +28,6 @@ use std::net::Shutdown;
 use std::net::TcpListener;
 use std::net::TcpStream;
 use std::os::unix::fs::MetadataExt;
-use std::os::unix::fs::PermissionsExt;
 use std::path::Path;
 use std::process::Output;
 use std::process::Stdio;
@@ -181,7 +181,7 @@ fn linux_sandbox_command(
     args.push("--".to_string());
     args.extend(command.iter().map(|entry| (*entry).to_string()));
 
-    let mut cmd = Command::new(env!("CARGO_BIN_EXE_codex-linux-sandbox"));
+    let mut cmd = Command::new(cargo_bin("codex-linux-sandbox").expect("resolve sandbox helper"));
     cmd.args(args)
         .current_dir(cwd)
         .env_clear()
@@ -309,35 +309,42 @@ async fn namespace_reaper_collects_orphaned_descendants() {
     assert_eq!(output.stdout, b"orphan reaped\n");
 }
 
+#[test_case::test_case("/newroot/proc"; "legacy_bubblewrap")]
+#[test_case::test_case("/proc"; "current_bubblewrap")]
 #[tokio::test]
-async fn proc_mount_denial_preserves_legacy_fallback_and_explicit_pid_inheritance() {
+async fn proc_mount_denial_preserves_legacy_fallback_and_explicit_pid_inheritance(
+    proc_mount_path: &str,
+) {
     if should_skip_bwrap_tests().await {
         eprintln!("skipping bwrap test: bubblewrap is unavailable");
         return;
     }
 
-    let Some(system_bwrap) = codex_sandboxing::find_system_bwrap_in_path() else {
+    let Some(system_bwrap) = codex_sandboxing::find_system_bwrap_in_path(
+        &PermissionProfile::read_only().file_system_sandbox_policy(),
+        &std::env::current_dir().expect("current directory"),
+    ) else {
         eprintln!("skipping PID namespace test: no system bubblewrap is available");
         return;
     };
     let tempdir = tempfile::tempdir().expect("create PID namespace fixture");
     let wrapper = tempdir.path().join("bwrap");
-    std::fs::write(
+    codex_utils_cargo_bin::write_executable(
         &wrapper,
-        r#"#!/bin/sh
+        &format!(
+            r#"#!/bin/sh
 for arg in "$@"; do
     [ "$arg" = "--" ] && break
     if [ "$arg" = "--proc" ]; then
-        printf '%s\n' "bwrap: Can't mount proc on /newroot/proc: Operation not permitted" >&2
+        printf '%s\n' "bwrap: Can't mount proc on {proc_mount_path}: Operation not permitted" >&2
         exit 1
     fi
 done
 exec "$CODEX_TEST_REAL_BWRAP" "$@"
-"#,
+"#
+        ),
     )
     .expect("write proc-denying bubblewrap wrapper");
-    std::fs::set_permissions(&wrapper, std::fs::Permissions::from_mode(0o755))
-        .expect("make bubblewrap wrapper executable");
     let protected_file = tempdir.path().join("protected");
     std::fs::write(&protected_file, "original").expect("write protected file");
     let pid_namespace = std::fs::read_link("/proc/self/ns/pid").expect("read caller PID namespace");
@@ -464,7 +471,10 @@ async fn unsupported_system_bwrap_falls_back_to_bundled_bwrap() {
         return;
     }
 
-    let Some(system_bwrap) = codex_sandboxing::find_system_bwrap_in_path() else {
+    let Some(system_bwrap) = codex_sandboxing::find_system_bwrap_in_path(
+        &PermissionProfile::read_only().file_system_sandbox_policy(),
+        &std::env::current_dir().expect("current directory"),
+    ) else {
         eprintln!("skipping system bwrap fallback test: no system bubblewrap is available");
         return;
     };
@@ -473,7 +483,8 @@ async fn unsupported_system_bwrap_falls_back_to_bundled_bwrap() {
     let sandbox_executable = tempdir.path().join("codex-linux-sandbox");
     let original_executable = env!("CARGO_BIN_EXE_codex-linux-sandbox");
     if std::fs::hard_link(original_executable, &sandbox_executable).is_err() {
-        std::fs::copy(original_executable, &sandbox_executable).expect("copy sandbox executable");
+        codex_utils_cargo_bin::copy_executable(Path::new(original_executable), &sandbox_executable)
+            .expect("copy sandbox executable");
     }
 
     let resources_dir = tempdir.path().join("codex-resources");
@@ -484,13 +495,11 @@ async fn unsupported_system_bwrap_falls_back_to_bundled_bwrap() {
     let system_dir = tempdir.path().join("system");
     std::fs::create_dir(&system_dir).expect("create fake system binary directory");
     let unsupported_bwrap = system_dir.join("bwrap");
-    std::fs::write(
+    codex_utils_cargo_bin::write_executable(
         &unsupported_bwrap,
         "#!/bin/sh\nif [ \"$1\" = \"--help\" ]; then printf '%s\\n' '--perms'; exit 0; fi\nexit 91\n",
     )
     .expect("write unsupported system bubblewrap");
-    std::fs::set_permissions(&unsupported_bwrap, std::fs::Permissions::from_mode(0o755))
-        .expect("make unsupported system bubblewrap executable");
 
     let mut env = create_env_from_core_vars();
     strip_proxy_env(&mut env);
@@ -793,7 +802,11 @@ async fn managed_proxy_mode_routes_through_bridge_and_blocks_direct_egress() {
         format!("http://127.0.0.1:{proxy_port}"),
     );
 
-    let sandbox_helper_dir = std::path::Path::new(env!("CARGO_BIN_EXE_codex-linux-sandbox"))
+    let sandbox_helper = cargo_bin("codex-linux-sandbox")
+        .expect("resolve sandbox helper")
+        .canonicalize()
+        .expect("canonicalize sandbox helper");
+    let sandbox_helper_dir = sandbox_helper
         .parent()
         .expect("sandbox helper should have a parent");
     let file_system_sandbox_policy =

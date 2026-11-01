@@ -1,4 +1,5 @@
 load("//:defs.bzl", "codex_rust_crate")
+load("//bazel/rules:runtime_package.bzl", "release_binary")
 
 codex_rust_crate(
     name = "app-server",
@@ -6,6 +7,7 @@ codex_rust_crate(
     extra_binaries = [
         "//codex-rs/bwrap:bwrap",
         "//codex-rs/code-mode-host:codex-code-mode-host",
+        "//codex-rs/linux-sandbox:codex-linux-sandbox",
         "//codex-rs/rmcp-client:test_stdio_server",
     ],
     extra_binaries_non_windows = [
@@ -28,4 +30,8 @@ codex_rust_crate(
         "@platforms//os:macos": 1,
         "//conditions:default": 0,
     }),
+)
+
+release_binary(
+    binary = ":codex-app-server",
 )

@@ -1,0 +1,22 @@
+[Unit]
+Description=Persistent shared Cargo compiler cache
+After=network.target
+
+[Service]
+Type=simple
+Slice=idle-ci.slice
+ExecStart=%h/.local/share/codex-ci-runner/bin/bazel-remote --dir /mnt/hot/ci-cache/cargo --max_size 256 --http_address 127.0.0.1:18502 --grpc_address none --disable_http_ac_validation --access_log_level none
+Environment=GOMAXPROCS=4
+Restart=on-failure
+RestartSec=5
+CPUQuota=400%
+CPUWeight=20
+MemoryHigh=1536M
+MemoryMax=2G
+MemorySwapMax=0
+IOWeight=20
+NoNewPrivileges=yes
+UMask=0077
+
+[Install]
+WantedBy=default.target

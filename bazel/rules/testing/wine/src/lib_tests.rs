@@ -370,28 +370,30 @@ async fn pinned_powershell_runs_under_wine_with_a_pty() -> Result<()> {
         codex_utils_pty::ChildFds::Inherited(&[]),
     )
     .await?;
-    let command_result = timeout(Duration::from_secs(30), async {
-        let stdout = async {
-            let mut output = Vec::new();
-            while let Some(chunk) = stdout_rx.recv().await {
-                output.extend(chunk);
-            }
-            output
-        };
-        let stderr = async {
-            let mut output = Vec::new();
-            while let Some(chunk) = stderr_rx.recv().await {
-                output.extend(chunk);
-            }
-            output
-        };
-        let (stdout, stderr, exit_code) = tokio::join!(stdout, stderr, exit_rx);
-        Ok::<_, anyhow::Error>((stdout, stderr, exit_code.context("wait for PowerShell")?))
-    })
-    .await
-    .context("PowerShell smoke test timed out")
-    .and_then(std::convert::identity);
-    drop(session);
+    let stdout = tokio::spawn(async move {
+        let mut output = Vec::new();
+        while let Some(chunk) = stdout_rx.recv().await {
+            output.extend(chunk);
+        }
+        output
+    });
+    let stderr = tokio::spawn(async move {
+        let mut output = Vec::new();
+        while let Some(chunk) = stderr_rx.recv().await {
+            output.extend(chunk);
+        }
+        output
+    });
+    // This includes creating a cold Wine prefix and starting PowerShell while
+    // other Bazel actions may be compiling. Wait for the child before teardown;
+    // Wine services can retain the PTY descriptors until their server stops.
+    let command_result = timeout(Duration::from_secs(/*secs*/ 120), exit_rx)
+        .await
+        .context("PowerShell smoke test timed out")
+        .and_then(|result| result.context("wait for PowerShell"));
+    if command_result.is_err() {
+        session.request_terminate();
+    }
     let shutdown_result = timeout(Duration::from_secs(10), async {
         let mut command = TokioCommand::new(&runtime.wineserver);
         command
@@ -410,7 +412,22 @@ async fn pinned_powershell_runs_under_wine_with_a_pty() -> Result<()> {
     .await
     .context("stop isolated wineserver timed out")
     .and_then(std::convert::identity);
-    let (stdout, stderr, exit_code) = match (command_result, shutdown_result) {
+    let output_result = timeout(Duration::from_secs(/*secs*/ 10), async {
+        Ok::<_, anyhow::Error>((stdout.await?, stderr.await?))
+    })
+    .await
+    .context("drain PowerShell output after Wine shutdown");
+    // Dropping the session aborts its readers, so retain it until output drains.
+    drop(session);
+    let (stdout, stderr) = output_result??;
+    let command_result = command_result.with_context(|| {
+        format!(
+            "PowerShell stdout: {}; stderr: {}",
+            String::from_utf8_lossy(&stdout),
+            String::from_utf8_lossy(&stderr),
+        )
+    });
+    let exit_code = match (command_result, shutdown_result) {
         (Ok(output), Ok(())) => output,
         (Err(error), Ok(())) => return Err(error),
         (Ok(_), Err(error)) => return Err(error),

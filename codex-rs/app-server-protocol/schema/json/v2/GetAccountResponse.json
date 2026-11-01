@@ -66,6 +66,13 @@
               ],
               "title": "ChatgptAccountType",
               "type": "string"
+            },
+            "workspaceName": {
+              "description": "Display name of the selected ChatGPT workspace, when available.",
+              "type": [
+                "string",
+                "null"
+              ]
             }
           },
           "required": [
@@ -94,6 +101,23 @@
             "type"
           ],
           "title": "AmazonBedrockAccount",
+          "type": "object"
+        },
+        {
+          "description": "Google Cloud Vertex AI with externally managed credentials.",
+          "properties": {
+            "type": {
+              "enum": [
+                "gcp"
+              ],
+              "title": "GcpAccountType",
+              "type": "string"
+            }
+          },
+          "required": [
+            "type"
+          ],
+          "title": "GcpAccount",
           "type": "object"
         }
       ]
@@ -126,6 +150,8 @@
         "edu",
         "edu_plus",
         "edu_pro",
+        "sci",
+        "sci_plus",
         "unknown"
       ],
       "type": "string"

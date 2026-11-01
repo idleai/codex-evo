@@ -162,7 +162,6 @@ impl ChatWidget {
                     name: preset.display_name.clone(),
                     description,
                     is_current: model.as_str() == current_model,
-                    is_default: preset.is_default,
                     secondary_action: if requires_advanced_selection {
                         None
                     } else {
@@ -284,7 +283,6 @@ impl ChatWidget {
                 name: preset.display_name.clone(),
                 description,
                 is_current,
-                is_default: preset.is_default,
                 secondary_action: direct_effort.and_then(|effort| {
                     self.session_model_selection_action(preset.model.clone(), Some(effort))
                 }),
@@ -341,14 +339,11 @@ impl ChatWidget {
                 });
             } else {
                 tx.send(
-                    AstraModelPickerAction::UpdateModel
-                        .into_picker_event(sparkle_thread, model_for_action.clone()),
+                    AstraModelPickerAction::ApplyModelSelection {
+                        effort: effort_for_action.clone(),
+                    }
+                    .into_picker_event(sparkle_thread, model_for_action.clone()),
                 );
-                tx.send(AppEvent::UpdateReasoningEffort(effort_for_action.clone()));
-                tx.send(AppEvent::PersistModelSelection {
-                    model: model_for_action.clone(),
-                    effort: effort_for_action.clone(),
-                });
             }
             if let Some(warning) = warning.clone() {
                 tx.send(AppEvent::InsertHistoryCell(Box::new(

@@ -61,11 +61,13 @@ async fn github_copilot_wrapper_preserves_exact_provider_catalog_metadata() {
         .await;
 
     for unknown in ["catalog-model-other", "namespace/catalog-model"] {
+        let resolved = manager
+            .get_model_info(unknown, &ModelsManagerConfig::default())
+            .await;
+        assert_eq!(resolved.model.as_ref(), &model_info_from_slug(unknown));
         assert_eq!(
-            manager
-                .get_model_info(unknown, &ModelsManagerConfig::default())
-                .await,
-            model_info_from_slug(unknown)
+            resolved.origin,
+            codex_models_manager::ModelOrigin::Synthetic
         );
     }
 }
@@ -87,14 +89,8 @@ async fn github_copilot_wrapper_refreshes_provider_catalog_after_auth_change() {
     );
     let manager = provider.models_manager_without_cache(None);
     manager.set_api_key_model_discovery_enabled(true);
-    let first = ModelInfo {
-        used_fallback_model_metadata: false,
-        ..model_info_from_slug("first-catalog-model")
-    };
-    let second = ModelInfo {
-        used_fallback_model_metadata: false,
-        ..model_info_from_slug("second-catalog-model")
-    };
+    let first = model_info_from_slug("first-catalog-model");
+    let second = model_info_from_slug("second-catalog-model");
     for (token, model) in [("first-token", &first), ("second-token", &second)] {
         Mock::given(method("GET"))
             .and(path("/models"))
@@ -169,6 +165,27 @@ async fn github_copilot_responses_transport_rejects_cross_origin_redirects() {
         resolved.provider.base_url,
         "https://api.individual.githubcopilot.com"
     );
+    assert_eq!(
+        resolved.redirect_policy,
+        codex_login::default_client::ClientRedirectPolicy::Reject
+    );
+    let auth = provider.auth().await.expect("Copilot credentials");
+    assert!(
+        provider
+            .api_provider_for_auth(Some(&CodexAuth::from_api_key("other-account")))
+            .is_err()
+    );
+    let frozen_provider = provider
+        .api_provider_for_auth(Some(&auth))
+        .expect("frozen Copilot provider");
+    let resolved = provider
+        .route_responses_api_provider(frozen_provider, Some(&auth), &routing_context)
+        .await
+        .expect("route frozen Copilot credentials");
+    assert_eq!(
+        resolved.provider.base_url,
+        "https://api.individual.githubcopilot.com"
+    );
 
     for status in [307, 308] {
         let server = MockServer::start().await;
@@ -196,6 +213,58 @@ async fn github_copilot_responses_transport_rejects_cross_origin_redirects() {
             .expect("receive redirect response");
         assert_eq!(response.status().as_u16(), status);
     }
+}
+
+#[tokio::test]
+async fn existing_gcp_provider_rejects_requests_after_copilot_login() {
+    let home = tempfile::tempdir().expect("temporary Codex home");
+    let auth_manager = AuthManager::from_auth_for_testing_with_home(
+        CodexAuth::from_api_key("initial-key"),
+        home.path().to_path_buf(),
+    );
+    let provider = create_model_provider(
+        ModelProviderInfo {
+            base_url: Some("https://vertex.example.test/v1".to_string()),
+            ..ModelProviderInfo::create_gcp_provider()
+        },
+        Some(Arc::clone(&auth_manager)),
+    );
+    let catalog = provider.models_manager_without_cache(None);
+    provider.api_provider().await.expect("initial provider");
+    let auth = GitHubCopilotAuth::new(
+        "github-token".to_string(),
+        "https://api.individual.githubcopilot.com".to_string(),
+        Some("octocat".to_string()),
+        None,
+        vec!["copilot-account-model".to_string()],
+    )
+    .expect("valid Copilot auth");
+    codex_login::login_with_github_copilot(
+        home.path(),
+        auth,
+        AuthCredentialsStoreMode::File,
+        AuthKeyringBackendKind::default(),
+    )
+    .expect("persist Copilot auth");
+    assert!(auth_manager.reload().await);
+    assert!(provider.api_provider().await.is_err());
+    assert!(provider.api_auth().await.is_err());
+    assert!(provider.validate_model("gpt-6-astra").is_err());
+    assert!(!provider.capabilities().namespace_tools);
+    let models = catalog
+        .raw_model_catalog(
+            RefreshStrategy::Online,
+            HttpClientFactory::new(OutboundProxyPolicy::ReqwestDefault),
+        )
+        .await;
+    assert_eq!(
+        models
+            .models
+            .iter()
+            .map(|model| model.slug.as_str())
+            .collect::<Vec<_>>(),
+        vec!["copilot-account-model"]
+    );
 }
 
 #[test]

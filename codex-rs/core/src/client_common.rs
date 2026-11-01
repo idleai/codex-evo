@@ -25,8 +25,7 @@ pub struct Prompt {
     /// Conversation context input items.
     pub input: Vec<ResponseItem>,
 
-    /// Tools available to the model, including additional tools sourced from
-    /// external MCP servers.
+    /// Tool definitions to inject into this request, empty when supplied by history.
     pub(crate) tools: Arc<[ToolSpec]>,
 
     /// Whether parallel tool calls are permitted for this prompt.
@@ -134,6 +133,8 @@ pub(crate) fn rewrite_codex_agent_messages_as_user_messages(items: &mut [Respons
             })
             .collect();
         *item = ResponseItem::Message {
+            encrypted_content: None,
+            status: None,
             id: None,
             role: "user".to_string(),
             content,
@@ -144,8 +145,9 @@ pub(crate) fn rewrite_codex_agent_messages_as_user_messages(items: &mut [Respons
 }
 
 pub struct ResponseStream {
+    pub(crate) routing_affinity: Option<codex_http_client::ChatGptRoutingAffinity>,
     pub(crate) rx_event: mpsc::Receiver<Result<ResponseEvent>>,
-    pub(crate) interrupt: Option<oneshot::Sender<()>>,
+    pub(crate) interrupt: Option<oneshot::Sender<codex_api::ResponseInterrupt>>,
     /// Signals the mapper task that the consumer stopped polling before the
     /// provider stream reached its own terminal event.
     pub(crate) consumer_dropped: CancellationToken,

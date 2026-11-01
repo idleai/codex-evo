@@ -92,6 +92,7 @@ use codex_app_server_protocol::ThreadDeleteParams;
 use codex_app_server_protocol::ThreadForkParams;
 use codex_app_server_protocol::ThreadInjectItemsParams;
 use codex_app_server_protocol::ThreadItemsListParams;
+use codex_app_server_protocol::ThreadItemsReadParams;
 use codex_app_server_protocol::ThreadListParams;
 use codex_app_server_protocol::ThreadLoadedListParams;
 use codex_app_server_protocol::ThreadMemoryModeSetParams;
@@ -243,12 +244,30 @@ impl TestAppServer {
         })
     }
 
-    /// Waits for a JSON stderr event whose structured `event.name` field matches.
+    /// Waits up to `timeout` for a JSON stderr event whose structured `event.name` field matches.
     pub async fn wait_for_json_log_event(
         &self,
         event_name: &str,
+        timeout: Duration,
     ) -> anyhow::Result<serde_json::Value> {
-        self.json_logs.wait_for_event(event_name).await
+        self.wait_for_matching_json_log_event(
+            &format!("named `{event_name}`"),
+            |event| event["fields"]["event.name"].as_str() == Some(event_name),
+            timeout,
+        )
+        .await
+    }
+
+    /// Waits for a JSON stderr event matching a predicate, including its request span.
+    pub async fn wait_for_matching_json_log_event(
+        &self,
+        description: &str,
+        predicate: impl Fn(&serde_json::Value) -> bool,
+        timeout: Duration,
+    ) -> anyhow::Result<serde_json::Value> {
+        self.json_logs
+            .wait_for_event(description, predicate, timeout)
+            .await
     }
 
     async fn new_with_program_env_and_args(
@@ -720,6 +739,15 @@ impl TestAppServer {
     ) -> anyhow::Result<i64> {
         let params = Some(serde_json::to_value(params)?);
         self.send_request("thread/items/list", params).await
+    }
+
+    /// Send a `thread/items/read` JSON-RPC request.
+    pub async fn send_thread_items_read_request(
+        &mut self,
+        params: ThreadItemsReadParams,
+    ) -> anyhow::Result<i64> {
+        let params = Some(serde_json::to_value(params)?);
+        self.send_request("thread/items/read", params).await
     }
 
     /// Send a `model/list` JSON-RPC request.
@@ -1941,8 +1969,14 @@ impl TestAppServerBuilder {
 
     /// Builds a server and completes its standard initialization handshake.
     pub async fn build_initialized(self) -> anyhow::Result<TestAppServer> {
-        self.build_initialized_with_timeout(DEFAULT_REQUEST_TIMEOUT)
-            .await
+        // The remote Windows executor performs capability discovery during
+        // initialization, including cold Wine startup on Linux hosts.
+        let timeout = if core_test_support::is_wine_exec_test_environment() {
+            Duration::from_secs(/*secs*/ 120)
+        } else {
+            DEFAULT_REQUEST_TIMEOUT
+        };
+        self.build_initialized_with_timeout(timeout).await
     }
 
     /// Builds and initializes a server while preserving a suite-specific timeout.
@@ -2093,11 +2127,7 @@ impl TestAppServerBuilder {
                 .context("should find binary for codex-app-server")?,
         };
         let mut owned_install_dir = None;
-        if !custom_program
-            && codex_utils_cargo_bin::runfiles_available()
-            && let Ok(code_mode_host_program) =
-                codex_utils_cargo_bin::cargo_bin("codex-code-mode-host")
-        {
+        if !custom_program && codex_utils_cargo_bin::runfiles_available() {
             // Bazel keeps binary targets in separate package directories.
             // Recreate the installed sibling layout without a path override.
             // Prefer Bazel's TEST_TMPDIR so staging can share a filesystem with
@@ -2106,25 +2136,7 @@ impl TestAppServerBuilder {
                 Some(test_tmpdir) => TempDir::new_in(test_tmpdir)?,
                 None => TempDir::new()?,
             };
-            let staged_program = install_dir.path().join(
-                program
-                    .file_name()
-                    .context("app-server executable should have a filename")?,
-            );
-            let staged_host = install_dir.path().join(
-                code_mode_host_program
-                    .file_name()
-                    .context("code-mode host executable should have a filename")?,
-            );
-            for (source, destination) in [
-                (&program, &staged_program),
-                (&code_mode_host_program, &staged_host),
-            ] {
-                std::fs::hard_link(source, destination)
-                    .or_else(|_| std::fs::copy(source, destination).map(|_| ()))
-                    .with_context(|| format!("stage executable {}", source.display()))?;
-            }
-            program = staged_program;
+            program = crate::stage_app_server_package(&program, install_dir.path())?;
             owned_install_dir = Some(install_dir);
         }
         let env_overrides = env_overrides

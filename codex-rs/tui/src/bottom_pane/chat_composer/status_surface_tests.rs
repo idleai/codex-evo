@@ -1,6 +1,8 @@
 //! Persistent status survives transient footer modes and suggestion overlays.
 
 use super::*;
+use crate::terminal_hyperlinks::HyperlinkLine;
+use crate::terminal_hyperlinks::strip_osc8;
 use pretty_assertions::assert_eq;
 use tokio::sync::mpsc::unbounded_channel;
 
@@ -14,8 +16,58 @@ fn composer() -> ChatComposer {
         /*disable_paste_burst*/ true,
     );
     composer.set_status_line_enabled(/*enabled*/ true);
-    composer.set_status_line(Some(Line::from("MODEL · ~/project · Context 20% used")));
+    composer.set_status_line(Some(
+        Line::from("MODEL · ~/project · Context 20% used").into(),
+    ));
     composer
+}
+
+#[test]
+fn extension_status_line_clips_links_to_footer_layout() {
+    let mut composer = composer();
+    let tree = serde_json::from_value(serde_json::json!({
+        "type": "row", "props": {}, "children": [
+            { "type": "text", "props": { "text": "plain" } },
+            { "type": "row", "props": {}, "children": [
+                { "type": "text", "props": { "text": " · " } },
+                { "type": "link", "props": { "href": "https://example.com/pr/42" }, "children": [
+                    { "type": "text", "props": { "text": "PR #42" } }
+                ] }
+            ] }
+        ]
+    }))
+    .unwrap();
+    composer.set_status_line(Some(FooterContent::Extension { content: tree }));
+
+    for separate_status_line in [false, true] {
+        for width in [12, 40] {
+            let options = composer.resolve_render_options(ComposerRenderOptions {
+                separate_status_line,
+                ..ComposerRenderOptions::default()
+            });
+            let area = Rect::new(
+                /*x*/ 0,
+                /*y*/ 0,
+                width,
+                composer.desired_height_with_options(width, options),
+            );
+            let mut buffer = Buffer::empty(area);
+            composer.render_with_options(area, &mut buffer, /*mask_char*/ None, options);
+            let linked = buffer
+                .content
+                .iter()
+                .filter(|cell| cell.symbol().contains("https://example.com/pr/42"))
+                .collect::<Vec<_>>();
+            assert_eq!(linked.len(), if width == 12 { 1 } else { 6 }, "{buffer:?}");
+            assert!(linked.iter().all(|cell| !cell.symbol().contains('…')));
+            assert!(buffer.content.iter().any(|cell| cell.symbol() == "p"));
+        }
+    }
+
+    composer.set_active_agent_label(Some("bot".to_string()));
+    let (output, _) = render(&composer, /*width*/ 40, /*footer*/ None);
+    assert!(output.contains("plain"), "{output}");
+    assert!(!output.contains("bot"), "{output}");
 }
 
 fn render(
@@ -96,19 +148,24 @@ fn fullscreen_plan_indicator_keeps_the_cycle_hint_when_it_fits() {
     composer.set_collaboration_mode_indicator(Some(CollaborationModeIndicator::Plan));
     let (wide, _) = render(&composer, /*width*/ 100, /*footer*/ None);
     assert!(
-        wide.contains("Plan mode (shift+tab to cycle)"),
+        wide.contains("Plan mode (⇧tab to cycle)"),
         "idle fullscreen must explain how to leave Plan mode: {wide}"
     );
     insta::assert_snapshot!("fullscreen_plan_cycle_hint", wide);
 
-    let (narrow, _) = render(&composer, /*width*/ 44, /*footer*/ None);
-    assert!(narrow.contains("Plan mode"), "{narrow}");
-    assert!(!narrow.contains("shift+tab"), "{narrow}");
+    let mut status = HyperlinkLine::from("project · ");
+    status.push_span("PR #42".underlined(), Some("https://example.com/pull/42"));
+    composer.set_status_line(Some(status.into()));
+    composer.set_active_agent_label(Some("reviewer".to_string()));
+    let (narrow, _) = render(&composer, /*width*/ 37, /*footer*/ None);
+    let row = narrow.lines().rev().nth(1).expect("persistent status row");
+    insta::assert_snapshot!(strip_osc8(row).trim(), @"project · PR #42 · rev… Plan mode");
+    composer.set_active_agent_label(/*active_agent_label*/ None);
 
     composer.set_task_running(/*running*/ true);
     let (running, _) = render(&composer, /*width*/ 100, /*footer*/ None);
     assert!(running.contains("Plan mode"), "{running}");
-    assert!(!running.contains("shift+tab"), "{running}");
+    assert!(!running.contains("⇧tab"), "{running}");
     composer.set_task_running(/*running*/ false);
 
     let footer = TranscriptFooter {
@@ -118,7 +175,7 @@ fn fullscreen_plan_indicator_keeps_the_cycle_hint_when_it_fits() {
     };
     let (search, _) = render(&composer, /*width*/ 100, Some(&footer));
     assert!(search.contains("Plan mode"), "{search}");
-    assert!(!search.contains("shift+tab"), "{search}");
+    assert!(!search.contains("⇧tab"), "{search}");
 
     // Configured items such as git-branch can have no value outside a repository.
     composer.set_status_line(/*status_line*/ None);
@@ -129,7 +186,7 @@ fn fullscreen_plan_indicator_keeps_the_cycle_hint_when_it_fits() {
     );
     let (empty_wide, _) = render(&composer, /*width*/ 100, /*footer*/ None);
     assert!(
-        empty_wide.contains("Plan mode (shift+tab to cycle)"),
+        empty_wide.contains("Plan mode (⇧tab to cycle)"),
         "{empty_wide}"
     );
 
@@ -271,10 +328,13 @@ fn shortcut_help_keeps_input_and_close_hint_visible_when_height_is_tiny() {
 fn shortcut_help_close_row_uses_runtime_binding_and_narrow_fallback() {
     let chord = Some(key_hint::ShortcutHint::Chord {
         prefix: key_hint::ctrl(KeyCode::Char('x')),
-        completion: key_hint::ctrl(KeyCode::Char('h')),
+        completion: key_hint::KeyBinding::new(
+            KeyCode::F(12),
+            KeyModifiers::CONTROL | KeyModifiers::SHIFT | KeyModifiers::ALT,
+        ),
     });
     for (width, binding, expected) in [
-        (80, chord, "ctrl+x ctrl+h / esc close"),
+        (80, chord, "⌃x ⌃⇧⌥f12 / esc close"),
         (22, chord, "esc close"),
         (80, None, "esc close"),
     ] {

@@ -25,7 +25,10 @@ use std::path::Path;
 use std::path::PathBuf;
 
 pub mod apps_test_server;
+#[cfg(unix)]
+pub mod code_mode_host;
 pub mod context_snapshot;
+pub mod exec_server;
 pub mod hooks;
 pub mod process;
 pub mod responses;
@@ -35,7 +38,6 @@ pub mod test_codex;
 pub mod test_codex_exec;
 mod test_environment;
 pub mod tracing;
-pub mod zsh_fork;
 
 pub(crate) use test_environment::TestEnvironment;
 pub use test_environment::TestTargetOs;
@@ -243,8 +245,22 @@ fn default_test_overrides() -> ConfigOverrides {
     ConfigOverrides::default()
 }
 
+/// Returns an executable that can dispatch internal helpers on this target.
+pub fn find_codex_helper_exe() -> anyhow::Result<PathBuf> {
+    // musl initializes Rust arguments after constructors, so the libtest
+    // executable cannot dispatch helper invocations from its startup hook.
+    if cfg!(target_env = "musl") {
+        Ok(codex_utils_cargo_bin::cargo_bin("codex")?)
+    } else {
+        Ok(std::env::current_exe()?)
+    }
+}
+
 #[cfg(target_os = "linux")]
 pub fn find_codex_linux_sandbox_exe() -> Result<PathBuf, CargoBinError> {
+    if cfg!(target_env = "musl") {
+        return codex_utils_cargo_bin::cargo_bin("codex-linux-sandbox");
+    }
     if let Some(path) = TEST_ARG0_PATH_ENTRY
         .get()
         .and_then(Option::as_ref)
@@ -269,6 +285,16 @@ where
 {
     use tokio::time::Duration;
     wait_for_event_with_timeout(codex, predicate, Duration::from_secs(1)).await
+}
+
+pub async fn wait_for_successful_turn(codex: &CodexThread) {
+    use codex_protocol::protocol::EventMsg;
+
+    let event = wait_for_event(codex, |event| matches!(event, EventMsg::TurnComplete(_))).await;
+    assert!(
+        matches!(&event, EventMsg::TurnComplete(completed) if completed.error.is_none()),
+        "turn failed: {event:?}"
+    );
 }
 
 /// Waits for a configured MCP server to finish startup and requires it to be ready.

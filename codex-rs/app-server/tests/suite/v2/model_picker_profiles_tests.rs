@@ -157,10 +157,13 @@ async fn picker_profile_routes_new_threads_and_restores_the_route(
         native_mock.single_request().body_json()["model"],
         "mock-model"
     );
-    let target_request = target_mock.single_request().body_json();
+    let target_request = target_mock.single_request();
     assert_eq!(
-        (&target_request["model"], &target_request["instructions"]),
-        (&json!(MODEL), &json!("DEEPSEEK_PROFILE_INSTRUCTIONS"))
+        (
+            target_request.body_json()["model"].clone(),
+            target_request.instructions_text()
+        ),
+        (json!(MODEL), "DEEPSEEK_PROFILE_INSTRUCTIONS".to_string())
     );
 
     let request_id = server

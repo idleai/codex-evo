@@ -28,6 +28,24 @@ pub(super) async fn spawn_command_under_sandbox(
     use std::process::Stdio;
 
     #[cfg(target_os = "linux")]
+    let env = {
+        let mut env = env;
+        // The child clears its environment but still needs Bazel's bundled sandbox resource.
+        for key in [
+            "CARGO_BIN_EXE_bwrap",
+            "RUNFILES_DIR",
+            "RUNFILES_MANIFEST_FILE",
+            "TEST_SRCDIR",
+            "TEST_WORKSPACE",
+        ] {
+            if let Ok(value) = std::env::var(key) {
+                env.entry(key.to_string()).or_insert(value);
+            }
+        }
+        env
+    };
+
+    #[cfg(target_os = "linux")]
     let codex_linux_sandbox_exe = Some(
         core_test_support::find_codex_linux_sandbox_exe()
             .map_err(|err| io::Error::new(io::ErrorKind::NotFound, err))?,
@@ -56,6 +74,7 @@ pub(super) async fn spawn_command_under_sandbox(
         codex_protocol::sandbox::SandboxType::None,
         /*use_legacy_landlock*/ false,
     )
+    .await
     .map_err(|err| io::Error::other(err.to_string()))?;
 
     let (program, args) = exec_request
@@ -100,7 +119,7 @@ pub(super) async fn spawn_command_under_sandbox(
 /// under the production Landlock path and skip when enforcement is unavailable
 /// (for example on kernels or container profiles where Landlock is not
 /// enforced).
-async fn linux_sandbox_test_env() -> Option<HashMap<String, String>> {
+pub(super) async fn linux_sandbox_test_env() -> Option<HashMap<String, String>> {
     let command_cwd = AbsolutePathBuf::current_dir().ok()?;
     let sandbox_cwd = command_cwd.clone();
     let permission_profile = PermissionProfile::read_only();
@@ -497,13 +516,16 @@ fn unix_sock_body() {
 
 #[tokio::test]
 async fn allow_unix_socketpair_recvfrom() {
-    run_code_under_sandbox(
-        "allow_unix_socketpair_recvfrom",
+    let status = run_code_under_sandbox(
+        "suite::sandbox::allow_unix_socketpair_recvfrom",
         &PermissionProfile::read_only(),
         || async { unix_sock_body() },
     )
     .await
     .expect("should be able to reexec");
+    if let Some(status) = status {
+        assert!(status.success(), "sandbox subprocess failed: {status}");
+    }
 }
 
 const IN_SANDBOX_ENV_VAR: &str = "IN_SANDBOX";

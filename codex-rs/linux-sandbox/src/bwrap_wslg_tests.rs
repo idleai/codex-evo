@@ -118,6 +118,54 @@ fn wslg_mask_is_omitted_when_policy_already_hides_an_ancestor() {
 }
 
 #[test]
+fn wslg_mask_is_restored_after_a_read_grant_reopens_an_ancestor() {
+    let mut policy = FileSystemSandboxPolicy::read_only();
+    for (path, access) in [
+        ("/", FileSystemAccessMode::Deny),
+        ("/mnt", FileSystemAccessMode::Read),
+    ] {
+        policy.entries.push(FileSystemSandboxEntry::new(
+            AbsolutePathBuf::from_absolute_path(path)
+                .expect("absolute policy path")
+                .into(),
+            access,
+        ));
+    }
+    // Inspect the mount order without executing this synthetic policy. /mnt
+    // exists on Linux test hosts even when they do not provide WSLg.
+    let args = create_bwrap_command_args(
+        vec!["/bin/true".to_string()],
+        &policy,
+        Path::new("/"),
+        Path::new("/"),
+        BwrapOptions {
+            mask_wslg_distro: true,
+            ..Default::default()
+        },
+    )
+    .expect("create bwrap args with a reopened ancestor")
+    .args;
+    let read_grant = args
+        .windows(3)
+        .rposition(|args| args == ["--ro-bind", "/mnt", "/mnt"])
+        .expect("narrow read grant");
+    let mask = args
+        .windows(6)
+        .position(|args| {
+            args == [
+                "--perms",
+                "000",
+                "--tmpfs",
+                WSLG_DISTRO_ROOT,
+                "--remount-ro",
+                WSLG_DISTRO_ROOT,
+            ]
+        })
+        .expect("WSLg view remains hidden");
+    assert!(read_grant < mask);
+}
+
+#[test]
 fn unrestricted_filesystem_preserves_wslg_with_or_without_network_isolation() {
     for network_mode in [BwrapNetworkMode::FullAccess, BwrapNetworkMode::Isolated] {
         let mut commands = Vec::new();

@@ -1,7 +1,7 @@
 project(
   'bubblewrap',
   'c',
-  version : '0.11.2',
+  version : '0.13.1',
   meson_version : '>=0.49.0',
   default_options : [
     'warning_level=2',
@@ -87,13 +87,20 @@ if selinux_dep.found()
   endif
 endif
 
-if get_option('require_userns')
-  cdata.set('ENABLE_REQUIRE_USERNS', 1)
+if get_option('debug_logging')
+  cdata.set('BWRAP_DEBUG', 1)
 endif
 
-if get_option('support_setuid')
-  cdata.set('ENABLE_SUPPORT_SETUID', 1)
-  warning('running bubblewrap setuid is deprecated and risky. Most recent operating systems support unprivileged user namespaces and we recommend using that. Support for this will be removed in the next version.')
+assume_kernel = get_option('assume_kernel')
+if assume_kernel != ''
+  kernel_parts = assume_kernel.split('.')
+  if kernel_parts.length() != 3
+    error('assume_kernel must be three dot-separated integers, e.g. 6.1.0')
+  endif
+  cdata.set('ASSUMED_KERNEL_MAJOR', kernel_parts[0].to_int())
+  cdata.set('ASSUMED_KERNEL_MINOR', kernel_parts[1].to_int())
+  cdata.set('ASSUMED_KERNEL_PATCH', kernel_parts[2].to_int())
+  cdata.set('HAVE_ASSUMED_KERNEL', 1)
 endif
 
 configure_file(
@@ -120,6 +127,8 @@ bwrap = executable(
     'bind-mount.c',
     'network.c',
     'utils.c',
+    'chroot_realpath.c',
+    'safe_openat.c',
   ],
   build_rpath : get_option('build_rpath'),
   install : true,

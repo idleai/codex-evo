@@ -1,8 +1,9 @@
 # Isolated GitHub Copilot build
 
-`idle/github-copilot-auth` starts from `origin/idle` at `74c21eb5f`, the
-0.161.0-alpha.1 source baseline, and ports the direct GitHub Copilot authentication
-and isolation changes from `origin/solmax/github-copilot-auth` at `4d3d1c2cd`.
+`idle/github-copilot-auth` layers direct GitHub Copilot authentication and
+service isolation onto the Idle fork. The November 2026 update follows the
+0.166 source baseline synchronized into `origin/main` at `67f0994b53`, together
+with the current `idle-base` integration.
 
 The idle profile picker, named/default subagent profiles, portable handoffs,
 provider catalogs, and Responses compatibility settings remain available. While
@@ -29,10 +30,11 @@ and discovers the account's enabled OpenAI Responses-compatible models. Use
 identifier. App-server clients can use `account/login/start` with
 `{"type":"githubCopilot"}`.
 
-The source retains idle's upstream `0.0.0` Cargo workspace version. A release
-package must apply the same 0.161.0-alpha.1 version stamp as idle; the package
-assembler's `--package-version` option alone does not stamp the executable.
-Building this checkout does not switch the installed release CLI or Remote daemon.
+The development branch retains the `0.0.0` Cargo workspace version. Fork
+releases use `codex-evo-v<version>` tags on separate commits that stamp both the
+Cargo workspace and lockfile. The isolated Copilot build has its own release
+version, distinct from the normal Idle build. Building this checkout does not
+switch the installed CLI or Remote daemon.
 
 ## Isolation boundaries
 
@@ -58,55 +60,21 @@ This is provider and built-in-service isolation, not a general network firewall.
 User-configured MCP servers, shell commands, tools, and explicit telemetry
 destinations retain their configured network permissions.
 
-## Validation notes
+## Validation
 
-The port is validated on macOS with Rust 1.95.0. Across the executed suites,
-1,535 distinct scoped tests pass, with the additional limits listed below:
+The Linux release workflow runs repository checks, the selected Rust and SDK
+suites, and package assembly before publishing checksummed CLI and app-server
+archives. Both packages include the execution server required by the current
+runtime and the pinned prebuilt V8 host.
 
-- CLI compilation and debug CLI/app-server builds pass. Release-mode checks for
-  analytics, feedback, and OTEL also pass, covering the non-debug isolation paths.
-- All 110 model-provider unit tests pass, covering 307/308 redirect rejection,
-  Copilot account transitions, gateway OAuth, workspace routing, exact provider
-  metadata, and catalog refresh after credential changes.
-  Provider-info, analytics, OTEL, feedback, and app-server protocol tests also pass
-  (two tests are skipped by the test runner).
-- All 820 backend-client, models-manager, protocol, and config unit tests pass;
-  all 42 login integration tests pass.
-- Eight focused runtime tests cover request headers, plugin refresh suppression,
-  stale image/web tool removal, Guardian startup suppression, and the Copilot
-  status snapshot. All pass, as does the core metrics-default regression.
-- Fourteen core/app-server integration tests pass, covering auth precedence,
-  unsupported models, provider capabilities, subagent profiles, profile pickers,
-  and portable handoffs. The separate native-discovery test has the intermittent
-  failure noted below and is excluded from the final focused rerun.
-- A CLI/app-server smoke test uses fake credentials, a temporary `CODEX_HOME`,
-  and a rejecting outbound proxy. Stored Copilot auth wins over both OpenAI key
-  environment variables; account reads and the advertised model catalog work;
-  the proxy observes no requests during these operations.
-- Stable and experimental Rust/JSON/TypeScript protocol exports are regenerated
-  and checked. The Python account/login bindings are ported and round-trip
-  validated with Pydantic 2.12.5.
-- Scoped `just fix` completes for the 20 affected crates other than login.
-  Unrelated automatic unused-import cleanups are reverted to keep the port focused.
+Focused regression coverage includes stored Copilot authentication taking
+precedence over environment keys and provider profiles, account-specific model
+catalogs, credential changes during a session, and redirect rejection. It also
+covers switching from configured, Bedrock, and Google Cloud providers into a
+Copilot account. Local analytics capture must omit credentials, and built-in
+OpenAI telemetry and feedback delivery remain disabled.
 
-Known validation limits:
-
-- The login unit-test target and its `just fix` are blocked by an existing idle
-  fixture in
-  `codex-rs/login/src/auth_env_telemetry.rs`: its `ModelProviderInfo` initializer
-  lacks `supports_namespace_tools` and `supports_codex_agent_messages`. The
-  device-flow unit tests therefore have not run on this checkout; the unrelated
-  fixture is left unchanged.
-- The pinned Python generator/formatter dependencies cannot be downloaded from
-  `files.pythonhosted.org` in this environment. `just fmt` completes Rust, Just,
-  and Bazel/Starlark formatting but cannot complete its Python stages. Python
-  code generation is not independently reproduced; the directly ported bindings
-  have syntax and runtime serialization coverage instead.
-- The unchanged `picker_profile_appends_to_live_native_discovery` integration test
-  passes intermittently but fails in a repeat run: its one-shot `/models` mock
-  returns 404 when startup refresh and the explicit model-list request race.
-  The fixture and background refresh code are unchanged from idle; this is left
-  visible rather than weakening the test or changing unrelated refresh behavior.
-- The complete workspace suite, other platforms, live GitHub authorization,
-  and billable inference are not exercised. The smoke test is not a proof that
-  arbitrary user-configured tools cannot make network requests.
+Release verification uses temporary Codex homes, fake credentials, local mock
+servers, and the downloaded release archives. Live GitHub authorization and
+billable inference require an actual account and are not exercised by these
+automated checks. User-configured tools retain their own network permissions.
