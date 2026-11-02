@@ -40,6 +40,7 @@ pub enum IdleRuntimeCapability {
     WorkspaceStatus,
     WorkspaceCoordination,
     RunnerSessions,
+    SharedSessions,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, JsonSchema, TS)]
@@ -150,6 +151,30 @@ impl std::fmt::Debug for IdleCoordinationCallParams {
 #[ts(export_to = "v2/")]
 pub struct IdleCoordinationCallResponse {
     /// Native result envelope; mutations retain their original request identities.
+    pub response: String,
+}
+
+#[derive(Serialize, Deserialize, Clone, PartialEq, Eq, JsonSchema, TS)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[ts(export_to = "v2/")]
+pub struct IdleSessionCallParams {
+    pub protocol_version: u32,
+    /// Bounded attributed session operation; identity is checked against the grant.
+    pub request: String,
+}
+
+impl std::fmt::Debug for IdleSessionCallParams {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("IdleSessionCallParams")
+            .finish_non_exhaustive()
+    }
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, JsonSchema, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export_to = "v2/")]
+pub struct IdleSessionCallResponse {
     pub response: String,
 }
 

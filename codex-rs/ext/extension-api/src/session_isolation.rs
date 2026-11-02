@@ -22,3 +22,8 @@ pub enum SessionIsolation {
 /// Explicit extensions for an isolated session, supplied through `ExtensionDataInit`.
 /// The host uses only this registry and never combines it with inherited extensions.
 pub struct IsolatedSessionExtensions<C: Sync>(pub Arc<ExtensionRegistry<C>>);
+
+/// Host policy for runners whose stop action must also end yielded commands.
+/// Supply at startup; ordinary interactive threads retain background terminals.
+#[derive(Clone, Copy, Debug)]
+pub struct TerminateProcessesOnInterrupt;

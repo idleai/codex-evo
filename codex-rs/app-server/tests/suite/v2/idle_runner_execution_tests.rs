@@ -216,6 +216,72 @@ async fn runner_finishes_after_client_detach_and_reloads_its_saved_scope() -> Re
 }
 
 #[cfg(unix)]
+#[tokio::test]
+async fn interrupt_stops_yielded_command_and_child_before_reply() -> Result<()> {
+    let (home, checkout, chain) = (TempDir::new()?, TempDir::new()?, TempDir::new()?);
+    let server = responses::start_mock_server().await;
+    let requests = responses::mount_response_sequence(
+        &server,
+        vec![
+            responses::sse_response(command("yielded", json!({
+                "cmd":"(while :; do printf child >> child-heartbeat; sleep 0.1; done) & while :; do printf parent >> parent-heartbeat; sleep 0.1; done",
+                "yield_time_ms":1000
+            }))),
+            responses::sse_response(finished()).set_delay(Duration::from_secs(30)),
+        ],
+    ).await;
+    MockResponsesConfig::new(&server.uri()).write(home.path())?;
+    let mut owner = TestAppServer::builder()
+        .without_auto_env()
+        .with_codex_home(home.path())
+        .build_initialized()
+        .await?;
+    let mut remote = connect(&mut owner, &checkout, &chain).await?;
+    let id = start(&mut remote).await?;
+    let response = rpc(
+        &mut remote,
+        "turn/start",
+        json!({
+            "threadId":id,"input":[{"type":"text","text":"Run the heartbeat check"}]
+        }),
+    )
+    .await?;
+    let turn_id = response
+        .pointer("/result/turn/id")
+        .and_then(Value::as_str)
+        .context("turn ID")?;
+    for name in ["parent-heartbeat", "child-heartbeat"] {
+        wait_file(&checkout.path().join(name)).await?;
+    }
+    timeout(Duration::from_secs(15), async {
+        while requests.requests().len() < 2 {
+            tokio::time::sleep(Duration::from_millis(20)).await;
+        }
+    })
+    .await?;
+    let interrupted = rpc(
+        &mut remote,
+        "turn/interrupt",
+        json!({"threadId":id,"turnId":turn_id}),
+    )
+    .await?;
+    assert!(interrupted.get("result").is_some(), "{interrupted}");
+    let parent = std::fs::read(checkout.path().join("parent-heartbeat"))?;
+    let child = std::fs::read(checkout.path().join("child-heartbeat"))?;
+    tokio::time::sleep(Duration::from_millis(1500)).await;
+    assert_eq!(
+        std::fs::read(checkout.path().join("parent-heartbeat"))?,
+        parent
+    );
+    assert_eq!(
+        std::fs::read(checkout.path().join("child-heartbeat"))?,
+        child
+    );
+    assert!(owner.shutdown_gracefully().await?.success());
+    Ok(())
+}
+
+#[cfg(unix)]
 #[test_case::test_case(Revocation::PrivateGrant; "private_grant")]
 #[test_case::test_case(Revocation::NativeAccess; "native_access")]
 #[test_case::test_case(Revocation::WorkspaceRules; "workspace_rules")]

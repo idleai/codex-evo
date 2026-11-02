@@ -47,6 +47,7 @@ pub(crate) struct IdleRuntime {
     // Admit one relay administration operation at a time, including its I/O.
     admin: Semaphore,
     runners: runner::Runners,
+    pub(crate) session_requests: tokio::sync::Semaphore,
     turn_start_admission: Option<Arc<dyn codex_extension_api::TurnStartAdmission>>,
 }
 
@@ -63,6 +64,7 @@ impl IdleRuntime {
             service,
             admin: Semaphore::new(1),
             runners: runner::Runners::default(),
+            session_requests: tokio::sync::Semaphore::new(1),
             turn_start_admission,
         }
     }
@@ -93,6 +95,7 @@ impl IdleRuntime {
             {
                 Ok(())
             }
+            ClientRequest::IdleSessionCall { .. } if access.scope == GrantScope::Runner => Ok(()),
             ClientRequest::IdleCoordinationCall { params, .. }
                 if access.scope == GrantScope::CoordinationOwner
                     && params.checkout_id == access.binding.checkout_id
@@ -467,6 +470,7 @@ fn response(status: RuntimeStatus, access: Option<&GrantAccess>) -> IdleRuntimeS
     }
     if access.is_none_or(|access| access.scope == GrantScope::Runner) {
         capabilities.push(IdleRuntimeCapability::RunnerSessions);
+        capabilities.push(IdleRuntimeCapability::SharedSessions);
     }
     IdleRuntimeStatus {
         protocol_version: PROTOCOL_VERSION,
@@ -529,6 +533,8 @@ mod relay;
 mod runner;
 mod runner_policy;
 pub(crate) mod runner_requests;
+mod session_checks;
+mod sessions;
 mod wire;
 
 use base64::Engine;
