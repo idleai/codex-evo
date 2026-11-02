@@ -96,6 +96,32 @@ pub(crate) fn validate(method: &str, params: &Value) -> Result<(), JSONRPCErrorE
     Ok(())
 }
 
+fn validate_observer(method: &str, params: &Value) -> Result<(), JSONRPCErrorError> {
+    if !matches!(
+        method,
+        "thread/read"
+            | "thread/resume"
+            | "thread/unsubscribe"
+            | "thread/turns/list"
+            | "thread/items/list"
+    ) {
+        return Err(invalid_request(
+            "Invited contributors submit through the attributed session queue",
+        ));
+    }
+    if method == "thread/resume"
+        && (params.get("serviceTier").is_some()
+            || ["model", "modelProvider"]
+                .iter()
+                .any(|key| params.get(key).is_some_and(|value| !value.is_null())))
+    {
+        return Err(invalid_request(
+            "Session observers cannot change a runner's model or service settings",
+        ));
+    }
+    Ok(())
+}
+
 impl IdleRuntime {
     pub(crate) async fn runner_response(
         &self,
@@ -178,18 +204,7 @@ impl IdleRuntime {
                     return Err(invalid_request("This connection cannot access the runner"));
                 }
                 if access.client_id != binding.client_id || access.grant_id != binding.grant_id {
-                    if !matches!(
-                        method,
-                        "thread/read"
-                            | "thread/resume"
-                            | "thread/unsubscribe"
-                            | "thread/turns/list"
-                            | "thread/items/list"
-                    ) {
-                        return Err(invalid_request(
-                            "Invited contributors submit through the attributed session queue",
-                        ));
-                    }
+                    validate_observer(method, params)?;
                     self.coordination
                         .runner(
                             &binding,
@@ -240,5 +255,38 @@ impl IdleRuntime {
             return Err(invalid_request("Runner binding is unavailable"));
         }
         Ok(None)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn observers_can_resume_history_without_changing_execution_settings() {
+        let paging =
+            json!({"threadId":"session","excludeTurns":true,"initialTurnsPage":{"limit":1}});
+        assert!(validate_observer("thread/resume", &paging).is_ok());
+        for key in ["model", "modelProvider", "serviceTier"] {
+            let mut params = paging.clone();
+            params[key] = json!("replacement");
+            assert!(
+                validate_observer("thread/resume", &params).is_err(),
+                "{key}"
+            );
+            assert!(validate("thread/resume", &params).is_ok(), "owner {key}");
+            params[key] = Value::Null;
+            assert_eq!(
+                validate_observer("thread/resume", &params).is_err(),
+                key == "serviceTier"
+            );
+        }
+        for method in ["turn/start", "turn/steer", "turn/interrupt", "thread/fork"] {
+            assert!(
+                validate_observer(method, &json!({"threadId":"session"})).is_err(),
+                "{method}"
+            );
+        }
     }
 }

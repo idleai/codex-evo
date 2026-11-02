@@ -4,6 +4,9 @@ use codex_app_server_protocol::IdleSessionCallParams;
 use codex_app_server_protocol::IdleSessionCallResponse;
 use codex_idle_runtime::GrantAccess;
 
+#[path = "thread_sessions/response.rs"]
+mod response;
+
 impl ThreadRequestProcessor {
     pub(crate) async fn idle_session_call(
         &self,
@@ -112,37 +115,16 @@ impl ThreadRequestProcessor {
                     if transcripts.len() >= 64 {
                         break;
                     }
-                    let text = turn
-                        .get("items")
-                        .and_then(serde_json::Value::as_array)
-                        .into_iter()
-                        .flatten()
-                        .filter(|item| {
-                            item.get("type").and_then(serde_json::Value::as_str)
-                                != Some("userMessage")
-                        })
-                        .filter_map(|item| {
-                            item.get("text")
-                                .or_else(|| item.get("aggregatedOutput"))
-                                .and_then(serde_json::Value::as_str)
-                        })
-                        .collect::<Vec<_>>()
-                        .join("\n");
-                    let truncated = text.chars().count() > 4096;
-                    transcripts.push(serde_json::json!({"session_id":id,"turn_id":turn["id"],"status":turn["status"],"text":text.chars().take(4096).collect::<String>(),"truncated":truncated}));
+                    transcripts.push(response::transcript(&id, turn));
                 }
             }
             result = self
                 .idle_runtime
                 .session_operation(access, serde_json::json!({"kind":"snapshot"}))
                 .await?;
-            result["transcripts"] = serde_json::json!(transcripts);
-            result["readiness"] = serde_json::json!(readiness);
+            result = response::snapshot(result, transcripts, readiness);
         }
-        Ok(IdleSessionCallResponse {
-            response: serde_json::to_string(&result)
-                .map_err(|_| internal_error("Invalid live session response"))?,
-        })
+        response::encode(result)
     }
 
     async fn load_idle_session(

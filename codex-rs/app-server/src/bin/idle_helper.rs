@@ -49,8 +49,16 @@ async fn authority() -> Result<()> {
             .as_str()
             .ok_or_else(|| anyhow::anyhow!("missing checkout"))?,
     );
-    anyhow::ensure!(start["version"] == 2, "runner protocol required");
-    write(&mut output, json!({"ready":true,"runner_authorization":1})).await?;
+    let shared = root.join("shared-session-fixture").is_file();
+    anyhow::ensure!(
+        start["version"] == if shared { 3 } else { 2 },
+        "runner protocol required"
+    );
+    let mut ready = json!({"ready":true,"runner_authorization":1});
+    if shared {
+        ready["shared_sessions"] = json!(1);
+    }
+    write(&mut output, ready).await?;
     while let Some(call) = read(&mut input).await? {
         let request = &call["request"];
         let result = if call["source"] != "daemon"
@@ -61,6 +69,12 @@ async fn authority() -> Result<()> {
         } else {
             match request["kind"].as_str() {
                 Some("register_runner") => json!({"Ok":null}),
+                Some("observe_runner") if shared && request["contributor_id"] == "observer" => {
+                    json!({"Ok":null})
+                }
+                Some("session_work") if shared && request["work"]["kind"] == "direct_input" => {
+                    json!({"Ok":true})
+                }
                 Some("authorize_runner") => json!({"Ok":{
                     "contributor_id":"owner","session":{"id":request["session_id"]},
                     "configuration_revision":"fixture",
