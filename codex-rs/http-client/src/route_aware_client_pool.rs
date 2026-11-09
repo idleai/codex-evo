@@ -523,14 +523,13 @@ impl RouteAwareClientPool {
                 pool.http_client_factory.outbound_proxy_policy(),
                 pool.custom_ca_fallback,
             ) {
-                (_, CustomCaFallback::LegacyDirect) => {
-                    Ok(client_builder.build_with_custom_ca_fallback(ProxyRouting::Direct))
-                }
+                (_, CustomCaFallback::LegacyDirect) => client_builder
+                    .build_with_custom_ca_fallback(ProxyRouting::Direct)
+                    .map_err(BuildRouteAwareHttpClientError::from),
                 (OutboundProxyPolicy::ReqwestDefault, CustomCaFallback::LegacyTransportDefault) => {
-                    Ok(
-                        client_builder
-                            .build_with_custom_ca_fallback(ProxyRouting::TransportDefault),
-                    )
+                    client_builder
+                        .build_with_custom_ca_fallback(ProxyRouting::TransportDefault)
+                        .map_err(BuildRouteAwareHttpClientError::from)
                 }
                 (OutboundProxyPolicy::ReqwestDefault, CustomCaFallback::Disabled)
                 | (OutboundProxyPolicy::RespectSystemProxy, CustomCaFallback::Disabled)

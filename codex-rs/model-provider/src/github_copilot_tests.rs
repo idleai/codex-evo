@@ -22,7 +22,6 @@ use wiremock::Mock;
 use wiremock::MockServer;
 use wiremock::ResponseTemplate;
 use wiremock::matchers::any;
-use wiremock::matchers::header;
 use wiremock::matchers::method;
 use wiremock::matchers::path;
 

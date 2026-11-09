@@ -2739,11 +2739,15 @@ mod tests {
             "--device-auth",
             "--experimental_issuer",
         ] {
-            assert!(Cli::try_parse_from(["codex", "login", flag]).is_err());
+            assert!(MultitoolCli::try_parse_from(["codex", "login", flag]).is_err());
         }
-        assert!(Cli::try_parse_from(["codex", "responses-api-proxy"]).is_err());
-        assert!(Cli::try_parse_from(["codex", "login"]).is_ok());
-        assert!(Cli::try_parse_from(["codex", "login", "github-copilot"]).is_ok());
+        assert!(
+            MultitoolCli::command()
+                .find_subcommand("responses-api-proxy")
+                .is_none()
+        );
+        assert!(MultitoolCli::try_parse_from(["codex", "login"]).is_ok());
+        assert!(MultitoolCli::try_parse_from(["codex", "login", "github-copilot"]).is_ok());
     }
 
     #[test]

@@ -21,7 +21,6 @@ use crate::HttpClientFactory;
 use crate::HttpClientTlsConfig;
 use crate::OutboundProxyRoute;
 use crate::chatgpt_cloudflare_cookies::ChatGptCookieStore;
-use crate::client::HttpClientBackend;
 use crate::client::RequestLogging;
 use crate::client::TransportClient;
 use crate::custom_ca::build_reqwest_client_with_custom_ca;
@@ -289,11 +288,13 @@ impl HttpClientBuilder {
         note = "legacy custom-CA fallback only; use HttpClientFactory::build_client or build_respecting_outbound_proxy_policy"
     )]
     pub fn build_with_transport_default_proxy_and_custom_ca_fallback(self) -> HttpClient {
-        HttpClient {
-            backend: HttpClientBackend::Direct(
-                self.build_with_custom_ca_fallback(ProxyRouting::TransportDefault),
-            ),
-        }
+        crate::RouteAwareClientPool::with_builder(
+            HttpClientFactory::new(crate::OutboundProxyPolicy::ReqwestDefault),
+            ClientRouteClass::Other,
+            self,
+        )
+        .with_legacy_custom_ca_fallback()
+        .into_client()
     }
 
     /// Builds a direct client while preserving the legacy custom-CA fallback.
@@ -306,11 +307,13 @@ impl HttpClientBuilder {
         note = "legacy custom-CA fallback only; use build_direct and propagate construction errors"
     )]
     pub fn build_direct_with_custom_ca_fallback(self) -> HttpClient {
-        HttpClient {
-            backend: HttpClientBackend::Direct(
-                self.build_with_custom_ca_fallback(ProxyRouting::Direct),
-            ),
-        }
+        crate::RouteAwareClientPool::with_builder(
+            HttpClientFactory::new(crate::OutboundProxyPolicy::ReqwestDefault),
+            ClientRouteClass::Other,
+            self,
+        )
+        .with_legacy_direct_proxy_and_custom_ca_fallback()
+        .into_client()
     }
 
     fn build_with_proxy_routing(
@@ -326,7 +329,7 @@ impl HttpClientBuilder {
     pub(crate) fn build_with_custom_ca_fallback(
         self,
         proxy_routing: ProxyRouting,
-    ) -> TransportClient {
+    ) -> Result<TransportClient, BuildCustomCaTransportError> {
         self.build_with_custom_ca_fallback_using(proxy_routing, build_reqwest_client_with_custom_ca)
     }
 
@@ -337,7 +340,7 @@ impl HttpClientBuilder {
             reqwest::ClientBuilder,
         )
             -> Result<reqwest::Client, BuildCustomCaTransportError>,
-    ) -> TransportClient {
+    ) -> Result<TransportClient, BuildCustomCaTransportError> {
         let request_logging = self.request_logging;
         let default_headers = self.default_headers.take().unwrap_or_default();
         let inner = match build_with_custom_ca(self.clone().reqwest_builder(proxy_routing)) {
@@ -352,19 +355,14 @@ impl HttpClientBuilder {
                 tracing::warn!(error = %error, "failed to build HTTP client with custom CA");
                 self.reqwest_builder(proxy_routing)
                     .build()
-                    .unwrap_or_else(|fallback_error| {
-                        tracing::warn!(
-                            error = %fallback_error,
-                            "failed to build fallback HTTP client"
-                        );
-                        reqwest::Client::builder()
-                            .redirect(reqwest::redirect::Policy::none())
-                            .build()
-                            .expect("failed to build HTTP client with redirects disabled")
-                    })
+                    .map_err(BuildCustomCaTransportError::BuildClientWithSystemRoots)?
             }
         };
-        TransportClient::new(inner, request_logging, default_headers)
+        Ok(TransportClient::new(
+            inner,
+            request_logging,
+            default_headers,
+        ))
     }
 
     fn into_reqwest_parts(mut self) -> (reqwest::ClientBuilder, RequestLogging, HeaderMap) {

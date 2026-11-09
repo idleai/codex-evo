@@ -1248,7 +1248,11 @@ mod tests {
         let area = Rect::new(0, 0, 100, 20);
         let mut buffer = Buffer::empty(area);
         widget.render_pick_mode(area, &mut buffer);
-        let text: String = buffer.content.iter().map(|cell| cell.symbol()).collect();
+        let text: String = buffer
+            .content
+            .iter()
+            .map(ratatui::buffer::Cell::symbol)
+            .collect();
         assert!(text.contains("Sign in with GitHub Copilot"));
         assert!(!text.contains("ChatGPT"));
         assert!(!text.contains("OpenAI API key"));

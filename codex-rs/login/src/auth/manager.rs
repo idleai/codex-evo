@@ -1108,10 +1108,10 @@ pub async fn logout_with_revoke(
             None
         }
     };
-    if codex_http_client::OPENAI_SERVICES_ENABLED {
-        if let Err(err) = revoke_auth_tokens(auth_dot_json.as_ref(), auth_route_config).await {
-            tracing::warn!("failed to revoke auth tokens during logout: {err}");
-        }
+    if codex_http_client::OPENAI_SERVICES_ENABLED
+        && let Err(err) = revoke_auth_tokens(auth_dot_json.as_ref(), auth_route_config).await
+    {
+        tracing::warn!("failed to revoke auth tokens during logout: {err}");
     }
     logout_all_stores(
         codex_home,

@@ -32,11 +32,10 @@ and discovers the account's enabled OpenAI Responses-compatible models. Use
 identifier. App-server clients can use `account/login/start` with
 `{"type":"githubCopilot"}`.
 
-The development branch retains the `0.0.0` Cargo workspace version. Fork
-releases use `codex-evo-v<version>` tags on separate commits that stamp both the
-Cargo workspace and lockfile. The isolated Copilot build has its own release
-version, distinct from the normal Idle build. Building this checkout does not
-switch the installed CLI or Remote daemon.
+The isolated Copilot build stamps its version into both the Cargo workspace and
+lockfile so `--version` and `/status` identify the installed build. Its version is
+distinct from the normal Idle build. Building this checkout does not switch the
+installed CLI or Remote daemon.
 
 ## Local DeepSeek alongside the Copilot catalog
 
@@ -135,21 +134,27 @@ direct OpenAI connection.
 
 ## Validation
 
-Run the affected local suites and build all three entrypoints from the repository
-root:
+Run the transport suites and the distribution's auth, routing, and handoff
+regressions locally, then build the CLI and its runtime helpers:
 
 ```sh
-(cd codex-rs && cargo build --locked --profile dev-small \
-  -p codex-rmcp-client --bin test_stdio_server)
 just test --locked --cargo-profile dev-small \
-  -p codex-login -p codex-model-provider -p codex-app-server \
-  -p codex-app-server-protocol -p codex-extension-api --lib
+  -p codex-http-client -p codex-websocket-client -p codex-login \
+  -p codex-model-provider-info -p codex-model-provider -p codex-backend-client \
+  -p codex-otel -p codex-tui -p codex-cli --lib \
+  -E 'package(codex-http-client) | package(codex-websocket-client) | test(copilot_distribution) | test(github_copilot)'
 just test --locked --cargo-profile dev-small \
-  -p codex-core -p codex-app-server --test all \
-  -E 'test(github_copilot) | test(model_picker_profiles) | test(portable) | test(subagent_profiles) | test(subagent_service_tier) | test(idle_runtime) | test(idle_runner)'
+  -p codex-app-server --test all \
+  -E 'test(copilot_distribution) | test(model_picker_profiles) | test(thread_fork_portable_profile_handoff)'
+just test --locked --cargo-profile dev-small \
+  -p codex-cli --bin codex -E 'test(copilot_distribution)'
 (cd codex-rs && cargo build --locked --profile dev-small \
-  -p codex-cli -p codex-app-server -p codex-exec-server-cli --bins)
+  --bin codex --bin codex-app-server --bin codex-exec-server \
+  --bin codex-code-mode-host)
 ```
+
+Upstream tests that require successful OpenAI authentication or backend requests
+are intentionally incompatible with this distribution's disabled services.
 
 Sandboxed Idle runner cases require Bubblewrap on `PATH` and host support for
 user and network namespaces. Report host policy denials separately from passing
