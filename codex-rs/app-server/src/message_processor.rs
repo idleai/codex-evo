@@ -820,10 +820,21 @@ impl MessageProcessor {
             let Ok(_permit) = self.turn_admission.admit() else {
                 break;
             };
+            let saved = snapshot.interrupted.remove(&thread_id);
+            // Shared inputs use their durable queue. A native turn that was
+            // interrupted by daemon loss must never be submitted a second time.
+            let saved = if ThreadId::from_string(&thread_id)
+                .ok()
+                .is_some_and(|id| self.idle_runtime.has_runner(id).unwrap_or(true))
+            {
+                None
+            } else {
+                saved
+            };
             if let Err(err) = self
                 .thread_processor
                 .thread_resume(
-                    ThreadResumeTarget::DaemonRecovery(snapshot.interrupted.remove(&thread_id)),
+                    ThreadResumeTarget::DaemonRecovery(saved),
                     codex_app_server_protocol::ThreadResumeParams {
                         thread_id: thread_id.clone(),
                         exclude_turns: true,
@@ -1066,6 +1077,7 @@ impl MessageProcessor {
             | ClientRequest::IdleConnectionRevoke { .. }
             | ClientRequest::IdleRelayStop { .. }
             | ClientRequest::IdleCoordinationCall { .. }
+            | ClientRequest::IdleSessionCall { .. }
             | ClientRequest::ThreadStart { .. }
             | ClientRequest::ThreadFork { .. }
             | ClientRequest::ThreadResume { .. }
@@ -1181,6 +1193,11 @@ impl MessageProcessor {
             ClientRequest::IdleCoordinationCall { params, .. } => self
                 .idle_runtime
                 .coordination_call(session.origin, connection_id, params)
+                .await
+                .map(|response| Some(response.into())),
+            ClientRequest::IdleSessionCall { params, .. } => self
+                .thread_processor
+                .idle_session_call(session.origin, connection_id, params)
                 .await
                 .map(|response| Some(response.into())),
             ClientRequest::IdleRelayConfigure { params, .. } => self

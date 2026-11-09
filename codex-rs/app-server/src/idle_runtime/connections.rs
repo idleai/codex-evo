@@ -110,7 +110,9 @@ impl Connections {
         match &message {
             JSONRPCMessage::Request(request)
                 if !(allowed_method(&request.method)
-                    || runner && super::runner_requests::allowed(&request.method)) =>
+                    || runner
+                        && (request.method == "idle/session/call"
+                            || super::runner_requests::allowed(&request.method))) =>
             {
                 return self
                     .send(

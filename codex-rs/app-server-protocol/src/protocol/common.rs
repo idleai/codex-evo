@@ -548,6 +548,12 @@ client_request_definitions! {
         serialization: None,
         response: v2::IdleCoordinationCallResponse,
     },
+    #[experimental("idle/session/call")]
+    IdleSessionCall => "idle/session/call" {
+        params: v2::IdleSessionCallParams,
+        serialization: None,
+        response: v2::IdleSessionCallResponse,
+    },
     #[experimental("idle/relay/stop")]
     IdleRelayStop => "idle/relay/stop" {
         params: v2::IdleRelayStopParams,

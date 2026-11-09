@@ -962,6 +962,17 @@ impl Session {
             .await;
     }
 
+    pub(crate) async fn close_processes_on_interrupt(&self) {
+        if self
+            .services
+            .thread_extension_data
+            .get::<codex_extension_api::TerminateProcessesOnInterrupt>()
+            .is_some()
+        {
+            self.close_unified_exec_processes().await;
+        }
+    }
+
     pub(crate) async fn list_background_terminals(&self) -> Vec<BackgroundTerminalInfo> {
         self.services.unified_exec_manager.list_processes().await
     }
@@ -982,6 +993,9 @@ impl Session {
     ) {
         let sub_id = task.turn_context.sub_id.clone();
         if task.cancellation_token.is_cancelled() {
+            if reason == TurnAbortReason::Interrupted {
+                self.close_processes_on_interrupt().await;
+            }
             self.emit_turn_abort_lifecycle(reason, task.turn_context.extension_data.as_ref())
                 .await;
             return;
@@ -1025,6 +1039,12 @@ impl Session {
         session_task
             .abort(Arc::clone(self), Arc::clone(&task.turn_context))
             .await;
+
+        if reason == TurnAbortReason::Interrupted {
+            // Wait for tool dispatch cancellation before draining its processes.
+            // Publish TurnAborted only after the runner's commands are terminated.
+            self.close_processes_on_interrupt().await;
+        }
 
         if reason == TurnAbortReason::Interrupted
             && let Some(marker) = interrupted_turn_history_marker(
