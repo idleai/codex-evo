@@ -118,14 +118,31 @@ destinations retain their configured network permissions.
 
 ## Validation
 
+Run the affected local suites and build all three entrypoints from the repository
+root:
+
+```sh
+(cd codex-rs && cargo build --locked --profile dev-small \
+  -p codex-rmcp-client --bin test_stdio_server)
+just test --locked --cargo-profile dev-small \
+  -p codex-login -p codex-model-provider -p codex-app-server \
+  -p codex-app-server-protocol -p codex-extension-api --lib
+just test --locked --cargo-profile dev-small \
+  -p codex-core -p codex-app-server --test all \
+  -E 'test(github_copilot) | test(model_picker_profiles) | test(portable) | test(subagent_profiles) | test(subagent_service_tier) | test(idle_runtime) | test(idle_runner)'
+(cd codex-rs && cargo build --locked --profile dev-small \
+  -p codex-cli -p codex-app-server -p codex-exec-server-cli --bins)
+```
+
+Sandboxed Idle runner cases require Bubblewrap on `PATH` and host support for
+user and network namespaces. Report host policy denials separately from passing
+tests. The protocol suite checks that generated exports include both the Idle
+and Copilot APIs.
+
 The Linux release workflow runs repository checks, the selected Rust and SDK
 suites, and package assembly before publishing checksummed CLI and app-server
 archives. Both packages include the execution server required by the current
 runtime and the pinned prebuilt V8 host.
-
-PRs targeting this branch and manual checks on the branch use hosted Linux by
-default. Set `COPILOT_LINUX_RUNNER` to use a dedicated pool. The branch's
-validation does not depend on the normal Idle runner pool.
 
 Focused regression coverage includes stored Copilot authentication taking
 precedence over environment keys and remote provider profiles, account-specific model

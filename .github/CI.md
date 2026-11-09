@@ -32,11 +32,6 @@ Application code and platform implementations are outside this policy change.
 variable uses hosted Linux. Busy local workers do not cause automatic hosted
 overflow. The workflow routes external fork PRs to hosted runners.
 
-The isolated `idle/github-copilot-auth` branch uses `COPILOT_LINUX_RUNNER` for
-its Linux checks, defaulting to hosted Linux when that variable is unset.
-This applies to PRs targeting that branch and runs on the branch itself.
-The selected build and test checks are unchanged.
-
 Release tags build Linux GNU packages with Bazel and publish them on GitHub
 after full CI and checksum verification. Fork releases use `codex-evo-v<version>`;
 `rust-v<version>` tags remain supported. The tagged commit must declare the same

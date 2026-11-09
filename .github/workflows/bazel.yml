@@ -24,8 +24,7 @@ permissions:
 jobs:
   test:
     name: Linux build and tests
-    # The isolated Copilot branch can use its own pool or hosted Linux.
-    runs-on: ${{ (github.base_ref == 'idle/github-copilot-auth' || github.ref_name == 'idle/github-copilot-auth') && ((github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && vars.COPILOT_LINUX_RUNNER || 'ubuntu-24.04') || github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository && vars.CODEX_LINUX_RUNNER || github.event_name == 'workflow_dispatch' && inputs.full == false && vars.CODEX_LINUX_RUNNER || github.event_name != 'pull_request' && vars.IDLE_BACKGROUND_RUNNER || 'ubuntu-24.04' }}
+    runs-on: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository && vars.CODEX_LINUX_RUNNER || github.event_name == 'workflow_dispatch' && inputs.full == false && vars.CODEX_LINUX_RUNNER || github.event_name != 'pull_request' && vars.IDLE_BACKGROUND_RUNNER || 'ubuntu-24.04' }}
     environment:
       name: bazel
       deployment: false
