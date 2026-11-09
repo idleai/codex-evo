@@ -766,13 +766,16 @@ impl PluginsManager {
         self.auth_manager.get_api_auth_mode()
     }
 
-    fn uses_github_copilot_auth(&self, auth: Option<&CodexAuth>) -> bool {
-        self.auth_mode() == Some(AuthMode::GitHubCopilot)
+    fn remote_services_disabled(&self, auth: Option<&CodexAuth>) -> bool {
+        !codex_http_client::OPENAI_SERVICES_ENABLED
+            || self.auth_mode() == Some(AuthMode::GitHubCopilot)
             || auth.is_some_and(CodexAuth::is_github_copilot_auth)
     }
 
     fn remote_global_catalog_active(&self, config: &PluginsConfigInput) -> bool {
-        config.remote_plugin_enabled && self.auth_mode().is_some_and(AuthMode::uses_codex_backend)
+        codex_http_client::OPENAI_SERVICES_ENABLED
+            && config.remote_plugin_enabled
+            && self.auth_mode().is_some_and(AuthMode::uses_codex_backend)
     }
 
     /// Starts the local curated marketplace sync when the remote catalog is unavailable.
@@ -781,7 +784,8 @@ impl PluginsManager {
         config: &PluginsConfigInput,
         on_effective_plugins_changed: Option<EffectivePluginsChangedCallback>,
     ) {
-        if config.plugins_enabled
+        if codex_http_client::OPENAI_SERVICES_ENABLED
+            && config.plugins_enabled
             && self.auth_mode() != Some(AuthMode::GitHubCopilot)
             && !self.remote_global_catalog_active(config)
             && MarketplacePolicy::from_requirements(config.config_layer_stack.requirements())
@@ -1610,7 +1614,7 @@ impl PluginsManager {
         prefetch_recommendations: bool,
         on_effective_plugins_changed: Option<EffectivePluginsChangedCallback>,
     ) {
-        if self.uses_github_copilot_auth(auth.as_ref()) {
+        if self.remote_services_disabled(auth.as_ref()) {
             return;
         }
 
@@ -1657,7 +1661,7 @@ impl PluginsManager {
         on_effective_plugins_changed: Option<EffectivePluginsChangedCallback>,
         change: EffectivePluginsChange,
     ) {
-        if !config.plugins_enabled || self.uses_github_copilot_auth(auth.as_ref()) {
+        if !config.plugins_enabled || self.remote_services_disabled(auth.as_ref()) {
             return;
         }
 
@@ -1688,7 +1692,7 @@ impl PluginsManager {
             return;
         }
 
-        if self.uses_github_copilot_auth(auth.as_ref()) {
+        if self.remote_services_disabled(auth.as_ref()) {
             return;
         }
         let Some(auth) = auth else {
@@ -1876,7 +1880,7 @@ impl PluginsManager {
     ) {
         if !config.plugins_enabled
             || scopes.is_empty()
-            || self.uses_github_copilot_auth(auth.as_ref())
+            || self.remote_services_disabled(auth.as_ref())
         {
             return;
         }
@@ -1969,7 +1973,7 @@ impl PluginsManager {
         config: &PluginsConfigInput,
         auth: Option<&CodexAuth>,
     ) -> Result<Vec<String>, RemotePluginFetchError> {
-        if !config.plugins_enabled || self.uses_github_copilot_auth(auth) {
+        if !config.plugins_enabled || self.remote_services_disabled(auth) {
             return Ok(Vec::new());
         }
 

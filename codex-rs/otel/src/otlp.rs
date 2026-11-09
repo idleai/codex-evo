@@ -102,8 +102,14 @@ fn build_http_client_inner(
     tls: &OtelTlsConfig,
     timeout_var: &str,
 ) -> Result<reqwest::blocking::Client, Box<dyn Error>> {
-    let mut builder =
-        reqwest::blocking::Client::builder().timeout(resolve_otlp_timeout(timeout_var));
+    let mut builder = reqwest::blocking::Client::builder()
+        .timeout(resolve_otlp_timeout(timeout_var))
+        .redirect(reqwest::redirect::Policy::custom(|attempt| {
+            if let Err(error) = codex_http_client::ensure_service_url_allowed(attempt.url()) {
+                return attempt.error(error);
+            }
+            reqwest::redirect::Policy::default().redirect(attempt)
+        }));
 
     if let Some(path) = tls.ca_certificate.as_ref() {
         let (pem, location) = read_bytes(path)?;

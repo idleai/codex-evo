@@ -8,6 +8,31 @@ use opentelemetry_sdk::metrics::data::SumDataPoint;
 use pretty_assertions::assert_eq;
 
 #[test]
+fn copilot_distribution_rejects_explicit_openai_metrics_exporters() {
+    let factory = codex_http_client::HttpClientFactory::new(
+        codex_http_client::OutboundProxyPolicy::ReqwestDefault,
+    );
+    for exporter in [
+        OtelExporter::OtlpGrpc {
+            endpoint: "https://ab.chatgpt.com:4317".into(),
+            headers: HashMap::new(),
+            tls: None,
+        },
+        OtelExporter::OtlpHttp {
+            endpoint: "https://api.openai.com/v1/metrics".into(),
+            headers: HashMap::new(),
+            protocol: OtelHttpProtocol::Binary,
+            tls: None,
+        },
+    ] {
+        assert!(matches!(
+            build_otlp_metric_exporter(exporter, Temporality::Cumulative, &factory),
+            Err(MetricsError::InvalidConfig { .. })
+        ));
+    }
+}
+
+#[test]
 fn counter_consent_uses_the_active_exporter() -> Result<()> {
     let mut builtin = MetricsClient::new(
         MetricsConfig::in_memory("test", "test", "1", Default::default()).with_runtime_reader(),

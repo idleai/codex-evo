@@ -182,7 +182,9 @@ impl RequestBuilder {
         match self.backend {
             HttpClientBackend::Routed(pool) => pool.send(self.request?).await,
             HttpClientBackend::Direct(client) => {
-                Ok(client.execute(self.request?.build(&client)?).await?.into())
+                let request = self.request?.build(&client)?;
+                crate::ensure_service_url_allowed(request.url())?;
+                Ok(client.execute(request).await?.into())
             }
         }
     }

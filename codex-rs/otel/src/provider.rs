@@ -466,6 +466,7 @@ fn build_logger(
             headers,
             tls,
         } => {
+            codex_http_client::ensure_service_url_allowed(&reqwest::Url::parse(&endpoint)?)?;
             debug!("Using OTLP Grpc exporter: {endpoint}");
 
             let header_map = crate::otlp::build_header_map(&headers);
@@ -497,6 +498,7 @@ fn build_logger(
             protocol,
             tls,
         } => {
+            codex_http_client::ensure_service_url_allowed(&reqwest::Url::parse(&endpoint)?)?;
             debug!("Using OTLP Http exporter: {endpoint}");
 
             let protocol = match protocol {
@@ -517,7 +519,9 @@ fn build_logger(
                     OTEL_EXPORTER_OTLP_LOGS_TIMEOUT,
                 )?;
                 exporter_builder = exporter_builder.with_http_client(client);
-            } else if let Some(tls) = tls.as_ref() {
+            } else {
+                let default_tls = crate::config::OtelTlsConfig::default();
+                let tls = tls.as_ref().unwrap_or(&default_tls);
                 let client = crate::otlp::build_http_client(tls, OTEL_EXPORTER_OTLP_LOGS_TIMEOUT)?;
                 exporter_builder = exporter_builder.with_http_client(client);
             }
@@ -548,6 +552,7 @@ fn build_tracer_provider(
             headers,
             tls,
         } => {
+            codex_http_client::ensure_service_url_allowed(&reqwest::Url::parse(&endpoint)?)?;
             debug!("Using OTLP Grpc exporter for traces: {endpoint}");
 
             let header_map = crate::otlp::build_header_map(&headers);
@@ -574,6 +579,7 @@ fn build_tracer_provider(
             protocol,
             tls,
         } => {
+            codex_http_client::ensure_service_url_allowed(&reqwest::Url::parse(&endpoint)?)?;
             debug!("Using OTLP Http exporter for traces: {endpoint}");
 
             if crate::otlp::current_tokio_runtime_is_multi_thread() {
@@ -627,7 +633,9 @@ fn build_tracer_provider(
                     OTEL_EXPORTER_OTLP_TRACES_TIMEOUT,
                 )?;
                 exporter_builder = exporter_builder.with_http_client(client);
-            } else if let Some(tls) = tls.as_ref() {
+            } else {
+                let default_tls = crate::config::OtelTlsConfig::default();
+                let tls = tls.as_ref().unwrap_or(&default_tls);
                 let client =
                     crate::otlp::build_http_client(tls, OTEL_EXPORTER_OTLP_TRACES_TIMEOUT)?;
                 exporter_builder = exporter_builder.with_http_client(client);
@@ -672,6 +680,28 @@ mod tests {
     use opentelemetry_sdk::metrics::InMemoryMetricExporter;
     use pretty_assertions::assert_eq;
     use std::path::PathBuf;
+
+    #[test]
+    fn copilot_distribution_rejects_explicit_openai_log_and_trace_exporters() {
+        let resource = Resource::builder_empty().build();
+        let factory = HttpClientFactory::new(OutboundProxyPolicy::ReqwestDefault);
+        for exporter in [
+            OtelExporter::OtlpGrpc {
+                endpoint: "https://ab.chatgpt.com:4317".into(),
+                headers: HashMap::new(),
+                tls: None,
+            },
+            OtelExporter::OtlpHttp {
+                endpoint: "https://api.openai.com/v1/logs".into(),
+                headers: HashMap::new(),
+                protocol: crate::config::OtelHttpProtocol::Binary,
+                tls: None,
+            },
+        ] {
+            assert!(build_logger(&resource, &exporter, &factory).is_err());
+            assert!(build_tracer_provider(&resource, &exporter, HashMap::new(), &factory).is_err());
+        }
+    }
 
     #[test]
     fn resource_attributes_include_host_name_when_present() {

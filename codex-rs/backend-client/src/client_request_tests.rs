@@ -20,6 +20,33 @@ use wiremock::matchers::path;
 use super::*;
 
 #[tokio::test]
+async fn copilot_distribution_disables_backend_calls_even_with_a_local_override() {
+    let server = MockServer::start().await;
+    let client = Client::new(
+        server.uri(),
+        HttpClientFactory::new(OutboundProxyPolicy::ReqwestDefault),
+    );
+    let url = format!("{}/backend-api/test", server.uri());
+    let error = client
+        .exec_request(client.request(Method::GET, &url), "GET", &url)
+        .await
+        .unwrap_err();
+    assert_eq!(
+        error.to_string(),
+        codex_http_client::OPENAI_DISABLED_MESSAGE
+    );
+    let error = client
+        .exec_request_detailed(client.request(Method::POST, &url), "POST", &url)
+        .await
+        .unwrap_err();
+    assert_eq!(
+        error.to_string(),
+        codex_http_client::OPENAI_DISABLED_MESSAGE
+    );
+    assert!(server.received_requests().await.unwrap().is_empty());
+}
+
+#[tokio::test]
 async fn client_preserves_supplied_factory_and_typed_policy_denial() {
     let controller = codex_http_client::NetworkPolicyController::default();
     let client = Client::new(

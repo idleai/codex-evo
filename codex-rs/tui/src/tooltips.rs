@@ -179,6 +179,9 @@ pub(crate) mod announcement {
 
     /// Prewarm the cache of the announcement tip.
     pub(crate) fn prewarm(http_client_factory: HttpClientFactory) {
+        if !codex_http_client::OPENAI_SERVICES_ENABLED {
+            return;
+        }
         if ANNOUNCEMENT_TIP.get().is_some() {
             return;
         }

@@ -17,6 +17,7 @@ use serde::Deserialize;
 #[cfg(test)]
 use serial_test::serial;
 use std::collections::HashMap;
+#[cfg(test)]
 use std::env;
 use std::ffi::OsString;
 use std::fmt::Debug;
@@ -358,6 +359,9 @@ impl CodexAuth {
         cached_auth: Option<&CodexAuth>,
     ) -> std::io::Result<Self> {
         let auth_mode = auth_dot_json.resolved_mode();
+        if !distribution_auth_mode_allowed(auth_mode) {
+            codex_http_client::ensure_openai_services_enabled()?;
+        }
         if auth_mode == AuthMode::GitHubCopilot {
             let Some(auth) = auth_dot_json.github_copilot else {
                 return Err(std::io::Error::other(
@@ -527,6 +531,7 @@ impl CodexAuth {
         chatgpt_base_url: Option<&str>,
         auth_route_config: &AuthRouteConfig,
     ) -> std::io::Result<Self> {
+        codex_http_client::ensure_openai_services_enabled()?;
         let agent_identity_authapi_base_url = agent_identity_authapi_base_url(chatgpt_base_url)?;
         Self::from_agent_identity_jwt_with_authapi_base_url(
             jwt,
@@ -562,6 +567,7 @@ impl CodexAuth {
         access_token: &str,
         auth_route_config: &AuthRouteConfig,
     ) -> std::io::Result<Self> {
+        codex_http_client::ensure_openai_services_enabled()?;
         Ok(Self::PersonalAccessToken(
             PersonalAccessTokenAuth::load(access_token, auth_route_config).await?,
         ))
@@ -615,7 +621,7 @@ impl CodexAuth {
     }
 
     pub fn uses_codex_backend(&self) -> bool {
-        self.api_auth_mode().uses_codex_backend()
+        codex_http_client::OPENAI_SERVICES_ENABLED && self.api_auth_mode().uses_codex_backend()
     }
 
     pub fn is_external_chatgpt_tokens(&self) -> bool {
@@ -1055,25 +1061,15 @@ pub const CODEX_API_KEY_ENV_VAR: &str = "CODEX_API_KEY";
 pub const CODEX_ACCESS_TOKEN_ENV_VAR: &str = "CODEX_ACCESS_TOKEN";
 
 pub fn read_openai_api_key_from_env() -> Option<String> {
-    env::var(OPENAI_API_KEY_ENV_VAR)
-        .ok()
-        .map(|value| value.trim().to_string())
-        .filter(|value| !value.is_empty())
+    None
 }
 
 pub fn read_codex_api_key_from_env() -> Option<String> {
-    read_non_empty_env_var(CODEX_API_KEY_ENV_VAR)
+    None
 }
 
 pub fn read_codex_access_token_from_env() -> Option<String> {
-    read_non_empty_env_var(CODEX_ACCESS_TOKEN_ENV_VAR)
-}
-
-fn read_non_empty_env_var(key: &str) -> Option<String> {
-    env::var(key)
-        .ok()
-        .map(|value| value.trim().to_string())
-        .filter(|value| !value.is_empty())
+    None
 }
 
 /// Delete credentials for `codex_home` through the selected storage backend.
@@ -1112,8 +1108,10 @@ pub async fn logout_with_revoke(
             None
         }
     };
-    if let Err(err) = revoke_auth_tokens(auth_dot_json.as_ref(), auth_route_config).await {
-        tracing::warn!("failed to revoke auth tokens during logout: {err}");
+    if codex_http_client::OPENAI_SERVICES_ENABLED {
+        if let Err(err) = revoke_auth_tokens(auth_dot_json.as_ref(), auth_route_config).await {
+            tracing::warn!("failed to revoke auth tokens during logout: {err}");
+        }
     }
     logout_all_stores(
         codex_home,
@@ -1129,6 +1127,7 @@ pub fn login_with_api_key(
     auth_credentials_store_mode: AuthCredentialsStoreMode,
     keyring_backend_kind: AuthKeyringBackendKind,
 ) -> std::io::Result<()> {
+    codex_http_client::ensure_openai_services_enabled()?;
     let auth_dot_json = AuthDotJson {
         auth_mode: Some(AuthMode::ApiKey),
         openai_api_key: Some(api_key.to_string()),
@@ -1186,6 +1185,7 @@ pub async fn login_with_access_token(
     keyring_backend_kind: AuthKeyringBackendKind,
     auth_route_config: &AuthRouteConfig,
 ) -> std::io::Result<()> {
+    codex_http_client::ensure_openai_services_enabled()?;
     let auth_dot_json = match classify_codex_access_token(access_token) {
         CodexAccessToken::PersonalAccessToken(access_token) => {
             let auth = PersonalAccessTokenAuth::load(access_token, auth_route_config).await?;
@@ -1267,6 +1267,7 @@ pub fn login_with_chatgpt_auth_tokens(
     chatgpt_account_id: &str,
     chatgpt_plan_type: Option<&str>,
 ) -> std::io::Result<()> {
+    codex_http_client::ensure_openai_services_enabled()?;
     let auth_dot_json = AuthDotJson::from_external_access_token(
         access_token,
         chatgpt_account_id,
@@ -1329,6 +1330,9 @@ pub struct AuthConfig {
 
 impl AuthConfig {
     pub fn is_login_method_allowed(&self, method: ForcedLoginMethod) -> bool {
+        if method == ForcedLoginMethod::Chatgpt {
+            return false;
+        }
         self.managed_auth_policy.allows_login_method(
             method,
             self.forced_login_method,
@@ -1407,12 +1411,22 @@ fn auth_mode_is_allowed(
     allowed_login_methods: Option<&[ForcedLoginMethod]>,
     mode: AuthMode,
 ) -> bool {
+    if !distribution_auth_mode_allowed(mode) {
+        return false;
+    }
     let method = if mode.uses_codex_backend() {
         ForcedLoginMethod::Chatgpt
     } else {
         ForcedLoginMethod::Api
     };
     allowed_login_methods.is_none_or(|allowed| allowed.contains(&method))
+}
+
+fn distribution_auth_mode_allowed(mode: AuthMode) -> bool {
+    matches!(
+        mode,
+        AuthMode::GitHubCopilot | AuthMode::BedrockApiKey | AuthMode::BedrockAccessKeys
+    )
 }
 
 fn validate_auth_restrictions(
@@ -1879,6 +1893,11 @@ async fn request_chatgpt_token_refresh(
     client: &HttpClient,
     refresh_reason: RefreshReason,
 ) -> Result<RefreshResponse, RefreshTokenError> {
+    if !codex_http_client::OPENAI_SERVICES_ENABLED {
+        return Err(permanent_external_auth_error(
+            codex_http_client::OPENAI_DISABLED_MESSAGE,
+        ));
+    }
     let oauth = OAuthClient::new(
         client,
         TokenEndpoint {
@@ -3225,6 +3244,11 @@ impl AuthManager {
         &self,
         external_auth: Arc<dyn ExternalAuth>,
     ) -> Result<(), RefreshTokenError> {
+        if !codex_http_client::OPENAI_SERVICES_ENABLED {
+            return Err(permanent_external_auth_error(
+                codex_http_client::OPENAI_DISABLED_MESSAGE,
+            ));
+        }
         let auth = self.resolve_external_auth(external_auth.as_ref()).await?;
         let mut external_auth_slot = self.external_auth.write().map_err(|_| {
             RefreshTokenError::Transient(std::io::Error::other("external auth lock is poisoned"))
@@ -3633,8 +3657,10 @@ impl AuthManager {
     }
 
     pub fn current_auth_uses_codex_backend(&self) -> bool {
-        self.get_api_auth_mode()
-            .is_some_and(AuthMode::uses_codex_backend)
+        codex_http_client::OPENAI_SERVICES_ENABLED
+            && self
+                .get_api_auth_mode()
+                .is_some_and(AuthMode::uses_codex_backend)
     }
 
     fn proactive_refresh_reason(auth: &CodexAuth) -> Option<RefreshReason> {
@@ -3813,6 +3839,10 @@ fn auth_config_from(config: &impl AuthManagerConfig) -> AuthConfig {
 #[cfg(test)]
 #[path = "auth_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "distribution_tests.rs"]
+mod distribution_tests;
 
 #[cfg(test)]
 #[path = "change_state_tests.rs"]

@@ -178,7 +178,9 @@ impl HttpClientBuilder {
         request_url: &str,
         route_class: ClientRouteClass,
     ) -> Result<HttpClient, BuildRouteAwareHttpClientError> {
-        if http_client_factory.network_policy().is_managed()
+        if url::Url::parse(request_url)
+            .is_ok_and(|url| crate::ensure_service_url_allowed(&url).is_err())
+            || http_client_factory.network_policy().is_managed()
             || http_client_factory.protects_sensitive_headers()
         {
             return Ok(crate::RouteAwareClientPool::with_builder(
@@ -355,7 +357,10 @@ impl HttpClientBuilder {
                             error = %fallback_error,
                             "failed to build fallback HTTP client"
                         );
-                        reqwest::Client::new()
+                        reqwest::Client::builder()
+                            .redirect(reqwest::redirect::Policy::none())
+                            .build()
+                            .expect("failed to build HTTP client with redirects disabled")
                     })
             }
         };
@@ -403,9 +408,15 @@ impl HttpClientBuilder {
         }
         if !self.follow_redirects {
             builder = builder.redirect(reqwest::redirect::Policy::none());
-        } else if let Some(redirect_observed) = self.redirect_observed {
+        } else {
+            let redirect_observed = self.redirect_observed;
             builder = builder.redirect(reqwest::redirect::Policy::custom(move |attempt| {
-                redirect_observed.store(/*val*/ true, Ordering::Relaxed);
+                if let Some(redirect_observed) = &redirect_observed {
+                    redirect_observed.store(/*val*/ true, Ordering::Relaxed);
+                }
+                if let Err(error) = crate::ensure_service_url_allowed(attempt.url()) {
+                    return attempt.error(error);
+                }
                 reqwest::redirect::Policy::default().redirect(attempt)
             }));
         }

@@ -83,6 +83,50 @@ use wiremock::matchers::path;
 const DEFAULT_READ_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(60);
 const LOGIN_ISSUER_ENV_VAR: &str = "CODEX_APP_SERVER_LOGIN_ISSUER";
 const LOGIN_OPEN_APP_URL_ENV_VAR: &str = "CODEX_APP_SERVER_DEV_OPEN_APP_URL";
+
+#[tokio::test]
+async fn copilot_distribution_rejects_all_openai_login_rpc_variants() -> Result<()> {
+    let codex_home = TempDir::new()?;
+    create_config_toml(codex_home.path(), CreateConfigTomlParams::default())?;
+    let auth = codex_login::GitHubCopilotAuth::new(
+        "github-test-secret".into(),
+        "https://api.individual.githubcopilot.com".into(),
+        Some("octocat".into()),
+        None,
+        vec!["gpt-5.6-sol".into()],
+    )?;
+    codex_login::login_with_github_copilot(
+        codex_home.path(),
+        auth,
+        AuthCredentialsStoreMode::File,
+        AuthKeyringBackendKind::default(),
+    )?;
+    let before = std::fs::read(codex_home.path().join("auth.json"))?;
+    let mut mcp = TestAppServer::builder()
+        .with_codex_home(codex_home.path())
+        .without_auto_env()
+        .build_initialized_with_timeout(DEFAULT_READ_TIMEOUT)
+        .await?;
+    for params in [
+        json!({"type":"apiKey", "apiKey":"openai-test-secret"}),
+        json!({"type":"chatgpt"}),
+        json!({"type":"chatgptDeviceCode"}),
+        json!({"type":"chatgptAuthTokens", "accessToken":"openai-test-secret", "chatgptAccountId":"account"}),
+    ] {
+        let id = mcp.send_login_account_request(params).await?;
+        let error = timeout(
+            DEFAULT_READ_TIMEOUT,
+            mcp.read_stream_until_error_message(RequestId::Integer(id)),
+        )
+        .await??;
+        assert_eq!(
+            error.error.message,
+            codex_http_client::OPENAI_DISABLED_MESSAGE
+        );
+        assert_eq!(std::fs::read(codex_home.path().join("auth.json"))?, before);
+    }
+    Ok(())
+}
 const WORKSPACE_ID_ALLOWED: &str = "123e4567-e89b-42d3-a456-426614174000";
 const WORKSPACE_ID_SECOND_ALLOWED: &str = "123e4567-e89b-42d3-a456-426614174001";
 const WORKSPACE_ID_DISALLOWED: &str = "123e4567-e89b-42d3-a456-426614174002";

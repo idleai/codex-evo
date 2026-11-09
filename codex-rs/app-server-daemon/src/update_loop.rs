@@ -50,6 +50,7 @@ pub(crate) async fn request_manual_update(
     daemon: &Daemon,
     http_client_factory: HttpClientFactory,
 ) -> Result<crate::UpdateOutput> {
+    codex_http_client::ensure_openai_services_enabled()?;
     if daemon
         .pid_file
         .file_name()
@@ -80,6 +81,9 @@ pub(crate) async fn run(
     http_client_factory: HttpClientFactory,
     restore_release: Option<String>,
 ) -> Result<()> {
+    if !codex_http_client::OPENAI_SERVICES_ENABLED {
+        return Ok(());
+    }
     let daemon = Daemon::from_environment()?;
     crate::backend::stderr_log::start(daemon.update_pid_file.with_extension("stderr.log"));
     let http = RouteAwareClientPool::new_without_request_logging(
@@ -747,6 +751,7 @@ async fn cancel_installer(child: &mut tokio::process::Child, package_root: &Path
 }
 
 async fn fetch_installer_script(http: &impl InstallerHttp) -> Result<Vec<u8>> {
+    codex_http_client::ensure_openai_services_enabled()?;
     match http.get(INSTALL_URL).await? {
         InstallerResponse::Success(body) => Ok(body),
         InstallerResponse::Unsuccessful { status } => {

@@ -649,6 +649,14 @@ fn build_otlp_metric_exporter(
             headers,
             tls,
         } => {
+            codex_http_client::ensure_service_url_allowed(
+                &reqwest::Url::parse(&endpoint).map_err(|error| MetricsError::InvalidConfig {
+                    message: error.to_string(),
+                })?,
+            )
+            .map_err(|error| MetricsError::InvalidConfig {
+                message: error.to_string(),
+            })?;
             debug!("Using OTLP Grpc exporter for metrics: {endpoint}");
 
             let header_map = crate::otlp::build_header_map(&headers);
@@ -680,6 +688,14 @@ fn build_otlp_metric_exporter(
             protocol,
             tls,
         } => {
+            codex_http_client::ensure_service_url_allowed(
+                &reqwest::Url::parse(&endpoint).map_err(|error| MetricsError::InvalidConfig {
+                    message: error.to_string(),
+                })?,
+            )
+            .map_err(|error| MetricsError::InvalidConfig {
+                message: error.to_string(),
+            })?;
             debug!("Using OTLP Http exporter for metrics: {endpoint}");
 
             let protocol = match protocol {
@@ -704,7 +720,9 @@ fn build_otlp_metric_exporter(
                     message: err.to_string(),
                 })?;
                 exporter_builder = exporter_builder.with_http_client(client);
-            } else if let Some(tls) = tls.as_ref() {
+            } else {
+                let default_tls = crate::config::OtelTlsConfig::default();
+                let tls = tls.as_ref().unwrap_or(&default_tls);
                 let client =
                     crate::otlp::build_http_client(tls, OTEL_EXPORTER_OTLP_METRICS_TIMEOUT)
                         .map_err(|err| MetricsError::InvalidConfig {

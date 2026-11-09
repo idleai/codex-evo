@@ -2527,6 +2527,11 @@ fn auth_mode_name(auth: &CodexAuth) -> &'static str {
 }
 
 async fn dns_address_family_details(host: &str, port: u16) -> Vec<String> {
+    if let Ok(url) = url::Url::parse(&format!("https://{host}:{port}"))
+        && codex_http_client::ensure_service_url_allowed(&url).is_err()
+    {
+        return vec![codex_http_client::OPENAI_DISABLED_MESSAGE.to_string()];
+    }
     match tokio::net::lookup_host((host, port)).await {
         Ok(addresses) => {
             let addresses = addresses.collect::<Vec<_>>();

@@ -125,7 +125,7 @@ pub(super) enum WorkloadIdentitySessionError {
 /// Either marker selects workload identity. Partial configuration then fails validation rather
 /// than falling back to another credential source.
 pub fn is_workload_identity_selected() -> bool {
-    ProcessEnvironment::read().has_marker()
+    false
 }
 
 fn resolve_config(
@@ -372,6 +372,9 @@ impl WorkloadIdentityExternalAuth {
     pub(super) fn from_process_config(
         auth_config: &AuthConfig,
     ) -> Result<Option<Self>, WorkloadIdentitySessionError> {
+        if !codex_http_client::OPENAI_SERVICES_ENABLED {
+            return Ok(None);
+        }
         let registry = process_registry();
         resolve_config(
             auth_config

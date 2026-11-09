@@ -318,6 +318,7 @@ impl Client {
         method: &str,
         url: &str,
     ) -> Result<(String, String)> {
+        codex_http_client::ensure_openai_services_enabled()?;
         let res = req.send().await?;
         let status = res.status();
         let ct = res
@@ -339,6 +340,8 @@ impl Client {
         method: &str,
         url: &str,
     ) -> std::result::Result<(String, String), RequestError> {
+        codex_http_client::ensure_openai_services_enabled()
+            .map_err(|error| RequestError::Other(error.into()))?;
         let res = req.send().await?;
         let status = res.status();
         let content_type = res

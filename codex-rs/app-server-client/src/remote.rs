@@ -732,6 +732,8 @@ async fn connect_websocket_endpoint(
             format!("invalid websocket URL `{websocket_url}`: {err}"),
         )
     })?;
+    codex_http_client::ensure_service_url_allowed(&url)
+        .map_err(|error| IoError::new(ErrorKind::PermissionDenied, error))?;
     if auth_token.is_some() && !websocket_url_supports_auth_token(&url) {
         return Err(IoError::new(
             ErrorKind::InvalidInput,

@@ -163,6 +163,7 @@ fn print_device_code_prompt(verification_url: &str, code: &str) {
 }
 
 pub async fn request_device_code(opts: &ServerOptions) -> std::io::Result<DeviceCode> {
+    codex_http_client::ensure_openai_services_enabled()?;
     let base_url = opts.issuer.trim_end_matches('/');
     let api_base_url = format!("{base_url}/api/accounts");
     let client = create_raw_auth_client(
@@ -183,6 +184,7 @@ pub async fn complete_device_code_login(
     opts: ServerOptions,
     device_code: DeviceCode,
 ) -> std::io::Result<()> {
+    codex_http_client::ensure_openai_services_enabled()?;
     let base_url = opts.issuer.trim_end_matches('/');
     let api_base_url = format!("{base_url}/api/accounts");
     let client = create_raw_auth_client(
@@ -227,6 +229,7 @@ pub async fn complete_device_code_login(
 }
 
 pub async fn run_device_code_login(opts: ServerOptions) -> std::io::Result<()> {
+    codex_http_client::ensure_openai_services_enabled()?;
     let device_code = request_device_code(&opts).await?;
     print_device_code_prompt(&device_code.verification_url, &device_code.user_code);
     complete_device_code_login(opts, device_code).await

@@ -4,6 +4,68 @@ use super::*;
 use pretty_assertions::assert_eq;
 
 #[tokio::test]
+async fn copilot_distribution_blocks_openai_before_route_resolution() {
+    let pool = RouteAwareClientPool::new(
+        HttpClientFactory::new(OutboundProxyPolicy::RespectSystemProxy),
+        ClientRouteClass::Api,
+    );
+    let request = reqwest::Request::new(
+        Method::POST,
+        reqwest::Url::parse("https://api.openai.com/v1/responses").unwrap(),
+    );
+    let result = pool
+        .send_with_resolver(request, |_| async {
+            panic!("blocked destination must not reach proxy resolution")
+        })
+        .await;
+    assert!(matches!(
+        result,
+        Err(RouteAwareRequestError::Policy(
+            NetworkPolicyDenied::Destination
+        ))
+    ));
+}
+
+#[tokio::test]
+async fn copilot_distribution_blocks_openai_redirects_in_direct_and_routed_clients() {
+    for routed in [false, true] {
+        let (address, server) = super::tests::spawn_response_server(vec![
+            "HTTP/1.1 307 Temporary Redirect\r\nLocation: http://api.openai.com/v1/responses\r\nContent-Length: 0\r\nConnection: close\r\n\r\n".into(),
+        ]);
+        let url = format!("http://{address}/start");
+        let client = if routed {
+            RouteAwareClientPool::new(
+                HttpClientFactory::new(OutboundProxyPolicy::ReqwestDefault),
+                ClientRouteClass::Api,
+            )
+            .into_client()
+        } else {
+            HttpClientBuilder::new().build_direct().unwrap()
+        };
+        let error = client
+            .post(url)
+            .body("private prompt")
+            .send()
+            .await
+            .unwrap_err();
+        let mut source = Some(&error as &(dyn std::error::Error + 'static));
+        let mut destination_denied = matches!(
+            &error,
+            RouteAwareRequestError::Policy(NetworkPolicyDenied::Destination)
+        );
+        while let Some(cause) = source {
+            destination_denied |= matches!(
+                cause.downcast_ref::<NetworkPolicyDenied>(),
+                Some(NetworkPolicyDenied::Destination)
+            );
+            source = cause.source();
+        }
+        assert!(destination_denied, "{error:?}");
+        assert_eq!(server.join().unwrap().len(), 1);
+    }
+}
+
+#[tokio::test]
 async fn unavailable_policy_does_not_connect() {
     let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
     listener.set_nonblocking(true).unwrap();

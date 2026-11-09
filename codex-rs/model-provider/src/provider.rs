@@ -1968,7 +1968,8 @@ printf '%s\n' '{"AccessKeyId":"exported","SecretAccessKey":"secret"}'
             CodexAuth::from_api_key("openai-key"),
             codex_home.clone(),
         );
-        let mut provider_info = ModelProviderInfo::create_openai_provider(/*base_url*/ None);
+        let mut provider_info =
+            ModelProviderInfo::create_openai_provider(Some("http://127.0.0.1:8000/v1".into()));
         provider_info.name = "GitHub Copilot".to_string();
         let provider = create_model_provider(provider_info, Some(Arc::clone(&auth_manager)));
         let models_manager = provider.models_manager_without_cache(Some(ModelsResponse {
@@ -2029,13 +2030,23 @@ printf '%s\n' '{"AccessKeyId":"exported","SecretAccessKey":"secret"}'
             }
         );
 
-        codex_login::login_with_api_key(
+        let before = std::fs::read(codex_home.join("auth.json")).unwrap();
+        assert!(
+            codex_login::login_with_api_key(
+                &codex_home,
+                "new-openai-key",
+                AuthCredentialsStoreMode::File,
+                AuthKeyringBackendKind::default(),
+            )
+            .is_err()
+        );
+        assert_eq!(std::fs::read(codex_home.join("auth.json")).unwrap(), before);
+        codex_login::logout(
             &codex_home,
-            "new-openai-key",
             AuthCredentialsStoreMode::File,
             AuthKeyringBackendKind::default(),
         )
-        .expect("OpenAI auth should persist");
+        .unwrap();
         assert!(auth_manager.reload().await);
         let catalog = models_manager
             .raw_model_catalog(

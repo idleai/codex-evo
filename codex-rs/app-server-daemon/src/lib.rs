@@ -991,7 +991,7 @@ impl Daemon {
 
     async fn ensure_managed_updater(&self, settings: &DaemonSettings) -> Result<bool> {
         let updater = backend::pid_update_loop_backend(self.backend_paths(settings));
-        if !settings.auto_update_enabled {
+        if !codex_http_client::OPENAI_SERVICES_ENABLED || !settings.auto_update_enabled {
             updater.stop().await?;
             return Ok(false);
         }
@@ -1062,7 +1062,8 @@ impl Daemon {
     }
 
     async fn is_bootstrapped(&self, settings: &DaemonSettings) -> Result<bool> {
-        if !settings.auto_update_enabled
+        if !codex_http_client::OPENAI_SERVICES_ENABLED
+            || !settings.auto_update_enabled
             || !self.is_stable_standalone_release()?
             || !managed_install::supports_daemon_update_loop(&self.managed_codex_bin).await
         {

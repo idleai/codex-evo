@@ -51,6 +51,14 @@ const DESKTOP_UPDATE_URL: &str =
 /// warning instead of failing doctor outright; update freshness is useful
 /// support context but should not mask more direct install/config failures.
 pub(super) async fn updates_check(config: &Config) -> DoctorCheck {
+    if !codex_http_client::OPENAI_SERVICES_ENABLED {
+        return DoctorCheck::new(
+            "updates.status",
+            "updates",
+            CheckStatus::Ok,
+            "Upstream updates are disabled in this build; install a verified Copilot package locally.",
+        );
+    }
     let current_exe = std::env::current_exe().ok();
     let install_context = doctor_install_context(current_exe.as_deref());
     let mut details = vec![
@@ -99,6 +107,9 @@ pub(super) async fn append_desktop_update(
     config: Option<&Config>,
     application: &InstalledApp,
 ) {
+    if !codex_http_client::OPENAI_SERVICES_ENABLED {
+        return;
+    }
     let deadline = tokio::time::Instant::now() + Duration::from_secs(2);
     #[cfg(target_os = "macos")]
     if let Some(home) = std::env::var_os("HOME").map(PathBuf::from)

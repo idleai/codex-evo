@@ -208,64 +208,48 @@ async fn github_copilot_wrapper_preserves_exact_provider_catalog_metadata() {
 
 #[tokio::test]
 async fn github_copilot_wrapper_refreshes_provider_catalog_after_auth_change() {
-    let server = MockServer::start().await;
     let home = tempfile::tempdir().expect("temporary Codex home");
+    let auth = |token: &str, model: &str| {
+        GitHubCopilotAuth::new(
+            token.to_string(),
+            "https://api.individual.githubcopilot.com".to_string(),
+            Some("octocat".to_string()),
+            None,
+            vec![model.to_string()],
+        )
+        .unwrap()
+    };
     let auth_manager = AuthManager::from_auth_for_testing_with_home(
-        CodexAuth::from_api_key("first-token"),
+        CodexAuth::GitHubCopilot(auth("first-token", "first-catalog-model")),
         home.path().to_path_buf(),
     );
     let provider = create_model_provider(
-        ModelProviderInfo {
-            model_catalog_url: Some(format!("{}/models", server.uri()).into()),
-            ..ModelProviderInfo::create_openai_provider(Some(server.uri()))
-        },
+        ModelProviderInfo::create_openai_provider(None),
         Some(Arc::clone(&auth_manager)),
     );
     let manager = provider.models_manager_without_cache(None);
-    manager.set_api_key_model_discovery_enabled(true);
-    let first = model_info_from_slug("first-catalog-model");
-    let second = model_info_from_slug("second-catalog-model");
-    for (token, model) in [("first-token", &first), ("second-token", &second)] {
-        Mock::given(method("GET"))
-            .and(path("/models"))
-            .and(header("authorization", format!("Bearer {token}")))
-            .respond_with(ResponseTemplate::new(200).set_body_json(ModelsResponse {
-                models: vec![model.clone()],
-            }))
-            .expect(1)
-            .mount(&server)
-            .await;
-    }
-    assert_eq!(
-        manager
-            .raw_model_catalog(
-                RefreshStrategy::Online,
-                HttpClientFactory::new(OutboundProxyPolicy::ReqwestDefault),
-            )
-            .await,
-        ModelsResponse {
-            models: vec![first]
-        }
-    );
-    codex_login::login_with_api_key(
+    let first = manager
+        .raw_model_catalog(
+            RefreshStrategy::Online,
+            HttpClientFactory::new(OutboundProxyPolicy::ReqwestDefault),
+        )
+        .await;
+    assert_eq!(first.models.len(), 1);
+    assert_eq!(first.models[0].slug, "first-catalog-model");
+    codex_login::login_with_github_copilot(
         home.path(),
-        "second-token",
+        auth("second-token", "second-catalog-model"),
         AuthCredentialsStoreMode::File,
         AuthKeyringBackendKind::default(),
     )
-    .expect("persist updated API key");
-    auth_manager.reload().await;
-    assert_eq!(
-        auth_manager
-            .auth_cached()
-            .as_ref()
-            .and_then(CodexAuth::api_key),
-        Some("second-token")
-    );
+    .expect("persist updated Copilot auth");
+    assert!(auth_manager.reload().await);
     manager
         .refresh_after_auth_change(HttpClientFactory::new(OutboundProxyPolicy::ReqwestDefault))
         .await;
-    assert_eq!(manager.get_remote_models().await, vec![second]);
+    let second = manager.get_remote_models().await;
+    assert_eq!(second.len(), 1);
+    assert_eq!(second[0].slug, "second-catalog-model");
 }
 
 #[tokio::test]

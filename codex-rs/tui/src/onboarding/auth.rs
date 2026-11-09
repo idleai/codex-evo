@@ -1,7 +1,7 @@
 //! Authentication step UI and state transitions used by onboarding.
 //!
-//! This module owns the auth-step state machine (ChatGPT login/device-code/API
-//! key), renders the corresponding UI, and handles auth-scoped keyboard input.
+//! This module owns GitHub Copilot device login and optional provider setup,
+//! renders the corresponding UI, and handles auth-scoped keyboard input.
 //! It intentionally does not decide onboarding flow completion; the enclosing
 //! onboarding screen coordinates step progression.
 
@@ -13,10 +13,7 @@ use codex_app_server_protocol::AccountUpdatedNotification;
 use codex_app_server_protocol::AuthMode as ApiAuthMode;
 use codex_app_server_protocol::CancelLoginAccountParams;
 use codex_app_server_protocol::ClientRequest;
-use codex_app_server_protocol::LoginAccountParams;
-use codex_app_server_protocol::LoginAccountResponse;
 use codex_login::AuthConfig;
-use codex_login::read_openai_api_key_from_env;
 use codex_protocol::auth::AuthMode;
 use crossterm::event::KeyCode;
 use crossterm::event::KeyEvent;
@@ -57,9 +54,6 @@ use crate::onboarding::gcp::GcpState;
 use crate::onboarding::keys;
 use crate::onboarding::onboarding_screen::KeyboardHandler;
 use crate::onboarding::onboarding_screen::StepStateProvider;
-use crate::terminal_hyperlinks::HyperlinkLine;
-use crate::terminal_hyperlinks::mark_buffer_hyperlinks;
-use crate::terminal_hyperlinks::visible_lines;
 use crate::tui::FrameRequester;
 
 /// Marks buffer cells that have cyan+underlined style as an OSC 8 hyperlink.
@@ -78,6 +72,9 @@ use super::onboarding_screen::StepState;
 mod headless_chatgpt_login;
 
 #[derive(Clone)]
+// Retain legacy display states for frontend compatibility tests; disabled login
+// methods cannot create them at runtime.
+#[cfg_attr(not(test), allow(dead_code))]
 pub(crate) enum SignInState {
     PickMode,
     ChatGptContinueInBrowser(ContinueInBrowserState),
@@ -95,7 +92,9 @@ pub(crate) enum SignInState {
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum SignInOption {
+    GitHubCopilot,
     ChatGpt,
+    #[allow(dead_code)]
     DeviceCode,
     OtherMethods,
     ApiKey,
@@ -105,7 +104,10 @@ pub(crate) enum SignInOption {
 
 impl SignInOption {
     fn is_alternative(self) -> bool {
-        !matches!(self, Self::ChatGpt | Self::DeviceCode | Self::OtherMethods)
+        !matches!(
+            self,
+            Self::GitHubCopilot | Self::ChatGpt | Self::DeviceCode | Self::OtherMethods
+        )
     }
 }
 
@@ -245,7 +247,7 @@ impl KeyboardHandler for AuthModeWidget {
             if matches!(*self.sign_in_state.read().unwrap(), SignInState::PickMode)
                 && self.highlighted_mode.is_alternative()
             {
-                self.highlighted_mode = SignInOption::OtherMethods;
+                self.highlighted_mode = SignInOption::GitHubCopilot;
                 self.set_error(/*message*/ None);
             } else {
                 self.cancel_active_attempt();
@@ -380,22 +382,12 @@ impl AuthModeWidget {
     }
 
     fn displayed_sign_in_options(&self) -> Vec<SignInOption> {
-        if self.highlighted_mode.is_alternative() {
-            let mut options = vec![SignInOption::ApiKey];
-            if self.bedrock_setup_enabled {
-                options.push(SignInOption::Bedrock);
-            }
-            if self.gcp_setup_enabled {
-                options.push(SignInOption::Gcp);
-            }
-            return options;
+        let mut options = vec![SignInOption::GitHubCopilot];
+        if self.bedrock_setup_enabled && self.is_api_login_allowed() {
+            options.push(SignInOption::Bedrock);
         }
-        let mut options = vec![SignInOption::ChatGpt];
-        if self.is_chatgpt_login_allowed() {
-            options.push(SignInOption::DeviceCode);
-        }
-        if self.is_api_login_allowed() {
-            options.push(SignInOption::OtherMethods);
+        if self.gcp_setup_enabled && self.is_api_login_allowed() {
+            options.push(SignInOption::Gcp);
         }
         options
     }
@@ -449,6 +441,13 @@ impl AuthModeWidget {
 
     fn handle_sign_in_option(&mut self, option: SignInOption) {
         match option {
+            SignInOption::GitHubCopilot => {
+                if self.is_api_login_allowed() {
+                    self.start_device_code_login();
+                } else {
+                    self.disallow_api_login();
+                }
+            }
             SignInOption::OtherMethods => {
                 self.highlighted_mode = SignInOption::ApiKey;
                 self.set_error(/*message*/ None);
@@ -490,30 +489,18 @@ impl AuthModeWidget {
     }
 
     fn disallow_api_login(&mut self) {
-        self.highlighted_mode = SignInOption::ChatGpt;
+        self.highlighted_mode = SignInOption::GitHubCopilot;
         self.set_error(Some(API_KEY_DISABLED_MESSAGE.to_string()));
         *self.sign_in_state.write().unwrap() = SignInState::PickMode;
         self.request_frame.schedule_frame();
     }
 
     fn render_pick_mode(&self, area: Rect, buf: &mut Buffer) {
-        let mut lines: Vec<Line> = if self.highlighted_mode.is_alternative() {
-            vec!["  Sign in another way".into(), "".into()]
-        } else if self.bedrock_setup_enabled || self.gcp_setup_enabled {
-            vec!["  Choose how you want to use Codex.".into(), "".into()]
-        } else {
-            vec![
-                Line::from(vec![
-                    "  ".into(),
-                    "Sign in with ChatGPT to use Codex as part of your paid plan".into(),
-                ]),
-                Line::from(vec![
-                    "  ".into(),
-                    "or connect an API key for usage-based billing".into(),
-                ]),
-                "".into(),
-            ]
-        };
+        let mut lines: Vec<Line> = vec![
+            "  Sign in with GitHub Copilot to use Codex.".into(),
+            "  Local providers can be selected through your configuration.".into(),
+            "".into(),
+        ];
 
         let options_start = lines.len();
         let mut compact_options = Vec::new();
@@ -556,6 +543,14 @@ impl AuthModeWidget {
 
         for (idx, option) in self.displayed_sign_in_options().into_iter().enumerate() {
             match option {
+                SignInOption::GitHubCopilot => {
+                    lines.extend(create_mode_item(
+                        idx,
+                        option,
+                        "Sign in with GitHub Copilot",
+                        "Use your GitHub account and Copilot subscription",
+                    ));
+                }
                 SignInOption::OtherMethods => {
                     lines.extend(create_mode_item(
                         idx,
@@ -615,7 +610,7 @@ impl AuthModeWidget {
         let options_end = lines.len();
         if !self.is_api_login_allowed() {
             lines.push(
-                "  API key login is disabled by this workspace. Sign in with ChatGPT to continue."
+                "  GitHub Copilot login is disabled by this workspace's login requirements."
                     .dim()
                     .into(),
             );
@@ -716,59 +711,21 @@ impl AuthModeWidget {
     }
 
     fn render_chatgpt_success_message(&self, area: Rect, buf: &mut Buffer) {
-        let mut docs_line =
-            HyperlinkLine::new(Line::from("  Learn about permissions and approvals in the ").dim());
-        docs_line.push_span(
-            "Codex docs".underlined(),
-            Some("https://developers.openai.com/codex/security"),
-        );
-        let mut preferences_line =
-            HyperlinkLine::new(Line::from("  Your plan's rate limits and ").dim());
-        preferences_line.push_span(
-            "training data preferences".underlined(),
-            Some("https://chatgpt.com/#settings"),
-        );
-        preferences_line.push_span(" apply".into(), /*destination*/ None);
-
-        let lines = vec![
-            HyperlinkLine::new(
-                "✓ Signed in with your ChatGPT account"
-                    .fg(Color::Green)
-                    .into(),
-            ),
-            "".into(),
-            "  You're in control".into(),
-            docs_line,
-            "".into(),
-            "  Codex can make mistakes".into(),
-            HyperlinkLine::new(
-                "  Review the code it writes and commands it runs"
-                    .dim()
-                    .into(),
-            ),
-            "".into(),
-            "  Included with your ChatGPT plan".into(),
-            preferences_line,
-            "".into(),
-            HyperlinkLine::new(Line::from(vec![
-                "  Press ".fg(Color::Cyan),
+        Paragraph::new(vec![
+            Line::from("✓ Signed in with GitHub Copilot").fg(Color::Green),
+            Line::from(""),
+            Line::from(vec![
+                "  Press ".into(),
                 self.confirm_binding().into(),
-                " to continue".fg(Color::Cyan),
-            ])),
-        ];
-
-        Paragraph::new(visible_lines(lines.clone()))
-            .wrap(Wrap { trim: false })
-            .render(area, buf);
-        mark_buffer_hyperlinks(buf, area, &lines, /*scroll_rows*/ 0);
+                " to continue".into(),
+            ]),
+        ])
+        .wrap(Wrap { trim: false })
+        .render(area, buf);
     }
 
     fn render_chatgpt_success(&self, area: Rect, buf: &mut Buffer) {
-        let lines = vec![
-            "✓ Signed in with your ChatGPT account"
-                .fg(Color::Green)
-                .into(),
-        ];
+        let lines = vec!["✓ Signed in with GitHub Copilot".fg(Color::Green).into()];
 
         Paragraph::new(lines)
             .wrap(Wrap { trim: false })
@@ -943,85 +900,17 @@ impl AuthModeWidget {
     }
 
     fn start_api_key_entry(&mut self) {
-        if !self.is_api_login_allowed() {
-            self.disallow_api_login();
-            return;
-        }
-        self.set_error(/*message*/ None);
-        let prefill_from_env = read_openai_api_key_from_env();
-        let mut guard = self.sign_in_state.write().unwrap();
-        match &mut *guard {
-            SignInState::ApiKeyEntry(state) => {
-                if state.value.is_empty() {
-                    if let Some(prefill) = prefill_from_env {
-                        state.value = prefill;
-                        state.prepopulated_from_env = true;
-                    } else {
-                        state.prepopulated_from_env = false;
-                    }
-                }
-            }
-            _ => {
-                *guard = SignInState::ApiKeyEntry(ApiKeyInputState {
-                    value: prefill_from_env.clone().unwrap_or_default(),
-                    prepopulated_from_env: prefill_from_env.is_some(),
-                });
-            }
-        }
-        drop(guard);
-        self.request_frame.schedule_frame();
+        self.disallow_api_login();
     }
 
-    fn save_api_key(&mut self, api_key: String) {
-        if !self.is_api_login_allowed() {
-            self.disallow_api_login();
-            return;
-        }
-        self.set_error(/*message*/ None);
-        let request_handle = self.app_server_request_handle.clone();
-        let sign_in_state = self.sign_in_state.clone();
-        let error = self.error.clone();
-        let request_frame = self.request_frame.clone();
-        tokio::spawn(async move {
-            match request_handle
-                .request_typed::<LoginAccountResponse>(ClientRequest::LoginAccount {
-                    request_id: onboarding_request_id(),
-                    params: LoginAccountParams::ApiKey {
-                        api_key: api_key.clone(),
-                    },
-                })
-                .await
-            {
-                Ok(LoginAccountResponse::ApiKey {}) => {
-                    *error.write().unwrap() = None;
-                    *sign_in_state.write().unwrap() = SignInState::ApiKeyConfigured;
-                }
-                Ok(other) => {
-                    *error.write().unwrap() = Some(format!(
-                        "Unexpected account/login/start response: {other:?}"
-                    ));
-                    *sign_in_state.write().unwrap() = SignInState::ApiKeyEntry(ApiKeyInputState {
-                        value: api_key,
-                        prepopulated_from_env: false,
-                    });
-                }
-                Err(err) => {
-                    *error.write().unwrap() = Some(format!("Failed to save API key: {err}"));
-                    *sign_in_state.write().unwrap() = SignInState::ApiKeyEntry(ApiKeyInputState {
-                        value: api_key,
-                        prepopulated_from_env: false,
-                    });
-                }
-            }
-            request_frame.schedule_frame();
-        });
-        self.request_frame.schedule_frame();
+    fn save_api_key(&mut self, _api_key: String) {
+        self.disallow_api_login();
     }
 
     fn handle_existing_chatgpt_login(&mut self) -> bool {
         if matches!(
             self.login_status,
-            LoginStatus::AuthMode(auth_mode) if auth_mode.has_chatgpt_account()
+            LoginStatus::AuthMode(AuthMode::GitHubCopilot)
         ) {
             *self.sign_in_state.write().unwrap() = SignInState::ChatGptSuccess;
             self.request_frame.schedule_frame();
@@ -1031,55 +920,10 @@ impl AuthModeWidget {
         }
     }
 
-    /// Kicks off the ChatGPT auth flow and keeps the UI state consistent with the attempt.
     fn start_chatgpt_login(&mut self) {
-        // If we're already authenticated with ChatGPT, don't start a new login –
-        // just proceed to the success message flow.
-        if self.handle_existing_chatgpt_login() {
-            return;
-        }
-
-        self.set_error(/*message*/ None);
-        let app_server_target = self.app_server_target.clone();
-        let request_handle = self.app_server_request_handle.clone();
-        let sign_in_state = self.sign_in_state.clone();
-        let error = self.error.clone();
-        let request_frame = self.request_frame.clone();
-        tokio::spawn(async move {
-            match request_handle
-                .request_typed::<LoginAccountResponse>(ClientRequest::LoginAccount {
-                    request_id: onboarding_request_id(),
-                    params: LoginAccountParams::Chatgpt {
-                        app_brand: None,
-                        codex_streamlined_login: false,
-                        use_hosted_login_success_page: false,
-                    },
-                })
-                .await
-            {
-                Ok(LoginAccountResponse::Chatgpt { login_id, auth_url }) => {
-                    *error.write().unwrap() = None;
-                    show_chatgpt_login_in_browser(
-                        &app_server_target,
-                        &sign_in_state,
-                        &request_frame,
-                        ContinueInBrowserState { login_id, auth_url },
-                        webbrowser::open,
-                    );
-                }
-                Ok(other) => {
-                    *sign_in_state.write().unwrap() = SignInState::PickMode;
-                    *error.write().unwrap() = Some(format!(
-                        "Unexpected account/login/start response: {other:?}"
-                    ));
-                }
-                Err(err) => {
-                    *sign_in_state.write().unwrap() = SignInState::PickMode;
-                    *error.write().unwrap() = Some(err.to_string());
-                }
-            }
-            request_frame.schedule_frame();
-        });
+        self.set_error(Some(codex_http_client::OPENAI_DISABLED_MESSAGE.to_string()));
+        *self.sign_in_state.write().unwrap() = SignInState::PickMode;
+        self.request_frame.schedule_frame();
     }
 
     fn start_device_code_login(&mut self) {
@@ -1205,6 +1049,7 @@ impl WidgetRef for AuthModeWidget {
     }
 }
 
+#[cfg(test)]
 fn show_chatgpt_login_in_browser(
     target: &crate::AppServerTarget,
     sign_in_state: &RwLock<SignInState>,
@@ -1389,6 +1234,24 @@ mod tests {
             animations_suppressed: std::cell::Cell::new(false),
         };
         (widget, codex_home)
+    }
+
+    #[tokio::test]
+    async fn copilot_distribution_onboarding_only_offers_github_login() {
+        let (mut widget, _tmp) = widget_forced_chatgpt().await;
+        widget.auth_config.forced_login_method = None;
+        widget.highlighted_mode = SignInOption::GitHubCopilot;
+        assert_eq!(
+            widget.displayed_sign_in_options(),
+            vec![SignInOption::GitHubCopilot]
+        );
+        let area = Rect::new(0, 0, 100, 20);
+        let mut buffer = Buffer::empty(area);
+        widget.render_pick_mode(area, &mut buffer);
+        let text: String = buffer.content.iter().map(|cell| cell.symbol()).collect();
+        assert!(text.contains("Sign in with GitHub Copilot"));
+        assert!(!text.contains("ChatGPT"));
+        assert!(!text.contains("OpenAI API key"));
     }
 
     #[tokio::test]
@@ -1683,7 +1546,7 @@ mod tests {
             .collect::<Vec<_>>()
             .join("\n");
         insta::assert_snapshot!(visible, @r###"
-        ✓ Signed in with your ChatGPT account
+        ✓ Signed in with GitHub Copilot
 
           You're in control
           Learn about permissions and approvals in the Codex docs

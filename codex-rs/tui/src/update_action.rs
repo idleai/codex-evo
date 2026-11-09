@@ -29,6 +29,9 @@ pub enum UpdateAction {
 impl UpdateAction {
     #[cfg(any(not(debug_assertions), test))]
     pub(crate) fn from_install_context(context: &InstallContext) -> Option<Self> {
+        if !codex_http_client::OPENAI_SERVICES_ENABLED {
+            return None;
+        }
         match &context.method {
             InstallMethod::Npm => Some(UpdateAction::NpmGlobalLatest),
             InstallMethod::Bun => Some(UpdateAction::BunGlobalLatest),

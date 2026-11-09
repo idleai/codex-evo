@@ -10,6 +10,30 @@ use std::sync::atomic::AtomicBool;
 use std::sync::atomic::Ordering;
 use tokio_tungstenite::tungstenite::client::IntoClientRequest;
 
+#[tokio::test]
+async fn copilot_distribution_blocks_openai_websocket_before_proxy_or_socket_work() {
+    let factory = HttpClientFactory::new(ReqwestDefault);
+    let connector = WebSocketConnector::new(&factory).unwrap();
+    let request = "wss://chatgpt.com/backend-api/codex/responses"
+        .into_client_request()
+        .unwrap();
+    let result = connector
+        .connect_with_route(
+            request,
+            WebSocketConfig::default(),
+            async { panic!("OpenAI WebSocket must be denied before resolving its proxy") },
+            false,
+        )
+        .await;
+    let Err(error) = result else {
+        panic!("OpenAI WebSocket unexpectedly connected")
+    };
+    assert_eq!(
+        network_policy_denial(&error),
+        Some(codex_http_client::NetworkPolicyDenied::Destination)
+    );
+}
+
 struct WakeFlag(AtomicBool);
 
 impl futures::task::ArcWake for WakeFlag {

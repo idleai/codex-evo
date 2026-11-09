@@ -14,31 +14,22 @@ use codex_core::config::edit::ConfigEditsBuilder;
 use codex_login::AuthKeyringBackendKind;
 use codex_login::AuthManager;
 use codex_login::AuthRouteConfig;
-use codex_login::CLIENT_ID;
 use codex_login::CodexAuth;
 use codex_login::GITHUB_COPILOT_CLIENT_ID_ENV_VAR;
 use codex_login::GITHUB_COPILOT_DEFAULT_CLIENT_ID;
 use codex_login::GitHubCopilotLoginOptions;
-use codex_login::ServerOptions;
 use codex_login::complete_github_copilot_device_code_login;
 use codex_login::is_workload_identity_selected;
-use codex_login::login_with_access_token;
-use codex_login::login_with_api_key;
 use codex_login::login_with_github_copilot;
 use codex_login::logout_with_revoke;
 use codex_login::request_github_copilot_device_code;
-use codex_login::run_device_code_login;
-use codex_login::run_login_server;
 use codex_mcp::ema_auth_scope;
 use codex_protocol::auth::AuthMode;
 use codex_protocol::config_types::ForcedLoginMethod;
 use codex_rmcp_client::EnterpriseOAuthCredentialGuard;
 use codex_utils_cli::CliConfigOverrides;
 use std::fs::OpenOptions;
-use std::io::IsTerminal;
-use std::io::Read;
 use std::path::Path;
-use std::path::PathBuf;
 use tracing_appender::non_blocking;
 use tracing_appender::non_blocking::WorkerGuard;
 use tracing_subscriber::EnvFilter;
@@ -46,15 +37,8 @@ use tracing_subscriber::Layer;
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
 
-const CHATGPT_LOGIN_DISABLED_MESSAGE: &str =
-    "ChatGPT login is disabled. Use API key login instead.";
-const API_KEY_LOGIN_DISABLED_MESSAGE: &str =
-    "API key login is disabled. Use ChatGPT login instead.";
-const ACCESS_TOKEN_LOGIN_DISABLED_MESSAGE: &str =
-    "Access token login is disabled. Use API key login instead.";
 const GITHUB_COPILOT_LOGIN_DISABLED_MESSAGE: &str =
     "GitHub Copilot login is disabled by the configured login requirements.";
-const LOGIN_SUCCESS_MESSAGE: &str = "Successfully logged in";
 const API_KEY_AUTHENTICATION_NOTICE: &str = "Authentication is checked when you send a request.";
 const DEFAULT_LOGIN_LOG_FILTER: &str =
     "codex_cli=info,codex_core=info,codex_login=info,codex_otel::auth_storage=warn";
@@ -127,12 +111,6 @@ fn init_login_file_logging(config: &Config) -> Option<WorkerGuard> {
     Some(guard)
 }
 
-fn print_login_server_start(actual_port: u16, auth_url: &str) {
-    eprintln!(
-        "Starting local login server on http://localhost:{actual_port}.\nIf your browser did not open, navigate to this URL to authenticate:\n\n{auth_url}\n\nOn a remote or headless machine? Use `codex login --device-auth` instead."
-    );
-}
-
 async fn clear_existing_auth_before_login(
     codex_home: &Path,
     auth_credentials_store_mode: AuthCredentialsStoreMode,
@@ -148,151 +126,6 @@ async fn clear_existing_auth_before_login(
     .await
     {
         tracing::warn!("failed to clear existing auth before login: {err}");
-    }
-}
-
-pub async fn login_with_chatgpt(
-    codex_home: PathBuf,
-    forced_chatgpt_workspace_id: Option<Vec<String>>,
-    cli_auth_credentials_store_mode: AuthCredentialsStoreMode,
-    auth_keyring_backend_kind: AuthKeyringBackendKind,
-    auth_route_config: AuthRouteConfig,
-) -> std::io::Result<()> {
-    clear_existing_auth_before_login(
-        &codex_home,
-        cli_auth_credentials_store_mode,
-        auth_keyring_backend_kind,
-        &auth_route_config,
-    )
-    .await;
-
-    let opts = ServerOptions::new(
-        codex_home,
-        CLIENT_ID.to_string(),
-        forced_chatgpt_workspace_id,
-        cli_auth_credentials_store_mode,
-        auth_keyring_backend_kind,
-        auth_route_config,
-    );
-    let server = run_login_server(opts)?;
-
-    print_login_server_start(server.actual_port, &server.auth_url);
-
-    server.block_until_done().await
-}
-
-/// Signs into the config server if needed, then reloads configuration.
-async fn sign_in_to_config_server_and_reload_config(
-    config: &mut Config,
-    cli_config_overrides: &CliConfigOverrides,
-) -> std::io::Result<()> {
-    let requirements = config.config_layer_stack.requirements_toml();
-    let network = codex_app_server::in_process::EmbeddedNetworkPolicy::load(
-        &codex_config::LoaderOverrides::default(),
-    )
-    .await;
-    let bootstrap_auth = network.bind_bootstrap_auth(config.auth_config());
-    let auth_route_config = bootstrap_auth.auth_route_config.clone();
-    codex_cloud_config::ensure_config_server_login(bootstrap_auth, requirements).await?;
-    *config = crate::cloud_config::load_config(cli_config_overrides, Default::default())
-        .await
-        .map_err(|error| std::io::Error::other(format!("{error:#}")))?;
-    network.activate(config);
-    config.application_auth_route_config = Some(auth_route_config);
-    Ok(())
-}
-
-fn finish_login(result: std::io::Result<()>) -> ! {
-    match result {
-        Ok(_) => {
-            eprintln!("{LOGIN_SUCCESS_MESSAGE}");
-            std::process::exit(0);
-        }
-        Err(e) => {
-            eprintln!("Error logging in: {e}");
-            std::process::exit(1);
-        }
-    }
-}
-
-async fn run_interactive_login<F>(
-    cli_config_overrides: CliConfigOverrides,
-    chatgpt_login: impl FnOnce(Config) -> F,
-) -> !
-where
-    F: std::future::Future<Output = std::io::Result<()>>,
-{
-    let mut config = load_config_or_exit(cli_config_overrides.clone()).await;
-    if !config
-        .config_layer_stack
-        .requirements_toml()
-        .requires_remote_config()
-    {
-        let _login_log_guard = init_login_file_logging(&config);
-        finish_login(chatgpt_login(config).await);
-    }
-
-    let result =
-        sign_in_to_config_server_and_reload_config(&mut config, &cli_config_overrides).await;
-    let _login_log_guard = init_login_file_logging(&config);
-    finish_login(result)
-}
-
-pub async fn run_login_with_browser(cli_config_overrides: CliConfigOverrides) -> ! {
-    run_interactive_login(cli_config_overrides, |config| async move {
-        tracing::info!("starting browser login flow");
-
-        if !config
-            .auth_config()
-            .is_login_method_allowed(ForcedLoginMethod::Chatgpt)
-        {
-            eprintln!("{CHATGPT_LOGIN_DISABLED_MESSAGE}");
-            std::process::exit(1);
-        }
-
-        let effective_chatgpt_workspaces = config.auth_config().effective_chatgpt_workspaces();
-        login_with_chatgpt(
-            config.codex_home.to_path_buf(),
-            effective_chatgpt_workspaces,
-            config.cli_auth_credentials_store_mode,
-            config.auth_keyring_backend_kind(),
-            config.auth_route_config(),
-        )
-        .await
-    })
-    .await
-}
-
-pub async fn run_login_with_api_key(
-    cli_config_overrides: CliConfigOverrides,
-    api_key: String,
-) -> ! {
-    let config = load_managed_login_config_or_exit(cli_config_overrides).await;
-    let _login_log_guard = init_login_file_logging(&config);
-    tracing::info!("starting api key login flow");
-
-    if !config
-        .auth_config()
-        .is_login_method_allowed(ForcedLoginMethod::Api)
-    {
-        eprintln!("{API_KEY_LOGIN_DISABLED_MESSAGE}");
-        std::process::exit(1);
-    }
-
-    match login_with_api_key(
-        &config.codex_home,
-        &api_key,
-        config.cli_auth_credentials_store_mode,
-        config.auth_keyring_backend_kind(),
-    ) {
-        Ok(_) => {
-            eprintln!("API key saved. {API_KEY_AUTHENTICATION_NOTICE}");
-            std::process::exit(0);
-        }
-        Err(e) => {
-            eprintln!("Error logging in: {e}");
-            std::process::exit(1);
-        }
     }
 }
 
@@ -370,204 +203,6 @@ pub async fn run_login_with_github_copilot(
         None => eprintln!("Successfully logged in to GitHub Copilot"),
     }
     std::process::exit(0);
-}
-
-pub async fn run_login_with_access_token(
-    cli_config_overrides: CliConfigOverrides,
-    access_token: String,
-) -> ! {
-    let config = load_managed_login_config_or_exit(cli_config_overrides).await;
-    let _login_log_guard = init_login_file_logging(&config);
-    tracing::info!("starting access token login flow");
-
-    if !config
-        .auth_config()
-        .is_login_method_allowed(ForcedLoginMethod::Chatgpt)
-    {
-        eprintln!("{ACCESS_TOKEN_LOGIN_DISABLED_MESSAGE}");
-        std::process::exit(1);
-    }
-
-    let auth_route_config = config.auth_route_config();
-    let effective_chatgpt_workspaces = config.auth_config().effective_chatgpt_workspaces();
-    match login_with_access_token(
-        &config.codex_home,
-        &access_token,
-        config.cli_auth_credentials_store_mode,
-        effective_chatgpt_workspaces.as_deref(),
-        Some(&config.chatgpt_base_url),
-        config.auth_keyring_backend_kind(),
-        &auth_route_config,
-    )
-    .await
-    {
-        Ok(_) => {
-            eprintln!("{LOGIN_SUCCESS_MESSAGE}");
-            std::process::exit(0);
-        }
-        Err(e) => {
-            eprintln!("Error logging in with access token: {e}");
-            std::process::exit(1);
-        }
-    }
-}
-
-pub fn read_api_key_from_stdin() -> String {
-    read_stdin_secret(
-        "--with-api-key expects the API key on stdin. Try piping it, e.g. `printenv OPENAI_API_KEY | codex login --with-api-key`.",
-        "Reading API key from stdin...",
-        "No API key provided via stdin.",
-    )
-}
-
-pub fn read_access_token_from_stdin() -> String {
-    read_stdin_secret(
-        "--with-access-token expects the access token on stdin. Try piping it, e.g. `printenv CODEX_ACCESS_TOKEN | codex login --with-access-token`.",
-        "Reading access token from stdin...",
-        "No access token provided via stdin.",
-    )
-}
-
-fn read_stdin_secret(terminal_message: &str, reading_message: &str, empty_message: &str) -> String {
-    let mut stdin = std::io::stdin();
-
-    if stdin.is_terminal() {
-        eprintln!("{terminal_message}");
-        std::process::exit(1);
-    }
-
-    eprintln!("{reading_message}");
-
-    let mut buffer = String::new();
-    if let Err(err) = stdin.read_to_string(&mut buffer) {
-        eprintln!("Failed to read stdin: {err}");
-        std::process::exit(1);
-    }
-
-    let secret = buffer.trim().to_string();
-    if secret.is_empty() {
-        eprintln!("{empty_message}");
-        std::process::exit(1);
-    }
-
-    secret
-}
-
-/// Login using the OAuth device code flow.
-pub async fn run_login_with_device_code(
-    cli_config_overrides: CliConfigOverrides,
-    issuer_base_url: Option<String>,
-    client_id: Option<String>,
-) -> ! {
-    run_interactive_login(cli_config_overrides, |config| async move {
-        tracing::info!("starting device code login flow");
-        if !config
-            .auth_config()
-            .is_login_method_allowed(ForcedLoginMethod::Chatgpt)
-        {
-            eprintln!("{CHATGPT_LOGIN_DISABLED_MESSAGE}");
-            std::process::exit(1);
-        }
-        let auth_route_config = config.auth_route_config();
-        clear_existing_auth_before_login(
-            &config.codex_home,
-            config.cli_auth_credentials_store_mode,
-            config.auth_keyring_backend_kind(),
-            &auth_route_config,
-        )
-        .await;
-        let effective_chatgpt_workspaces = config.auth_config().effective_chatgpt_workspaces();
-        let mut opts = ServerOptions::new(
-            config.codex_home.to_path_buf(),
-            client_id.unwrap_or(CLIENT_ID.to_string()),
-            effective_chatgpt_workspaces,
-            config.cli_auth_credentials_store_mode,
-            config.auth_keyring_backend_kind(),
-            auth_route_config,
-        );
-        if let Some(iss) = issuer_base_url {
-            opts.issuer = iss;
-        }
-        run_device_code_login(opts).await
-    })
-    .await
-}
-
-/// Prefers device-code login (with `open_browser = false`) when headless environment is detected, but keeps
-/// `codex login` working in environments where device-code may be disabled/feature-gated.
-/// If `run_device_code_login` returns `ErrorKind::NotFound` ("device-code unsupported"), this
-/// falls back to starting the local browser login server.
-pub async fn run_login_with_device_code_fallback_to_browser(
-    cli_config_overrides: CliConfigOverrides,
-    issuer_base_url: Option<String>,
-    client_id: Option<String>,
-) -> ! {
-    let config = load_config_or_exit(cli_config_overrides).await;
-    let _login_log_guard = init_login_file_logging(&config);
-    tracing::info!("starting login flow with device code fallback");
-    if !config
-        .auth_config()
-        .is_login_method_allowed(ForcedLoginMethod::Chatgpt)
-    {
-        eprintln!("{CHATGPT_LOGIN_DISABLED_MESSAGE}");
-        std::process::exit(1);
-    }
-    let auth_route_config = config.auth_route_config();
-    clear_existing_auth_before_login(
-        &config.codex_home,
-        config.cli_auth_credentials_store_mode,
-        config.auth_keyring_backend_kind(),
-        &auth_route_config,
-    )
-    .await;
-
-    let effective_chatgpt_workspaces = config.auth_config().effective_chatgpt_workspaces();
-    let mut opts = ServerOptions::new(
-        config.codex_home.to_path_buf(),
-        client_id.unwrap_or(CLIENT_ID.to_string()),
-        effective_chatgpt_workspaces,
-        config.cli_auth_credentials_store_mode,
-        config.auth_keyring_backend_kind(),
-        auth_route_config,
-    );
-    if let Some(iss) = issuer_base_url {
-        opts.issuer = iss;
-    }
-    opts.open_browser = false;
-
-    match run_device_code_login(opts.clone()).await {
-        Ok(()) => {
-            eprintln!("{LOGIN_SUCCESS_MESSAGE}");
-            std::process::exit(0);
-        }
-        Err(e) => {
-            if e.kind() == std::io::ErrorKind::NotFound {
-                eprintln!("Device code login is not enabled; falling back to browser login.");
-                match run_login_server(opts) {
-                    Ok(server) => {
-                        print_login_server_start(server.actual_port, &server.auth_url);
-                        match server.block_until_done().await {
-                            Ok(()) => {
-                                eprintln!("{LOGIN_SUCCESS_MESSAGE}");
-                                std::process::exit(0);
-                            }
-                            Err(e) => {
-                                eprintln!("Error logging in: {e}");
-                                std::process::exit(1);
-                            }
-                        }
-                    }
-                    Err(e) => {
-                        eprintln!("Error logging in: {e}");
-                        std::process::exit(1);
-                    }
-                }
-            } else {
-                eprintln!("Error logging in with device code: {e}");
-                std::process::exit(1);
-            }
-        }
-    }
 }
 
 pub async fn run_login_status(cli_config_overrides: CliConfigOverrides) -> ! {
@@ -751,20 +386,6 @@ pub async fn run_logout(cli_config_overrides: CliConfigOverrides) -> ! {
     std::process::exit(0);
 }
 
-async fn load_managed_login_config_or_exit(cli_config_overrides: CliConfigOverrides) -> Config {
-    let mut config = load_config_or_exit(cli_config_overrides.clone()).await;
-    if config
-        .config_layer_stack
-        .requirements_toml()
-        .requires_remote_config()
-        && let Err(error) =
-            sign_in_to_config_server_and_reload_config(&mut config, &cli_config_overrides).await
-    {
-        finish_login(Err(error));
-    }
-    config
-}
-
 async fn load_config_or_exit(cli_config_overrides: CliConfigOverrides) -> Config {
     let cli_overrides = match cli_config_overrides.parse_overrides() {
         Ok(v) => v,
@@ -806,8 +427,9 @@ mod storage_tests;
 mod tests {
     use codex_config::types::AuthCredentialsStoreMode;
     use codex_login::AuthKeyringBackendKind;
+    use codex_login::GitHubCopilotAuth;
     use codex_login::load_auth_dot_json;
-    use codex_login::login_with_api_key;
+    use codex_login::login_with_github_copilot;
     use pretty_assertions::assert_eq;
     use tempfile::tempdir;
 
@@ -817,9 +439,16 @@ mod tests {
     #[tokio::test]
     async fn clears_existing_auth_before_login() {
         let codex_home = tempdir().expect("create temporary Codex home");
-        login_with_api_key(
+        login_with_github_copilot(
             codex_home.path(),
-            "sk-existing",
+            GitHubCopilotAuth::new(
+                "github-existing".into(),
+                "https://api.individual.githubcopilot.com".into(),
+                Some("octocat".into()),
+                None,
+                vec!["gpt-5.6-sol".into()],
+            )
+            .expect("valid Copilot auth"),
             AuthCredentialsStoreMode::File,
             AuthKeyringBackendKind::default(),
         )

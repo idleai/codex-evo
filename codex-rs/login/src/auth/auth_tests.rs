@@ -292,13 +292,11 @@ fn login_with_api_key_overwrites_existing_auth_json() {
 #[test]
 fn login_with_github_copilot_writes_only_github_auth() {
     let dir = tempdir().unwrap();
-    super::login_with_api_key(
-        dir.path(),
-        "sk-old",
-        AuthCredentialsStoreMode::File,
-        AuthKeyringBackendKind::default(),
+    std::fs::write(
+        dir.path().join("auth.json"),
+        r#"{"OPENAI_API_KEY":"sk-old"}"#,
     )
-    .expect("seed API key auth");
+    .expect("seed legacy API key auth");
     let github_auth = GitHubCopilotAuth::new(
         "github-token".to_string(),
         "https://api.individual.githubcopilot.com".to_string(),

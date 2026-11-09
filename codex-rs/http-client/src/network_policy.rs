@@ -279,6 +279,7 @@ impl NetworkPolicy {
 
     /// Checks a destination before proxy resolution, DNS, or transport work starts.
     pub fn acquire(&self, url: &Url) -> Result<NetworkPermit, NetworkPolicyDenied> {
+        crate::ensure_service_url_allowed(url)?;
         if self
             .endpoints
             .as_ref()

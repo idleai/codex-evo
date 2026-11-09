@@ -179,6 +179,7 @@ impl ShutdownHandle {
 
 /// Starts a local callback server and returns the browser auth URL.
 pub fn run_login_server(opts: ServerOptions) -> io::Result<LoginServer> {
+    codex_http_client::ensure_openai_services_enabled()?;
     let pkce = generate_pkce();
     let state = opts.force_state.clone().unwrap_or_else(generate_state);
 

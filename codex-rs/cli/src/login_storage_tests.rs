@@ -3,7 +3,8 @@
 use super::DEFAULT_LOGIN_LOG_FILTER;
 use codex_config::types::AuthCredentialsStoreMode;
 use codex_login::AuthKeyringBackendKind;
-use codex_login::login_with_api_key;
+use codex_login::GitHubCopilotAuth;
+use codex_login::login_with_github_copilot;
 use pretty_assertions::assert_eq;
 use tempfile::tempdir;
 use tracing_subscriber::EnvFilter;
@@ -21,9 +22,15 @@ fn login_default_filter_records_sanitized_storage_fallback() -> anyhow::Result<(
         .with_writer(std::fs::File::create(&log_path)?)
         .finish();
     tracing::subscriber::with_default(subscriber, || {
-        login_with_api_key(
+        login_with_github_copilot(
             home.path(),
-            "private-api-key",
+            GitHubCopilotAuth::new(
+                "private-api-key".into(),
+                "https://api.individual.githubcopilot.com".into(),
+                Some("octocat".into()),
+                None,
+                vec!["gpt-5.6-sol".into()],
+            )?,
             AuthCredentialsStoreMode::Auto,
             AuthKeyringBackendKind::Secrets,
         )
@@ -67,9 +74,15 @@ fn login_storage_error_displays_context_and_cause() -> anyhow::Result<()> {
     let cause = std::fs::create_dir_all(&secrets_path)
         .unwrap_err()
         .to_string();
-    let error = login_with_api_key(
+    let error = login_with_github_copilot(
         home.path(),
-        "private-api-key",
+        GitHubCopilotAuth::new(
+            "private-api-key".into(),
+            "https://api.individual.githubcopilot.com".into(),
+            Some("octocat".into()),
+            None,
+            vec!["gpt-5.6-sol".into()],
+        )?,
         AuthCredentialsStoreMode::Keyring,
         AuthKeyringBackendKind::Secrets,
     )

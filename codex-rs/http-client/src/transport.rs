@@ -103,6 +103,8 @@ impl ReqwestTransport {
                     let request = request
                         .build(client)
                         .map_err(|error| Self::map_error(error.into()))?;
+                    crate::ensure_service_url_allowed(request.url())
+                        .map_err(TransportError::Policy)?;
                     client
                         .execute(request)
                         .await

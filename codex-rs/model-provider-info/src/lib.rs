@@ -483,22 +483,22 @@ other non-default provider fields are not supported"
 
     /// Builds an API provider with managed residency taking precedence over configured headers.
     pub fn to_api_provider(&self, auth_mode: Option<AuthMode>) -> CodexResult<ApiProvider> {
-        let default_base_url = match auth_mode {
-            Some(AuthMode::GitHubCopilot) => GITHUB_COPILOT_DEFAULT_BASE_URL,
-            Some(
-                AuthMode::Chatgpt
-                | AuthMode::ChatgptAuthTokens
-                | AuthMode::Headers
-                | AuthMode::AgentIdentity
-                | AuthMode::PersonalAccessToken,
-            ) => CHATGPT_CODEX_BASE_URL,
-            Some(AuthMode::ApiKey | AuthMode::BedrockApiKey | AuthMode::BedrockAccessKeys)
-            | None => "https://api.openai.com/v1",
+        let base_url = match &self.base_url {
+            Some(url) => url.clone(),
+            None if auth_mode == Some(AuthMode::GitHubCopilot) => {
+                GITHUB_COPILOT_DEFAULT_BASE_URL.to_string()
+            }
+            None => {
+                return Err(CodexErr::InvalidRequest(
+                    codex_http_client::OPENAI_DISABLED_MESSAGE.to_string(),
+                ));
+            }
         };
-        let base_url = self
-            .base_url
-            .clone()
-            .unwrap_or_else(|| default_base_url.to_string());
+        if let Ok(url) = url::Url::parse(&base_url) {
+            codex_http_client::ensure_service_url_allowed(&url).map_err(|_| {
+                CodexErr::InvalidRequest(codex_http_client::OPENAI_DISABLED_MESSAGE.to_string())
+            })?;
+        }
 
         let mut headers = self.build_header_map()?;
         if let Some(requirement) = read_managed_residency_requirement() {
@@ -770,7 +770,8 @@ other non-default provider fields are not supported"
     }
 
     pub fn supports_codex_backend_routes(&self) -> bool {
-        self.is_openai()
+        codex_http_client::OPENAI_SERVICES_ENABLED
+            && self.is_openai()
             && self.base_url.as_deref().is_none_or(|base_url| {
                 base_url
                     .trim_end_matches('/')
@@ -779,7 +780,8 @@ other non-default provider fields are not supported"
     }
 
     pub fn uses_openai_actor_authorization(&self) -> bool {
-        !self.requires_openai_auth
+        codex_http_client::OPENAI_SERVICES_ENABLED
+            && !self.requires_openai_auth
             && self.http_headers.as_ref().is_some_and(|headers| {
                 headers.iter().any(|(name, value)| {
                     name.eq_ignore_ascii_case(OPENAI_ACTOR_AUTHORIZATION_HEADER)

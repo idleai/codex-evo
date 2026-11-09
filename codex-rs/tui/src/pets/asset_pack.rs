@@ -58,6 +58,7 @@ pub(crate) async fn ensure_builtin_pet(
         return Ok(());
     }
 
+    codex_http_client::ensure_openai_services_enabled()?;
     let url = builtin_pet_url(pet)?;
     let bytes = download_bytes_with_limit(http_client, &url, PET_MAX_DOWNLOAD_BYTES).await?;
     tokio::task::spawn_blocking(move || {

@@ -1,4 +1,33 @@
 use super::*;
+
+#[test]
+fn copilot_distribution_has_no_openai_fallback_or_direct_provider_routes() {
+    for endpoint in [
+        None,
+        Some("https://api.openai.com/v1"),
+        Some("https://gov.chatgpt.com/backend-api/codex"),
+    ] {
+        let provider = ModelProviderInfo::create_openai_provider(endpoint.map(str::to_owned));
+        assert!(!provider.supports_codex_backend_routes());
+        for mode in [None, Some(AuthMode::ApiKey), Some(AuthMode::Chatgpt)] {
+            assert!(provider.to_api_provider(mode).is_err());
+        }
+    }
+    let provider = ModelProviderInfo::create_github_copilot_provider(None);
+    assert_eq!(
+        provider
+            .to_api_provider(Some(AuthMode::GitHubCopilot))
+            .unwrap()
+            .base_url,
+        GITHUB_COPILOT_DEFAULT_BASE_URL
+    );
+    let local = ModelProviderInfo {
+        name: "Local DeepSeek".into(),
+        base_url: Some("http://127.0.0.1:8000/v1".into()),
+        ..Default::default()
+    };
+    assert!(local.to_api_provider(None).is_ok());
+}
 use codex_utils_absolute_path::AbsolutePathBuf;
 use codex_utils_absolute_path::AbsolutePathBufGuard;
 use pretty_assertions::assert_eq;

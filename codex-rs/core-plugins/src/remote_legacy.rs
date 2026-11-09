@@ -127,7 +127,9 @@ pub async fn fetch_remote_featured_plugin_ids(
     auth: Option<&CodexAuth>,
     product: Option<Product>,
 ) -> Result<Vec<String>, RemotePluginFetchError> {
-    if auth.is_some_and(CodexAuth::is_github_copilot_auth) {
+    if !codex_http_client::OPENAI_SERVICES_ENABLED
+        || auth.is_some_and(CodexAuth::is_github_copilot_auth)
+    {
         return Ok(Vec::new());
     }
 

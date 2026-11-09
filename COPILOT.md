@@ -94,6 +94,16 @@ Copilot or OpenAI credentials.
 
 ## Isolation boundaries
 
+- OpenAI and ChatGPT sign-in are removed from the CLI and terminal onboarding.
+  `codex login` starts GitHub Copilot device authorization. The app-server rejects
+  OpenAI API-key, ChatGPT browser/device, and externally supplied ChatGPT-token
+  login requests without replacing an existing Copilot login. Saved OpenAI
+  credentials and OpenAI/Codex credential environment variables are ignored.
+- Direct OpenAI services are disabled for the entire distribution, including
+  sessions without a Copilot account. The HTTP and WebSocket transports deny
+  OpenAI, ChatGPT, staging, and asset-service domains before connection, and HTTP
+  redirects cannot bypass that policy. Configuration cannot enable these routes.
+  An unconfigured provider cannot fall back to the OpenAI API.
 - Copilot inference uses the authenticated HTTPS `githubcopilot.com` endpoint and only
   models advertised by that account. Unsupported models and account changes
   fail instead of falling back to OpenAI or another configured provider.
@@ -104,17 +114,24 @@ Copilot or OpenAI credentials.
   not sent to the Copilot endpoint.
 - Built-in OpenAI analytics, Statsig export, Sentry feedback delivery, and
   background turn-cost enrichment are disabled in this distribution.
-- Copilot sessions do not start OpenAI plugin/catalog refreshes, announcement
-  downloads, Guardian classifier warmup, image generation, web search, realtime,
-  or memory-summary requests.
+- OpenAI backend requests, plugin/catalog refreshes, announcement downloads,
+  Guardian classifier warmup, image generation, web search, realtime, and
+  backend memory requests are unavailable. The hidden OpenAI Responses proxy is
+  no longer included in the CLI.
+- Upstream update checks and installers, desktop-app installation, and built-in
+  pet asset downloads are disabled. Cached and locally supplied pet assets remain
+  usable. Upgrade this distribution with a verified local package; daemon
+  `update --from-cli` remains available.
 - Local logs and explicitly configured OTLP exporters remain available. Debug
   builds retain local analytics capture, without account credentials; HTTP
   capture accepts literal loopback addresses and rejects redirects. Release
-  builds disable that capture path.
+  builds disable that capture path. Explicit telemetry exporters also reject
+  direct OpenAI destinations and redirects to them.
 
-This is provider and built-in-service isolation, not a general network firewall.
-User-configured MCP servers, shell commands, tools, and explicit telemetry
-destinations retain their configured network permissions.
+These are application service boundaries. Shell commands and separately running
+MCP servers retain their own network permissions. OpenAI model names in the
+Copilot catalog identify models served through GitHub; they do not enable a
+direct OpenAI connection.
 
 ## Validation
 

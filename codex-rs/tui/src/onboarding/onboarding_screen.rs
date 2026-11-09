@@ -29,8 +29,6 @@ use ratatui::style::Color;
 use ratatui::widgets::Clear;
 use ratatui::widgets::WidgetRef;
 
-use codex_protocol::config_types::ForcedLoginMethod;
-
 use crate::LoginStatus;
 use crate::app_server_session::AppServerSession;
 use crate::clipboard_copy::CopyFormat;
@@ -169,12 +167,7 @@ impl OnboardingScreen {
         #[cfg(not(target_os = "windows"))]
         let show_windows_create_sandbox_hint = false;
         if show_login_screen {
-            let highlighted_mode =
-                if auth_config.is_login_method_allowed(ForcedLoginMethod::Chatgpt) {
-                    SignInOption::ChatGpt
-                } else {
-                    SignInOption::OtherMethods
-                };
+            let highlighted_mode = SignInOption::GitHubCopilot;
             if let Some(app_server_request_handle) = app_server_request_handle {
                 steps.push(Step::Auth(AuthModeWidget {
                     request_frame: tui.frame_requester(),
