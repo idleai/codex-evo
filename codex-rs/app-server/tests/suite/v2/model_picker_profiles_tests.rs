@@ -265,7 +265,7 @@ async fn picker_profile_routes_new_threads_and_restores_the_route(
 }
 
 #[tokio::test]
-async fn picker_profile_appends_to_live_native_discovery() -> Result<()> {
+async fn picker_profile_stays_available_with_disabled_chatgpt_discovery() -> Result<()> {
     let native = MockServer::start().await;
     let target = MockServer::start().await;
     let home = TempDir::new()?;
@@ -299,15 +299,24 @@ async fn picker_profile_appends_to_live_native_discovery() -> Result<()> {
             params: ModelListParams::default(),
         })
         .await?;
-    assert_eq!(
+    let local = result.data.last().expect("local profile model");
+    assert_eq!(local.model, MODEL);
+    assert_eq!(local.display_name, "DeepSeek V4.1 Flash (local)");
+    assert!(!local.is_default);
+    assert!(
         result
             .data
             .iter()
-            .map(|model| (model.model.as_str(), model.is_default))
-            .collect::<Vec<_>>(),
-        vec![("native-discovered-model", true), (MODEL, false)]
+            .all(|model| model.model != "native-discovered-model")
     );
-    assert_eq!(result.data[1].display_name, "DeepSeek V4.1 Flash (local)");
+    // Legacy credentials must not restore the disabled ChatGPT discovery path.
+    assert!(
+        native
+            .received_requests()
+            .await
+            .expect("requests")
+            .is_empty()
+    );
     Ok(())
 }
 
