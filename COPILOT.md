@@ -81,9 +81,23 @@ mapping, profile, and catalog `slug`. The existing local deployment advertises
 After Copilot sign-in, the picker contains every enabled OpenAI model advertised
 by the account with Responses support, plus the local entry. New Copilot model
 IDs do not require a code allowlist. Signing in again refreshes the account's
-saved model list. Select DeepSeek for a new chat, or use `/handoff dsv4` to carry
-visible conversation text into a new local thread. `/handoff --base` returns to
-the Copilot profile. Existing chats retain their provider.
+saved model list. In the CLI, use `/model` to select either a Copilot model or
+DeepSeek from the same list. Selecting a different profile continues the visible
+conversation in a linked thread with the chosen model and reasoning level. The
+previous thread remains resumable, and the base provider's saved defaults are
+preserved. Finish the current turn before changing providers. `/handoff dsv4` and
+`/handoff --base` remain available for explicit profile handoffs.
+
+On Windows, place these files in the active user's `%USERPROFILE%\.codex` (or
+`CODEX_HOME`). When DeepSeek runs on a QEMU host reachable at `10.0.2.2:8000`, an
+administrator can make it available through the required local endpoint:
+
+```powershell
+netsh interface portproxy add v4tov4 listenaddress=127.0.0.1 listenport=8000 connectaddress=10.0.2.2 connectport=8000
+```
+
+Check that port 8000 is free before adding the rule. Restart the CLI after adding
+the configuration; the Copilot login and its model catalog remain in place.
 
 The local exception requires a loopback HTTP or HTTPS inference endpoint,
 `requires_openai_auth = false`, and no provider API key, bearer token, command

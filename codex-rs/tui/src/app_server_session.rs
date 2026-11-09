@@ -149,6 +149,7 @@ use codex_protocol::openai_models::ModelAvailabilityNux;
 use codex_protocol::openai_models::ModelPreset;
 use codex_protocol::openai_models::ModelServiceTier;
 use codex_protocol::openai_models::ModelUpgrade;
+use codex_protocol::openai_models::ReasoningEffort;
 use codex_protocol::openai_models::ReasoningEffortPreset;
 use codex_protocol::protocol::SubAgentSource;
 use codex_utils_absolute_path::AbsolutePathBuf;
@@ -409,6 +410,12 @@ pub(crate) struct AppServerStartedThread {
     pub(crate) turns: Vec<Turn>,
     pub(crate) blocks_direct_input: bool,
     pub(crate) task_tools_available: bool,
+}
+
+pub(crate) struct HandoffModelSelection {
+    pub(crate) model: String,
+    pub(crate) effort: Option<ReasoningEffort>,
+    pub(crate) service_tier: Option<String>,
 }
 
 /// Recognize typed server errors without depending on wording or an older server's behavior.
@@ -1185,14 +1192,15 @@ impl AppServerSession {
 
     /// Fork the visible conversation through a profile selected on the app-server host.
     ///
-    /// Unlike a regular fork, this deliberately omits client-side model and provider overrides
-    /// and requests a provider-neutral text projection of the source history.
+    /// Unlike a regular fork, this omits inherited model and provider overrides and requests a
+    /// provider-neutral text projection. A picker selection supplies only its chosen model settings.
     pub(crate) async fn handoff_thread(
         &mut self,
         local_settings: &LocalSettings,
         config: Config,
         thread_id: ThreadId,
         profile: Option<String>,
+        selection: Option<HandoffModelSelection>,
     ) -> Result<AppServerStartedThread> {
         let fork_parent = self
             .thread_read(thread_id, /*include_turns*/ false)
@@ -1202,7 +1210,7 @@ impl AppServerSession {
             && fork_parent
                 .as_ref()
                 .is_some_and(|thread| thread.history_mode == ThreadHistoryMode::Paginated);
-        let params = ThreadForkParams {
+        let mut params = ThreadForkParams {
             thread_id: thread_id.to_string(),
             profile: Some(profile),
             portable_history: true,
@@ -1210,6 +1218,16 @@ impl AppServerSession {
             thread_source: Some(ThreadSource::User),
             ..ThreadForkParams::default()
         };
+        if let Some(selection) = selection {
+            params.model = Some(selection.model);
+            params.service_tier = selection.service_tier.map(Some);
+            params.config = selection.effort.map(|effort| {
+                HashMap::from([(
+                    "model_reasoning_effort".to_string(),
+                    serde_json::Value::String(effort.to_string()),
+                )])
+            });
+        }
         Box::pin(self.request_fork_thread(
             local_settings,
             config,

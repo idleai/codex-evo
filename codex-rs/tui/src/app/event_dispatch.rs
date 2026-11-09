@@ -169,6 +169,14 @@ impl App {
             }
             event => (event, None),
         };
+        if matches!(
+            &event,
+            AppEvent::ApplyModelSelection { .. }
+                | AppEvent::ApplyAdvancedReasoning { .. }
+                | AppEvent::SelectSessionModel { .. }
+        ) && Box::pin(self.select_model_picker_profile(tui, app_server, &event)).await {
+            return Ok(AppRunControl::Continue);
+        }
         match event {
             AppEvent::OpenDaemonMenu => self.open_daemon_menu(),
             AppEvent::ConfirmDaemonRestart => self.confirm_daemon_restart(),

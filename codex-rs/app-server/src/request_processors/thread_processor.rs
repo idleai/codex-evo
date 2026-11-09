@@ -5456,6 +5456,19 @@ impl ThreadRequestProcessor {
                 "`experimentalPredictionMode` requires a thread id without a path or turn cutoff",
             ));
         }
+        if portable_history && path.is_none() {
+            let source_id = ThreadId::from_string(&thread_id)
+                .map_err(|err| invalid_request(format!("invalid session id: {err}")))?;
+            // A model can be selected before the first prompt creates a rollout.
+            if let Ok(thread) = self.thread_manager.get_thread(source_id).await
+                && !thread.config_snapshot().await.ephemeral
+            {
+                self.thread_store
+                    .persist_thread(source_id, PersistContext::Standard)
+                    .await
+                    .map_err(|err| thread_store_mutation_error("hand off", err))?;
+            }
+        }
         let source_thread = self
             .read_stored_thread_for_resume(
                 &thread_id,
