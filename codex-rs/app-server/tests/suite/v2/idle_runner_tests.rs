@@ -138,6 +138,16 @@ async fn runner_rpc_rejects_override_routes_and_keeps_binding_after_restart_and_
         .build_initialized()
         .await?;
     let mut remote = connect(&mut owner, &checkout, &chain).await?;
+    let sessions = rpc(
+        &mut remote,
+        "idle/session/call",
+        json!({"protocolVersion":1,"request":"{\"kind\":\"snapshot\"}"}),
+    )
+    .await?;
+    assert!(
+        sessions.pointer("/result/response").is_some(),
+        "The authenticated session call must reach the handler even when the helper needs an update: {sessions}"
+    );
     let started = rpc(&mut remote, "thread/start", json!({})).await?;
     let id = started
         .pointer("/result/thread/id")
@@ -213,6 +223,137 @@ async fn runner_rpc_rejects_override_routes_and_keeps_binding_after_restart_and_
     assert_eq!(child["binding"]["workspace"], saved["binding"]["workspace"]);
     assert_eq!(child["binding"]["grantId"], saved["binding"]["grantId"]);
     assert_eq!(child["binding"]["policy"], saved["binding"]["policy"]);
+    assert!(owner.shutdown_gracefully().await?.success());
+    Ok(())
+}
+
+#[tokio::test]
+async fn invited_observer_cannot_change_settings_when_resuming_a_cold_runner() -> Result<()> {
+    let home = TempDir::new()?;
+    let checkout = TempDir::new()?;
+    let chain = TempDir::new()?;
+    std::fs::write(checkout.path().join("shared-session-fixture"), "")?;
+    let server = responses::start_mock_server().await;
+    let requests = responses::mount_sse_once(
+        &server,
+        responses::sse(vec![
+            responses::ev_assistant_message("answer", "history ready"),
+            responses::ev_completed("finished"),
+        ]),
+    )
+    .await;
+    MockResponsesConfig::new(&server.uri()).write(home.path())?;
+    let mut owner = TestAppServer::builder()
+        .without_auto_env()
+        .with_codex_home(home.path())
+        .build_initialized()
+        .await?;
+    let mut remote = connect(&mut owner, &checkout, &chain).await?;
+    let started = rpc(&mut remote, "thread/start", json!({})).await?;
+    let id = started
+        .pointer("/result/thread/id")
+        .and_then(Value::as_str)
+        .with_context(|| format!("runner start: {started}"))?
+        .to_string();
+    let model = started
+        .pointer("/result/model")
+        .context("original model")?
+        .clone();
+    let submitted = rpc(
+        &mut remote,
+        "turn/start",
+        json!({
+            "threadId":id,"input":[{"type":"text","text":"Save a reply before restarting"}]
+        }),
+    )
+    .await?;
+    assert!(submitted.get("result").is_some(), "{submitted}");
+    while read(&mut remote).await?["method"] != "turn/completed" {}
+    assert_eq!(requests.requests().len(), 1);
+    drop(remote);
+    assert!(owner.shutdown_gracefully().await?.success());
+
+    let mut owner = TestAppServer::builder()
+        .without_auto_env()
+        .with_codex_home(home.path())
+        .build_initialized()
+        .await?;
+    let owner_connection = connect(&mut owner, &checkout, &chain).await?;
+    let loaded = owner_rpc(&mut owner, "thread/loaded/list", json!({})).await?;
+    assert!(
+        loaded["data"]
+            .as_array()
+            .context("loaded threads")?
+            .is_empty(),
+        "{loaded}"
+    );
+    let expires = u64::try_from(
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)?
+            .as_millis(),
+    )? + 300_000;
+    let invitation = owner_rpc(
+        &mut owner,
+        "idle/connection/invite",
+        json!({
+            "protocolVersion":1,"checkoutId":"checkout","clientId":"observer",
+            "expiresAt":expires,"runner":true
+        }),
+    )
+    .await?;
+    let mut observer = remote_from_invitation(invitation).await?;
+    for key in ["model", "modelProvider", "serviceTier"] {
+        let mut params = json!({"threadId":id,"excludeTurns":true});
+        params[key] = json!(if key == "serviceTier" {
+            "fast"
+        } else {
+            "replacement"
+        });
+        let rejected = rpc(&mut observer, "thread/resume", params).await?;
+        assert!(
+            rejected
+                .pointer("/error/message")
+                .and_then(Value::as_str)
+                .is_some_and(|message| message.contains("observers cannot change")),
+            "{key}: {rejected}"
+        );
+    }
+    let cleared = rpc(
+        &mut observer,
+        "thread/resume",
+        json!({"threadId":id,"serviceTier":null}),
+    )
+    .await?;
+    assert!(
+        cleared
+            .pointer("/error/message")
+            .and_then(Value::as_str)
+            .is_some_and(|message| message.contains("observers cannot change")),
+        "{cleared}"
+    );
+    let resumed = rpc(
+        &mut observer,
+        "thread/resume",
+        json!({"threadId":id,"excludeTurns":true}),
+    )
+    .await?;
+    assert_eq!(resumed.pointer("/result/model"), Some(&model), "{resumed}");
+    let history = rpc(
+        &mut observer,
+        "thread/read",
+        json!({"threadId":id,"includeTurns":true}),
+    )
+    .await?;
+    assert!(history.to_string().contains("history ready"), "{history}");
+    let rejected = rpc(
+        &mut observer,
+        "turn/start",
+        json!({"threadId":id,"input":[]}),
+    )
+    .await?;
+    assert!(rejected.get("error").is_some(), "{rejected}");
+    drop(observer);
+    drop(owner_connection);
     assert!(owner.shutdown_gracefully().await?.success());
     Ok(())
 }

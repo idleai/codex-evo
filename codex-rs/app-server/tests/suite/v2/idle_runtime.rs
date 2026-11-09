@@ -66,6 +66,7 @@ async fn idle_workspace_attachment_survives_app_server_restart() -> Result<()> {
             IdleRuntimeCapability::WorkspaceStatus,
             IdleRuntimeCapability::WorkspaceCoordination,
             IdleRuntimeCapability::RunnerSessions,
+            IdleRuntimeCapability::SharedSessions,
         ]
     );
     for _ in 0..2 {

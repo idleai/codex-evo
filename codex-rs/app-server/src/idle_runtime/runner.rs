@@ -29,18 +29,54 @@ use std::time::Duration;
 use std::time::Instant;
 
 pub(super) struct ActiveRunner {
-    binding: RunnerBinding,
-    last_idle: Option<ThreadIdleCause>,
+    pub(super) binding: RunnerBinding,
+    pub(super) last_idle: Option<ThreadIdleCause>,
+    pub(super) input: Option<super::sessions::QueuedInput>,
 }
 
 #[derive(Default)]
 pub(super) struct Runners {
-    active: Mutex<HashMap<String, ActiveRunner>>,
+    pub(super) active: Mutex<HashMap<String, ActiveRunner>>,
     cancel: tokio_util::sync::CancellationToken,
     task: Mutex<Option<tokio::task::JoinHandle<()>>>,
 }
 
 impl IdleRuntime {
+    pub(crate) async fn runner_readiness(
+        &self,
+        access: &GrantAccess,
+        config: &Config,
+        manager: &ThreadManager,
+    ) -> Result<(), JSONRPCErrorError> {
+        let binding = RunnerBinding {
+            thread_id: uuid::Uuid::new_v4().to_string(),
+            workspace: access.binding.clone(),
+            client_id: access.client_id.clone(),
+            grant_id: access.grant_id.clone(),
+            environment: RunnerEnvironment::Local,
+            parent: None,
+            policy: access
+                .runner_policy
+                .clone()
+                .ok_or_else(|| invalid_request("Runner permission ceiling is unavailable"))?,
+        };
+        let mut options = StartThreadOptions::new(config.clone());
+        super::runner_policy::apply(&binding, &mut options, &manager.environment_manager())?;
+        let profile = options.config.permissions.effective_permission_profile();
+        let cwd = options.config.cwd;
+        let warning = tokio::task::spawn_blocking(move || {
+            codex_core::config::system_bwrap_warning(&profile, &cwd)
+        })
+        .await
+        .map_err(|_| invalid_request("Compute sandbox readiness could not be checked"))?;
+        if let Some(warning) = warning {
+            return Err(invalid_request(format!(
+                "Compute host is not ready: {warning} Ask the compute owner to finish sandbox setup, then reconnect."
+            )));
+        }
+        Ok(())
+    }
+
     pub(super) fn loaded_runner(&self, binding: &RunnerBinding) -> RunnerBinding {
         self.runners
             .active
@@ -133,6 +169,9 @@ impl IdleRuntime {
             .thread_extension_init
             .insert(IsolatedSessionExtensions(Arc::new(registry.build())));
         options.thread_extension_init.insert(binding.clone());
+        options
+            .thread_extension_init
+            .insert(codex_extension_api::TerminateProcessesOnInterrupt);
         Ok(())
     }
 
@@ -141,12 +180,22 @@ impl IdleRuntime {
         binding: &RunnerBinding,
     ) -> Result<Option<String>, JSONRPCErrorError> {
         self.service.runner_access(binding).map_err(rpc_error)?;
+        self.check_input_invitation(binding)?;
         let result = self
             .coordination
-            .runner(binding, RunnerRequest::Authorize)
+            .runner(
+                binding,
+                self.input_author(binding)
+                    .map_or(RunnerRequest::Authorize, RunnerRequest::Participant),
+            )
             .await
             .map_err(|_| invalid_request("Runner session or compute access was denied"))?;
-        if result.get("contributor_id").and_then(Value::as_str) != Some(&binding.client_id)
+        if result.get("contributor_id").and_then(Value::as_str)
+            != Some(
+                self.input_author(binding)
+                    .as_deref()
+                    .unwrap_or(&binding.client_id),
+            )
             || result.pointer("/session/id").and_then(Value::as_str) != Some(&binding.thread_id)
         {
             return Err(invalid_request(
@@ -190,12 +239,10 @@ impl IdleRuntime {
                 };
                 let refresh = heartbeat.elapsed() >= Duration::from_secs(120);
                 let bindings: Vec<_> = match runtime.runners.active.lock() {
-                    Ok(mut active) => active.values_mut().map(|runner| {
-                        if let Some(cause) = runner.last_idle.take() {
-                            tracing::debug!(thread_id = %runner.binding.thread_id, ?cause, "Idle runner turn finished");
-                        }
-                        runner.binding.clone()
-                    }).collect(),
+                    Ok(active) => active
+                        .values()
+                        .map(|runner| runner.binding.clone())
+                        .collect(),
                     Err(_) => break,
                 };
                 for binding in bindings {
@@ -212,13 +259,18 @@ impl IdleRuntime {
                             )
                             .await;
                         }
-                        if let Ok(mut active) = runtime.runners.active.lock() {
+                        if runtime.stop_input(&binding).await.is_ok()
+                            && let Ok(mut active) = runtime.runners.active.lock()
+                        {
                             active.remove(&binding.thread_id);
                         }
-                    } else if refresh {
-                        tokio::select! {
-                            () = cancel.cancelled() => return,
-                            _ = runtime.coordination.runner(&binding, RunnerRequest::Register) => {}
+                    } else if let Some(thread) = thread {
+                        runtime.drive_input(&binding, &thread).await;
+                        if refresh {
+                            tokio::select! {
+                                () = cancel.cancelled() => return,
+                                _ = runtime.coordination.runner(&binding, RunnerRequest::Register) => {}
+                            }
                         }
                     }
                 }
@@ -335,6 +387,7 @@ impl ThreadLifecycleContributor<Config> for IdleRuntime {
                     ActiveRunner {
                         binding: binding.as_ref().clone(),
                         last_idle: None,
+                        input: None,
                     },
                 );
             }
@@ -351,6 +404,16 @@ impl ThreadLifecycleContributor<Config> for IdleRuntime {
     }
     fn on_thread_stop<'a>(&'a self, input: ThreadStopInput<'a>) -> ExtensionFuture<'a, ()> {
         Box::pin(async move {
+            let binding = self.runners.active.lock().ok().and_then(|active| {
+                active
+                    .get(input.thread_store.level_id())
+                    .map(|runner| runner.binding.clone())
+            });
+            if let Some(binding) = binding
+                && self.stop_input(&binding).await.is_err()
+            {
+                return;
+            }
             if let Ok(mut active) = self.runners.active.lock() {
                 active.remove(input.thread_store.level_id());
             }

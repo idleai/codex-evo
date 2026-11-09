@@ -4,6 +4,9 @@ mod daemon_continuation;
 #[path = "daemon_snapshot.rs"]
 mod daemon_snapshot;
 
+#[path = "thread_sessions.rs"]
+mod sessions;
+
 mod workspace_switching;
 
 use super::persisted_resume_settings::PersistedResumeSettings;

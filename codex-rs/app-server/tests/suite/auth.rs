@@ -275,9 +275,13 @@ async fn get_auth_status_with_api_key_when_auth_not_required() -> Result<()> {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn github_copilot_auth_overrides_custom_provider_without_exporting_token() -> Result<()> {
+async fn github_copilot_auth_overrides_remote_custom_provider_without_exporting_token() -> Result<()>
+{
     let codex_home = TempDir::new()?;
-    create_config_toml_custom_provider(codex_home.path(), /*requires_openai_auth*/ false)?;
+    MockResponsesConfig::new("https://provider.example.test/v1")
+        .with_sandbox_mode("danger-full-access")
+        .disable_feature(Feature::ShellSnapshot)
+        .write(codex_home.path())?;
     login_with_github_copilot(
         codex_home.path(),
         GitHubCopilotAuth::new(

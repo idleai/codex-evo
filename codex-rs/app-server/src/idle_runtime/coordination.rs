@@ -42,6 +42,9 @@ enum Dispatch {
 pub(super) enum RunnerRequest {
     Register,
     Authorize,
+    Work(Value),
+    Participant(String),
+    Observe(String),
 }
 
 struct Worker {
@@ -105,10 +108,30 @@ impl Coordination {
         binding: &RunnerBinding,
         request: RunnerRequest,
     ) -> io::Result<Value> {
-        let access = self
-            .service
-            .runner_access(binding)
-            .map_err(|_| wire::invalid())?;
+        let progress = matches!(&request, RunnerRequest::Work(work)
+            if matches!(work.get("kind").and_then(Value::as_str), Some("started" | "completed" | "release")));
+        let access = if progress {
+            // Recording a result must remain possible after revocation. Only a
+            // saved runner and this private daemon path can report progress.
+            let saved = self
+                .service
+                .runner(&binding.thread_id)
+                .map_err(|_| wire::invalid())?;
+            if saved.as_ref().is_none_or(|saved| {
+                saved.workspace != binding.workspace
+                    || saved.grant_id != binding.grant_id
+                    || saved.client_id != binding.client_id
+            }) {
+                return Err(wire::invalid());
+            }
+            None
+        } else {
+            Some(
+                self.service
+                    .runner_access(binding)
+                    .map_err(|_| wire::invalid())?,
+            )
+        };
         let request = match request {
             RunnerRequest::Register => {
                 json!({"kind":"register_runner","session_id":binding.thread_id,"parent":binding.parent})
@@ -116,12 +139,19 @@ impl Coordination {
             RunnerRequest::Authorize => {
                 json!({"kind":"authorize_runner","session_id":binding.thread_id,"write":!binding.policy.write_roots.is_empty()})
             }
+            RunnerRequest::Work(work) => json!({"kind":"session_work","work":work}),
+            RunnerRequest::Observe(contributor_id) => {
+                json!({"kind":"observe_runner","session_id":binding.thread_id,"contributor_id":contributor_id})
+            }
+            RunnerRequest::Participant(contributor_id) => {
+                json!({"kind":"authorize_participant","session_id":binding.thread_id,"contributor_id":contributor_id,"write":!binding.policy.write_roots.is_empty()})
+            }
         };
         let result = self
             .enqueue(
                 binding.workspace.clone(),
                 binding.client_id.clone(),
-                Some(access),
+                access,
                 request,
                 Dispatch::Runner,
             )
@@ -130,6 +160,34 @@ impl Coordination {
             .get("Ok")
             .cloned()
             .ok_or_else(|| io::Error::other("Native workspace authority denied runner admission"))
+    }
+
+    pub(super) async fn session(&self, access: GrantAccess, operation: Value) -> io::Result<Value> {
+        let write = if operation.get("kind").and_then(Value::as_str) == Some("submit") {
+            let id = operation
+                .pointer("/request/body/session_id")
+                .and_then(Value::as_str)
+                .ok_or_else(wire::invalid)?;
+            let binding = self
+                .service
+                .runner(id)
+                .map_err(|_| wire::invalid())?
+                .ok_or_else(wire::invalid)?;
+            !binding.policy.write_roots.is_empty()
+        } else {
+            false
+        };
+        let participant = json!({"grant_id":access.grant_id,"write":write});
+        let result = self
+            .enqueue(
+                access.binding.clone(),
+                access.client_id.clone(),
+                Some(access),
+                json!({"kind":"session","operation":operation,"participant":participant}),
+                Dispatch::Runner,
+            )
+            .await?;
+        Ok(result)
     }
 
     async fn enqueue(
@@ -293,6 +351,7 @@ struct Process {
     input: ChildStdout,
     output: ChildStdin,
     runner_authorization: bool,
+    shared_sessions: bool,
 }
 
 impl Process {
@@ -301,6 +360,9 @@ impl Process {
         binding: &WorkspaceBinding,
         directory: &Path,
     ) -> io::Result<Self> {
+        if let Ok(process) = Self::start_version(service, binding, directory, /*version*/ 3).await {
+            return Ok(process);
+        }
         match Self::start_version(service, binding, directory, /*version*/ 2).await {
             Ok(process) => Ok(process),
             Err(_) => Self::start_version(service, binding, directory, /*version*/ 1).await,
@@ -342,11 +404,13 @@ impl Process {
             "target":{"host_id":status.host_id,"checkout_id":binding.checkout_id},
             "workspace_id":binding.workspace_id,"repository_id":binding.repository_id,"chain_id":binding.chain_id,"checkout_root":binding.checkout_root
         }});
-        if version == 2 {
+        if version >= 2 {
             start["runtime_id"] = json!(status.runtime_id);
         }
         wire::write(&mut output, &start).await?;
-        let ready = if version == 2 {
+        let ready = if version == 3 {
+            json!({"ready":true,"runner_authorization":1,"shared_sessions":1})
+        } else if version == 2 {
             json!({"ready":true,"runner_authorization":1})
         } else {
             json!({"ready":true})
@@ -358,11 +422,22 @@ impl Process {
             child,
             input,
             output,
-            runner_authorization: version == 2,
+            runner_authorization: version >= 2,
+            shared_sessions: version >= 3,
         })
     }
 
     async fn call(&mut self, work: &Work) -> io::Result<Value> {
+        if matches!(
+            work.request.get("kind").and_then(Value::as_str),
+            Some("session" | "session_work" | "authorize_participant" | "observe_runner")
+        ) && !self.shared_sessions
+        {
+            return Err(io::Error::new(
+                io::ErrorKind::Unsupported,
+                "Update the compute host tools to use shared sessions",
+            ));
+        }
         if work.dispatch == Dispatch::Runner && !self.runner_authorization {
             return Err(io::Error::other(
                 "Idle helper does not support runner authorization",

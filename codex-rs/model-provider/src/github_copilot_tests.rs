@@ -8,6 +8,8 @@ use codex_login::CodexAuth;
 use codex_login::GitHubCopilotAuth;
 use codex_login::default_client::create_client_for_route;
 use codex_model_provider_info::ModelProviderInfo;
+use codex_model_provider_info::WireApi;
+use codex_model_provider_info::create_oss_provider_with_base_url;
 use codex_models_manager::ModelsManagerConfig;
 use codex_models_manager::manager::RefreshStrategy;
 use codex_models_manager::model_info::model_info_from_slug;
@@ -27,6 +29,138 @@ use wiremock::matchers::path;
 use super::model_catalog;
 use crate::WorkspaceRoutingContext;
 use crate::create_model_provider;
+
+#[tokio::test]
+async fn copilot_auth_preserves_explicit_local_routes_and_catalogs_without_credentials() {
+    let home = tempfile::tempdir().expect("temporary Codex home");
+    let auth_manager = AuthManager::from_auth_for_testing_with_home(
+        CodexAuth::from_api_key("unrelated-openai-key"),
+        home.path().to_path_buf(),
+    );
+    let local_catalog = ModelsResponse {
+        models: vec![ModelInfo {
+            display_name: "DeepSeek V4.1 Flash (local)".to_string(),
+            ..model_info_from_slug("deepseek-v41-flash")
+        }],
+    };
+    let copilot_auth = GitHubCopilotAuth::new(
+        "github-token".to_string(),
+        "https://api.individual.githubcopilot.com".to_string(),
+        Some("octocat".to_string()),
+        None,
+        vec!["gpt-5.6-sol".to_string(), "new-openai-model".to_string()],
+    )
+    .expect("valid Copilot auth");
+
+    for endpoint in [
+        "http://127.0.0.1:8000/v1",
+        "http://localhost:8000/v1",
+        "http://[::1]:8000/v1",
+    ] {
+        let provider = create_model_provider(
+            create_oss_provider_with_base_url(endpoint, WireApi::Responses),
+            Some(Arc::clone(&auth_manager)),
+        );
+        let catalog = provider.models_manager_without_cache(Some(local_catalog.clone()));
+        codex_login::login_with_github_copilot(
+            home.path(),
+            copilot_auth.clone(),
+            AuthCredentialsStoreMode::File,
+            AuthKeyringBackendKind::default(),
+        )
+        .expect("persist Copilot auth");
+        auth_manager.reload().await;
+
+        assert_eq!(provider.api_provider().await.unwrap().base_url, endpoint);
+        assert!(provider.auth().await.is_none());
+        assert!(provider.auth_manager().is_none());
+        assert!(
+            provider
+                .api_auth()
+                .await
+                .unwrap()
+                .to_auth_headers()
+                .unwrap()
+                .is_empty()
+        );
+        provider.validate_model("deepseek-v41-flash").unwrap();
+        assert_eq!(
+            catalog
+                .raw_model_catalog(
+                    RefreshStrategy::Online,
+                    HttpClientFactory::new(OutboundProxyPolicy::ReqwestDefault),
+                )
+                .await,
+            local_catalog
+        );
+    }
+
+    let copilot = create_model_provider(
+        ModelProviderInfo::create_openai_provider(None),
+        Some(auth_manager),
+    );
+    assert_eq!(
+        copilot
+            .models_manager_without_cache(Some(local_catalog))
+            .raw_model_catalog(
+                RefreshStrategy::Online,
+                HttpClientFactory::new(OutboundProxyPolicy::ReqwestDefault),
+            )
+            .await
+            .models
+            .into_iter()
+            .map(|model| model.slug)
+            .collect::<Vec<_>>(),
+        copilot_auth.models()
+    );
+}
+
+#[tokio::test]
+async fn copilot_auth_still_overrides_remote_and_account_authenticated_routes() {
+    let auth = GitHubCopilotAuth::new(
+        "github-token".to_string(),
+        "https://api.individual.githubcopilot.com".to_string(),
+        None,
+        None,
+        vec!["gpt-5.6-sol".to_string()],
+    )
+    .expect("valid Copilot auth");
+    let local = create_oss_provider_with_base_url("http://127.0.0.1:8000/v1", WireApi::Responses);
+    let mut providers = vec![
+        ModelProviderInfo::create_openai_provider(local.base_url.clone()),
+        ModelProviderInfo {
+            model_catalog_url: Some("https://api.openai.com/v1/models".into()),
+            ..local.clone()
+        },
+        ModelProviderInfo {
+            experimental_bearer_token: Some("provider-token".into()),
+            ..local
+        },
+    ];
+    providers.extend(
+        [
+            "https://example.test/v1",
+            "https://localhost.example.test/v1",
+            "http://localhost@remote.example.test/v1",
+            "http://user@localhost:8000/v1",
+        ]
+        .into_iter()
+        .map(|endpoint| create_oss_provider_with_base_url(endpoint, WireApi::Responses)),
+    );
+    for info in providers {
+        let provider = create_model_provider(
+            info,
+            Some(AuthManager::from_auth_for_testing(
+                CodexAuth::from_github_copilot(auth.clone()),
+            )),
+        );
+        assert!(provider.info().is_github_copilot());
+        assert_eq!(
+            provider.api_provider().await.unwrap().base_url,
+            auth.api_endpoint()
+        );
+    }
+}
 
 #[tokio::test]
 async fn github_copilot_wrapper_preserves_exact_provider_catalog_metadata() {

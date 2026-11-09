@@ -20,6 +20,7 @@ async fn github_copilot_auth_rejects_unadvertised_model_without_network_fallback
     )?;
     let test = test_codex()
         .with_auth(CodexAuth::from_github_copilot(auth))
+        .with_config(|config| config.model_provider.requires_openai_auth = true)
         .with_model("not-advertised-by-copilot")
         .build_with_auto_env(&server)
         .await?;
