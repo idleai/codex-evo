@@ -123,6 +123,10 @@ suites, and package assembly before publishing checksummed CLI and app-server
 archives. Both packages include the execution server required by the current
 runtime and the pinned prebuilt V8 host.
 
+PRs targeting this branch and manual checks on the branch use hosted Linux by
+default. Set `COPILOT_LINUX_RUNNER` to use a dedicated pool. The branch's
+validation does not depend on the normal Idle runner pool.
+
 Focused regression coverage includes stored Copilot authentication taking
 precedence over environment keys and remote provider profiles, account-specific model
 catalogs, credential changes during a session, and redirect rejection. It also
