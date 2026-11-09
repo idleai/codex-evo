@@ -1,15 +1,17 @@
 # Isolated GitHub Copilot build
 
 `idle/github-copilot-auth` layers direct GitHub Copilot authentication and
-service isolation onto the Idle fork. The November 2026 update follows the
-0.166 source baseline synchronized into `origin/main` at `67f0994b53`, together
-with the current `idle-base` integration.
+service isolation onto the Idle fork. The November 8 update includes `idle-base`
+through `1d0b0889ad`, including attributed shared sessions and runner interruption.
+This follows the 0.166 source baseline synchronized into `origin/main` at
+`67f0994b53`.
 
 The idle profile picker, named/default subagent profiles, portable handoffs,
 provider catalogs, and Responses compatibility settings remain available. While
 GitHub Copilot is signed in, its authentication takes precedence over configured
-providers and environment API keys: profiles cannot redirect that credential to
-another provider.
+remote providers and environment API keys. An explicitly configured local,
+unauthenticated provider keeps its own endpoint and model catalog. GitHub
+credentials are never attached to its requests.
 
 ## Sign in without replacing another installation's credentials
 
@@ -36,9 +38,63 @@ Cargo workspace and lockfile. The isolated Copilot build has its own release
 version, distinct from the normal Idle build. Building this checkout does not
 switch the installed CLI or Remote daemon.
 
+## Local DeepSeek alongside the Copilot catalog
+
+Keep the default profile on the account's Copilot catalog. Add DeepSeek through
+`model_picker_profiles`, using the same complete `dsv4.config.toml` profile,
+`dsv4-models.json` catalog, and prompt file as the base installation. Keep
+`model_catalog_json` in the local profile so its metadata applies only to
+DeepSeek.
+
+In the isolated Copilot home's `config.toml`, add:
+
+```toml
+[model_picker_profiles]
+deepseek-v4-flash = "dsv4"
+
+[model_providers.sglang_dsv4]
+name = "Local DeepSeek V4.1 Flash"
+base_url = "http://127.0.0.1:8000/v1"
+wire_api = "responses"
+requires_openai_auth = false
+supports_namespace_tools = false
+supports_codex_agent_messages = false
+```
+
+The corresponding `dsv4.config.toml` is:
+
+```toml
+model = "deepseek-v4-flash"
+model_provider = "sglang_dsv4"
+model_catalog_json = "dsv4-models.json"
+model_instructions_file = "prompts/dsv4-instructions.md"
+model_context_window = 524288
+model_reasoning_effort = "xhigh"
+model_reasoning_summary = "auto"
+service_tier = "default"
+```
+
+Use the exact model ID returned by `http://127.0.0.1:8000/v1/models` in the picker
+mapping, profile, and catalog `slug`. The existing local deployment advertises
+`deepseek-v4-flash` for DeepSeek V4.1 Flash; use that ID until the server advertises
+`deepseek-v41-flash`. The display name can remain `DeepSeek V4.1 Flash (local)`.
+
+After Copilot sign-in, the picker contains every enabled OpenAI model advertised
+by the account with Responses support, plus the local entry. New Copilot model
+IDs do not require a code allowlist. Signing in again refreshes the account's
+saved model list. Select DeepSeek for a new chat, or use `/handoff dsv4` to carry
+visible conversation text into a new local thread. `/handoff --base` returns to
+the Copilot profile. Existing chats retain their provider.
+
+The local exception requires a loopback HTTP or HTTPS inference endpoint,
+`requires_openai_auth = false`, and no provider API key, bearer token, command
+auth, or gateway OAuth. A separate catalog URL, when configured, must also be
+loopback. It continues working across account changes without inheriting
+Copilot or OpenAI credentials.
+
 ## Isolation boundaries
 
-- Inference uses the authenticated HTTPS `githubcopilot.com` endpoint and only
+- Copilot inference uses the authenticated HTTPS `githubcopilot.com` endpoint and only
   models advertised by that account. Unsupported models and account changes
   fail instead of falling back to OpenAI or another configured provider.
   Responses HTTP requests reject redirects rather than forwarding prompts to
@@ -68,10 +124,12 @@ archives. Both packages include the execution server required by the current
 runtime and the pinned prebuilt V8 host.
 
 Focused regression coverage includes stored Copilot authentication taking
-precedence over environment keys and provider profiles, account-specific model
+precedence over environment keys and remote provider profiles, account-specific model
 catalogs, credential changes during a session, and redirect rejection. It also
 covers switching from configured, Bedrock, and Google Cloud providers into a
-Copilot account. Local analytics capture must omit credentials, and built-in
+Copilot account, combined Copilot/local model discovery, local requests without
+account headers, and restoring the local provider after an app-server restart.
+Local analytics capture must omit credentials, and built-in
 OpenAI telemetry and feedback delivery remain disabled.
 
 Release verification uses temporary Codex homes, fake credentials, local mock

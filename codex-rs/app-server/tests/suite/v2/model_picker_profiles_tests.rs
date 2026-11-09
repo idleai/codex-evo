@@ -20,6 +20,9 @@ use codex_app_server_protocol::TurnStartResponse;
 use codex_app_server_protocol::TurnStatus;
 use codex_app_server_protocol::UserInput;
 use codex_config::types::AuthCredentialsStoreMode;
+use codex_login::AuthKeyringBackendKind;
+use codex_login::GitHubCopilotAuth;
+use codex_login::login_with_github_copilot;
 use codex_models_manager::model_info::model_info_from_slug;
 use codex_protocol::openai_models::ModelVisibility;
 use codex_protocol::openai_models::ModelsResponse;
@@ -305,6 +308,90 @@ async fn picker_profile_appends_to_live_native_discovery() -> Result<()> {
         vec![("native-discovered-model", true), (MODEL, false)]
     );
     assert_eq!(result.data[1].display_name, "DeepSeek V4.1 Flash (local)");
+    Ok(())
+}
+
+#[tokio::test]
+async fn copilot_picker_keeps_all_account_models_and_routes_local_profile_without_credentials()
+-> Result<()> {
+    let target = MockServer::start().await;
+    let body = responses::sse(vec![
+        responses::ev_assistant_message("marker", "LOCAL_OK"),
+        responses::ev_completed("response"),
+    ]);
+    let target_mock = responses::mount_sse_once(&target, body).await;
+    let home = TempDir::new()?;
+    std::fs::write(
+        home.path().join("config.toml"),
+        format!("cli_auth_credentials_store = 'file'\n{REGISTRY}\n"),
+    )?;
+    write_profile(home.path(), &target.uri())?;
+    let models = vec!["gpt-5.6-sol".to_string(), "new-openai-model".to_string()];
+    login_with_github_copilot(
+        home.path(),
+        GitHubCopilotAuth::new(
+            "github-token-must-stay-on-copilot".to_string(),
+            "https://api.individual.githubcopilot.com".to_string(),
+            Some("octocat".to_string()),
+            None,
+            models.clone(),
+        )?,
+        AuthCredentialsStoreMode::File,
+        AuthKeyringBackendKind::default(),
+    )?;
+    let mut server = TestAppServer::builder()
+        .with_codex_home(home.path())
+        .build_initialized()
+        .await?;
+    let listed: ModelListResponse = server
+        .request(|request_id| ClientRequest::ModelList {
+            request_id,
+            params: ModelListParams::default(),
+        })
+        .await?;
+    let mut expected = models;
+    expected.push(MODEL.to_string());
+    assert_eq!(
+        listed
+            .data
+            .iter()
+            .map(|model| model.model.clone())
+            .collect::<Vec<_>>(),
+        expected
+    );
+    let selected = server
+        .start_thread(ThreadStartParams {
+            model: Some(MODEL.to_string()),
+            model_provider: Some("openai".to_string()),
+            ..Default::default()
+        })
+        .await?;
+    assert_eq!(selected.model_provider, "sglang_dsv4");
+    complete_turn(&mut server, &selected.thread.id).await?;
+    let request = target_mock.single_request();
+    assert_eq!(request.body_json()["model"], MODEL);
+    assert_eq!(request.instructions_text(), "DEEPSEEK_PROFILE_INSTRUCTIONS");
+    assert_eq!(request.header("authorization"), None);
+    assert_eq!(request.header("chatgpt-account-id"), None);
+    assert_eq!(request.header("openai-intent"), None);
+
+    assert!(server.shutdown_gracefully().await?.success());
+    let mut server = TestAppServer::builder()
+        .with_codex_home(home.path())
+        .build_initialized()
+        .await?;
+    let resumed: ThreadResumeResponse = server
+        .request(|request_id| ClientRequest::ThreadResume {
+            request_id,
+            params: ThreadResumeParams {
+                thread_id: selected.thread.id,
+                model: Some(MODEL.to_string()),
+                ..Default::default()
+            },
+        })
+        .await?;
+    assert_eq!(resumed.model, MODEL);
+    assert_eq!(resumed.model_provider, "sglang_dsv4");
     Ok(())
 }
 

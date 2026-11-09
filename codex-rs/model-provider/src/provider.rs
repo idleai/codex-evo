@@ -446,6 +446,15 @@ pub(crate) fn create_model_provider_with_runtime(
     auth_manager: Option<Arc<AuthManager>>,
     runtime_auth: Option<(Arc<RuntimeAuthManager>, RuntimeAuthMode)>,
 ) -> SharedModelProvider {
+    if is_unauthenticated_loopback_provider(&provider_info) {
+        // An explicitly configured local model owns its route and catalog. Keep
+        // account credentials out of it, including across Copilot login/logout.
+        return create_non_copilot_model_provider(
+            provider_info,
+            /*auth_manager*/ None,
+            /*runtime_auth*/ None,
+        );
+    }
     let github_copilot_auth = auth_manager
         .as_ref()
         .and_then(|auth_manager| auth_manager.auth_cached())
@@ -464,6 +473,34 @@ pub(crate) fn create_model_provider_with_runtime(
     } else {
         fallback_provider
     }
+}
+
+fn is_unauthenticated_loopback_provider(info: &ModelProviderInfo) -> bool {
+    if info.requires_openai_auth
+        || info.env_key.is_some()
+        || info.experimental_bearer_token.is_some()
+        || info.auth.is_some()
+        || info.gateway_oauth.is_some()
+        || info.is_amazon_bedrock()
+        || info.is_gcp()
+    {
+        return false;
+    }
+    let is_loopback = |endpoint: &str| {
+        codex_http_client::validate_endpoint_url(endpoint, "local model provider")
+            .ok()
+            .is_some_and(|url| match url.host() {
+                Some(url::Host::Domain(host)) => host.eq_ignore_ascii_case("localhost"),
+                Some(url::Host::Ipv4(host)) => host.is_loopback(),
+                Some(url::Host::Ipv6(host)) => host.is_loopback(),
+                None => false,
+            })
+    };
+    info.base_url.as_deref().is_some_and(is_loopback)
+        && info
+            .model_catalog_url
+            .as_deref()
+            .is_none_or(|endpoint| is_loopback(endpoint))
 }
 
 fn create_non_copilot_model_provider(
