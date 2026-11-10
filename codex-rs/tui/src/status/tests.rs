@@ -151,11 +151,9 @@ async fn test_config(temp_home: &TempDir) -> Config {
 }
 
 fn set_workspace_cwd(config: &mut Config, cwd: AbsolutePathBuf) {
-    config.cwd = cwd.clone();
-    config.workspace_roots = vec![cwd];
-    config
-        .permissions
-        .set_workspace_roots(config.workspace_roots.clone());
+    config.cwd = cwd.to_path_buf();
+    config.workspace_roots = vec![cwd.to_path_buf()];
+    config.sync_native_workspace_roots();
 }
 
 fn test_status_account_display() -> Option<StatusAccountDisplay> {
@@ -658,10 +656,8 @@ async fn status_permissions_workspace_roots_show_additional_directories() {
         .set(AskForApproval::OnRequest.to_core())
         .expect("set approval policy");
     let extra_root = test_path_buf("/workspace/extra").abs();
-    config.workspace_roots = vec![config.cwd.clone(), extra_root.clone()];
-    config
-        .permissions
-        .set_workspace_roots(config.workspace_roots.clone());
+    config.workspace_roots = vec![config.cwd.clone(), extra_root.to_path_buf()];
+    config.sync_native_workspace_roots();
     config
         .permissions
         .set_permission_profile_from_session_snapshot(PermissionProfileSnapshot::active(

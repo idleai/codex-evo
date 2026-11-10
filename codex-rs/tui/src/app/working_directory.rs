@@ -28,7 +28,7 @@ pub(super) struct ManagedWorktreeAttach {
 /// A /cd request awaiting a fresh event-loop iteration.
 pub(super) struct PendingWorkingDirectoryChange {
     pub(super) source_thread_id: ThreadId,
-    pub(super) source_cwd: AbsolutePathBuf,
+    pub(super) source_cwd: PathBuf,
     pub(super) destination: AbsolutePathBuf,
 }
 

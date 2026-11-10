@@ -56,7 +56,11 @@ async fn thread_start_reports_selected_environment_metadata() -> Result<()> {
         .selection()
         .workspace_roots
         .iter()
-        .filter_map(|root| root.to_abs_path().ok())
+        .filter_map(|root| {
+            root.to_abs_path()
+                .ok()
+                .map(codex_utils_absolute_path::AbsolutePathBuf::into_path_buf)
+        })
         .collect::<Vec<_>>();
 
     let ThreadStartResponse {
@@ -73,7 +77,7 @@ async fn thread_start_reports_selected_environment_metadata() -> Result<()> {
         (cwd, runtime_workspace_roots, active_permission_profile),
         (
             // TODO(anp): Return the selected environment's native cwd from thread/start.
-            host_cwd,
+            host_cwd.into_path_buf(),
             selected_workspace_roots,
             // TODO(anp): Report the implicit built-in permission profile instead of None.
             None,

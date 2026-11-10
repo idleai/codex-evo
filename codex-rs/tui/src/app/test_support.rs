@@ -16,7 +16,7 @@ pub(crate) async fn make_test_app() -> Box<App> {
         boxed_future!(make_chatwidget_manual_with_sender()).await;
     let test_codex_home = chat_widget.test_codex_home.take();
     let config = chat_widget.config_ref().clone();
-    let file_search = FileSearchManager::new(config.cwd.to_path_buf(), app_event_tx.clone());
+    let file_search = FileSearchManager::new(config.cwd.clone(), app_event_tx.clone());
     let model = get_model_offline_for_tests(config.model.as_deref());
     let session_telemetry = test_session_telemetry(&config, model.as_str());
 

@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 use std::path::Path;
+use std::path::PathBuf;
 use std::time::Duration;
 use std::time::Instant;
 
@@ -79,7 +80,7 @@ const OTHER_MARKETPLACE_TAB_ORDER: u8 = 4;
 
 #[derive(Debug, Clone)]
 struct PreferredLocalPluginSource {
-    marketplace_path: AbsolutePathBuf,
+    marketplace_path: PathBuf,
     plugin_name: String,
     installed: bool,
     install_policy: PluginInstallPolicy,
@@ -100,11 +101,8 @@ impl MarketplaceProduct {
         Self::from_marketplace_parts(&marketplace.name, marketplace.path.as_ref())
     }
 
-    fn from_marketplace_parts(
-        marketplace_name: &str,
-        marketplace_path: Option<&AbsolutePathBuf>,
-    ) -> Self {
-        if marketplace_path.is_some_and(is_personal_marketplace_path) {
+    fn from_marketplace_parts(marketplace_name: &str, marketplace_path: Option<&PathBuf>) -> Self {
+        if marketplace_path.is_some_and(|path| is_personal_marketplace_path(path.as_path())) {
             return Self::Local;
         }
 
@@ -1694,12 +1692,12 @@ pub(super) fn merge_remote_marketplaces(
     response.marketplaces.extend(remote_marketplaces);
 }
 
-fn is_personal_marketplace_path(marketplace_path: &AbsolutePathBuf) -> bool {
+fn is_personal_marketplace_path(marketplace_path: &std::path::Path) -> bool {
     dirs::home_dir()
         .and_then(|home| {
             AbsolutePathBuf::try_from(home.join(PERSONAL_MARKETPLACE_RELATIVE_PATH)).ok()
         })
-        .is_some_and(|personal_path| personal_path.as_path() == marketplace_path.as_path())
+        .is_some_and(|personal_path| personal_path.as_path() == marketplace_path)
 }
 
 fn remote_section_loading_item(label: &str, description: &str) -> SelectionItem {

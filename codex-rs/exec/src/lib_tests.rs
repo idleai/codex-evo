@@ -6,7 +6,6 @@ use codex_otel::set_parent_from_w3c_trace_context;
 use codex_protocol::config_types::ApprovalsReviewer;
 use codex_protocol::models::ActivePermissionProfile;
 use codex_protocol::models::BUILT_IN_PERMISSION_PROFILE_WORKSPACE;
-use codex_utils_absolute_path::test_support::PathBufExt;
 use codex_utils_absolute_path::test_support::test_path_buf;
 use opentelemetry::trace::TraceContextExt;
 use opentelemetry::trace::TraceId;
@@ -374,7 +373,7 @@ fn turn_items_for_thread_returns_matching_turn_items() {
         recency_at: Some(0),
         status: codex_app_server_protocol::ThreadStatus::Idle,
         path: None,
-        cwd: test_path_buf("/tmp/project").abs(),
+        cwd: test_path_buf("/tmp/project"),
         cli_version: "0.0.0-test".to_string(),
         originator: None,
         source: codex_app_server_protocol::SessionSource::Exec,
@@ -885,7 +884,7 @@ fn sample_thread_start_response() -> ThreadStartResponse {
             recency_at: Some(0),
             status: codex_app_server_protocol::ThreadStatus::Idle,
             path: Some(PathBuf::from("/tmp/rollout.jsonl")),
-            cwd: test_path_buf("/tmp").abs(),
+            cwd: test_path_buf("/tmp"),
             cli_version: "0.0.0".to_string(),
             source: codex_app_server_protocol::SessionSource::Cli,
             can_accept_direct_input: None,
@@ -899,7 +898,7 @@ fn sample_thread_start_response() -> ThreadStartResponse {
         model: "gpt-5.4".to_string(),
         model_provider: "openai".to_string(),
         service_tier: None,
-        cwd: test_path_buf("/tmp").abs(),
+        cwd: test_path_buf("/tmp"),
         runtime_workspace_roots: Vec::new(),
         instruction_sources: Vec::new(),
         approval_policy: codex_app_server_protocol::AskForApproval::OnRequest,

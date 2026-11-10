@@ -129,7 +129,6 @@ mod tests {
     use codex_app_server_protocol::Thread;
     use codex_app_server_protocol::ThreadStatus;
     use codex_protocol::ThreadId;
-    use codex_utils_absolute_path::test_support::PathBufExt;
     use codex_utils_absolute_path::test_support::test_path_buf;
     use pretty_assertions::assert_eq;
 
@@ -157,7 +156,7 @@ mod tests {
             recency_at: Some(0),
             status: ThreadStatus::Idle,
             path: None,
-            cwd: test_path_buf("/tmp").abs(),
+            cwd: test_path_buf("/tmp"),
             cli_version: "0.0.0".to_string(),
             source,
             can_accept_direct_input: None,

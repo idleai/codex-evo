@@ -200,5 +200,6 @@ pub struct FsChangedNotification {
     /// Watch identifier previously provided to `fs/watch`.
     pub watch_id: String,
     /// File or directory paths associated with this event.
-    pub changed_paths: Vec<AbsolutePathBuf>,
+    #[serde(deserialize_with = "crate::server_path::deserialize_vec")]
+    pub changed_paths: Vec<std::path::PathBuf>,
 }

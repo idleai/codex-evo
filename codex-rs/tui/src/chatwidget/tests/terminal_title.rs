@@ -117,7 +117,9 @@ async fn terminal_title_shows_action_required_while_exec_approval_is_pending() {
         turn_id: "turn-action-required".into(),
         environment_id: None,
         command: vec!["bash".into(), "-lc".into(), "echo hello".into()],
-        cwd: AbsolutePathBuf::current_dir().expect("current dir"),
+        cwd: AbsolutePathBuf::current_dir()
+            .expect("current dir")
+            .to_path_buf(),
         reason: Some("need confirmation".into()),
         network_approval_context: None,
         proposed_execpolicy_amendment: None,
@@ -183,7 +185,9 @@ async fn terminal_title_action_required_respects_spinner_setting() {
         turn_id: "turn-no-spinner".into(),
         environment_id: None,
         command: vec!["bash".into(), "-lc".into(), "echo hello".into()],
-        cwd: AbsolutePathBuf::current_dir().expect("current dir"),
+        cwd: AbsolutePathBuf::current_dir()
+            .expect("current dir")
+            .to_path_buf(),
         reason: Some("need confirmation".into()),
         network_approval_context: None,
         proposed_execpolicy_amendment: None,
@@ -217,7 +221,9 @@ async fn terminal_title_action_required_blinks_when_animations_are_enabled() {
         turn_id: "turn-blink".into(),
         environment_id: None,
         command: vec!["bash".into(), "-lc".into(), "echo hello".into()],
-        cwd: AbsolutePathBuf::current_dir().expect("current dir"),
+        cwd: AbsolutePathBuf::current_dir()
+            .expect("current dir")
+            .to_path_buf(),
         reason: Some("need confirmation".into()),
         network_approval_context: None,
         proposed_execpolicy_amendment: None,
@@ -263,7 +269,9 @@ async fn terminal_title_activity_indicators_do_not_animate_when_animations_are_d
         turn_id: "turn-no-animations".into(),
         environment_id: None,
         command: vec!["bash".into(), "-lc".into(), "echo hello".into()],
-        cwd: AbsolutePathBuf::current_dir().expect("current dir"),
+        cwd: AbsolutePathBuf::current_dir()
+            .expect("current dir")
+            .to_path_buf(),
         reason: Some("need confirmation".into()),
         network_approval_context: None,
         proposed_execpolicy_amendment: None,

@@ -166,7 +166,7 @@ pub(super) async fn try_submit_user_turn(
             turn_approval_policy,
             turn_approvals_reviewer,
             permissions_override,
-            config.permissions.user_visible_workspace_roots(),
+            &config.workspace_roots,
             model.to_string(),
             effort.clone(),
             *summary,

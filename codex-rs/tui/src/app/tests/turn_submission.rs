@@ -160,7 +160,7 @@ async fn turn_start_failure_is_shown_without_exiting() -> Result<()> {
 async fn misalignment_policy_blocks_queued_turns_and_goal_resumption() -> Result<()> {
     let (mut app, _app_event_rx, mut op_rx) = make_test_app_with_channels().await;
     let checkout = tempfile::tempdir()?;
-    app.config.cwd = AbsolutePathBuf::from_absolute_path(checkout.path())?;
+    app.config.cwd = AbsolutePathBuf::from_absolute_path(checkout.path())?.to_path_buf();
     for args in [
         vec!["init", "--quiet"],
         vec![

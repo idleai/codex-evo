@@ -1050,7 +1050,7 @@ async fn read_includes_origins_and_layers() {
             .expect("origin")
             .name,
         ApiConfigLayerSource::LegacyManagedConfigTomlFromFile {
-            file: managed_file.clone()
+            file: managed_file.to_path_buf()
         },
     );
     let layers = response.layers.expect("layers present");
@@ -1068,13 +1068,13 @@ async fn read_includes_origins_and_layers() {
     assert_eq!(
         layers.first().unwrap().name,
         ApiConfigLayerSource::LegacyManagedConfigTomlFromFile {
-            file: managed_file.clone()
+            file: managed_file.to_path_buf()
         }
     );
     assert_eq!(
         layers.get(1).unwrap().name,
         ApiConfigLayerSource::User {
-            file: user_file.clone(),
+            file: user_file.to_path_buf(),
             profile: None,
         }
     );
@@ -1181,7 +1181,7 @@ async fn write_value_reports_override() {
             .expect("origin")
             .name,
         ApiConfigLayerSource::LegacyManagedConfigTomlFromFile {
-            file: managed_file.clone()
+            file: managed_file.to_path_buf()
         }
     );
     assert_eq!(result.status, WriteStatus::Ok);
@@ -2061,7 +2061,7 @@ async fn read_reports_managed_overrides_user_and_session_flags() {
     assert_eq!(
         response.origins.get("model").expect("origin").name,
         ApiConfigLayerSource::LegacyManagedConfigTomlFromFile {
-            file: managed_file.clone()
+            file: managed_file.to_path_buf()
         },
     );
     let layers = response.layers.expect("layers");
@@ -2077,7 +2077,9 @@ async fn read_reports_managed_overrides_user_and_session_flags() {
     };
     assert_eq!(
         layers.first().unwrap().name,
-        ApiConfigLayerSource::LegacyManagedConfigTomlFromFile { file: managed_file }
+        ApiConfigLayerSource::LegacyManagedConfigTomlFromFile {
+            file: managed_file.to_path_buf()
+        }
     );
     assert_eq!(
         layers.get(1).unwrap().name,
@@ -2086,7 +2088,7 @@ async fn read_reports_managed_overrides_user_and_session_flags() {
     assert_eq!(
         layers.get(2).unwrap().name,
         ApiConfigLayerSource::User {
-            file: user_file,
+            file: user_file.to_path_buf(),
             profile: None
         }
     );
@@ -2123,7 +2125,9 @@ async fn write_value_reports_managed_override() {
     let overridden = result.overridden_metadata.expect("overridden metadata");
     assert_eq!(
         overridden.overriding_layer.name,
-        ApiConfigLayerSource::LegacyManagedConfigTomlFromFile { file: managed_file }
+        ApiConfigLayerSource::LegacyManagedConfigTomlFromFile {
+            file: managed_file.to_path_buf()
+        }
     );
     assert_eq!(overridden.effective_value, serde_json::json!("never"));
 }
@@ -2340,7 +2344,7 @@ async fn multi_agent_v2_boolean_layer_owns_enabled_origin_and_overrides() {
         assert_eq!(
             read.origins.get(path).expect("managed feature origin").name,
             ApiConfigLayerSource::LegacyManagedConfigTomlFromFile {
-                file: managed_file.clone(),
+                file: managed_file.to_path_buf(),
             },
         );
     }
@@ -2359,7 +2363,9 @@ async fn multi_agent_v2_boolean_layer_owns_enabled_origin_and_overrides() {
     let overridden = result.overridden_metadata.expect("overridden metadata");
     assert_eq!(
         overridden.overriding_layer.name,
-        ApiConfigLayerSource::LegacyManagedConfigTomlFromFile { file: managed_file }
+        ApiConfigLayerSource::LegacyManagedConfigTomlFromFile {
+            file: managed_file.to_path_buf()
+        }
     );
     assert_eq!(overridden.effective_value, serde_json::json!(false));
 }
@@ -3086,7 +3092,9 @@ exclude = ["AWS_*"]
                 .expect("managed setting should override the user edit");
             assert_eq!(
                 overridden.overriding_layer.name,
-                ApiConfigLayerSource::LegacyManagedConfigTomlFromFile { file: managed_file }
+                ApiConfigLayerSource::LegacyManagedConfigTomlFromFile {
+                    file: managed_file.to_path_buf()
+                }
             );
             assert_eq!(overridden.effective_value, expected_effective_value);
         } else {

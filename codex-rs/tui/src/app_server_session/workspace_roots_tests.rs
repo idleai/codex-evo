@@ -73,7 +73,7 @@ stream_max_retries = 0
                     .build()
                     .await?;
                 let local_settings = LocalSettings::from(&client_config);
-                let expected_roots = vec![remote_cwd.clone(), extra_root.clone()];
+                let expected_roots = vec![remote_cwd.to_path_buf(), extra_root.to_path_buf()];
                 let mut app_server =
                     crate::start_embedded_app_server_for_picker(&server_config).await?;
                 // Exercise remote request semantics with a real server and separate client config.
@@ -81,7 +81,7 @@ stream_max_retries = 0
                 app_server.remote_cwd_override = Some(remote_cwd.to_path_buf());
                 let started = app_server.start_thread(&client_config).await?;
                 let thread_id = started.session.thread_id;
-                assert_eq!(started.session.cwd, remote_cwd);
+                assert_eq!(started.session.cwd, remote_cwd.to_path_buf());
                 assert_eq!(started.session.runtime_workspace_roots, expected_roots);
 
                 let (mut chat, _sender, _events, _commands) =
@@ -102,7 +102,7 @@ stream_max_retries = 0
                         /*approval_policy*/ None,
                         /*approvals_reviewer*/ None,
                         TurnPermissionsOverride::Preserve,
-                        config.permissions.user_visible_workspace_roots(),
+                        &config.workspace_roots,
                         "gpt-5.2".to_string(),
                         /*effort*/ None,
                         /*summary*/ None,
@@ -176,8 +176,11 @@ stream_max_retries = 0
                 app_server.remote_cwd_override = None;
                 let started = app_server.start_thread(&client_config).await?;
                 let default_cwd = AbsolutePathBuf::current_dir()?;
-                assert_eq!(started.session.cwd, default_cwd);
-                assert_eq!(started.session.runtime_workspace_roots, vec![default_cwd]);
+                assert_eq!(started.session.cwd, default_cwd.to_path_buf());
+                assert_eq!(
+                    started.session.runtime_workspace_roots,
+                    vec![default_cwd.to_path_buf()]
+                );
                 app_server.shutdown().await?;
                 Ok(())
             })

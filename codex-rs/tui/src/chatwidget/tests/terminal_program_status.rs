@@ -24,7 +24,9 @@ async fn session_status_follows_existing_lifecycle_state() {
             turn_id: "session-status-turn".to_string(),
             environment_id: None,
             command: vec!["echo".to_string(), "hello".to_string()],
-            cwd: AbsolutePathBuf::current_dir().expect("current dir"),
+            cwd: AbsolutePathBuf::current_dir()
+                .expect("current dir")
+                .to_path_buf(),
             reason: Some("need confirmation".to_string()),
             network_approval_context: None,
             proposed_execpolicy_amendment: None,

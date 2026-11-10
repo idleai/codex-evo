@@ -764,7 +764,6 @@ mod tests {
     use crate::app_event_sender::AppEventSender;
     use crate::bottom_pane::bottom_pane_view::BottomPaneView;
     use crate::render::renderable::Renderable;
-    use crate::test_support::PathBufExt;
     use crate::test_support::test_path_buf;
     use crate::test_support::test_path_display;
     use codex_app_server_protocol::HookErrorInfo;
@@ -842,7 +841,7 @@ mod tests {
             timeout_sec: 30,
             status_message: None,
             additional_context_limit: None,
-            source_path: test_path_buf("/tmp/hooks.json").abs(),
+            source_path: test_path_buf("/tmp/hooks.json"),
             source,
             plugin_id: plugin_id.map(str::to_string),
             environment_id: None,
@@ -1313,7 +1312,7 @@ mod tests {
             /*is_managed*/ false,
             /*display_order*/ 0,
         );
-        capped_command_hook.source_path = test_path_buf("/tmp/h.json").abs();
+        capped_command_hook.source_path = test_path_buf("/tmp/h.json");
         capped_command_hook.status_message =
             Some("Check shell commands before allowing them to execute".to_string());
         let mut view = HooksBrowserView::new(

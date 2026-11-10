@@ -621,7 +621,8 @@ impl TurnRequestProcessor {
         })?;
         let runtime_workspace_roots = params
             .runtime_workspace_roots
-            .map(resolve_runtime_workspace_roots);
+            .map(resolve_runtime_workspace_roots)
+            .transpose()?;
         let environment_requests =
             resolve_turn_environment_requests(self.thread_manager.as_ref(), params.environments)?;
 
@@ -895,7 +896,10 @@ impl TurnRequestProcessor {
             approval_policy.map(codex_app_server_protocol::AskForApproval::to_core);
         let approvals_reviewer =
             approvals_reviewer.map(codex_app_server_protocol::ApprovalsReviewer::to_core);
-        let sandbox_policy = sandbox_policy.map(|policy| policy.to_core());
+        let sandbox_policy = sandbox_policy
+            .map(|policy| policy.try_to_core())
+            .transpose()
+            .map_err(|err| invalid_request(format!("invalid sandbox policy: {err}")))?;
         let (permission_profile, active_permission_profile, profile_workspace_roots) =
             if let Some(permissions) = permissions {
                 let Some(snapshot) = snapshot.as_ref() else {

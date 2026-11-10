@@ -62,7 +62,7 @@ async fn command_start_before_message_completion_does_not_duplicate_preamble() -
         .with_sandbox_mode("danger-full-access")
         .write(codex_home.path())?;
     app.config.codex_home = codex_home.path().to_path_buf().abs();
-    app.config.cwd = codex_home.path().abs();
+    app.config.cwd = codex_home.path().to_path_buf();
     app.config.sqlite = codex_state::SqliteConfig::new_for_testing(codex_home.path().abs());
     app.config
         .permissions

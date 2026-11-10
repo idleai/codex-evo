@@ -538,7 +538,7 @@ impl ConfigManager {
                 })?
                 .version
                 .clone(),
-            file_path: provided_path,
+            file_path: provided_path.into_path_buf(),
             overridden_metadata: overridden,
         })
     }

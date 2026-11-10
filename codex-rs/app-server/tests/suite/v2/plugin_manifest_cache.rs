@@ -60,7 +60,7 @@ async fn plugin_list_observes_manifest_and_overlay_revisions_in_one_server() -> 
         for _ in 0..2 {
             let id = server
                 .send_plugin_list_request(PluginListParams {
-                    cwds: Some(vec![AbsolutePathBuf::try_from(root)?]),
+                    cwds: Some(vec![AbsolutePathBuf::try_from(root)?.to_path_buf()]),
                     marketplace_kinds: Some(vec![PluginListMarketplaceKind::Local]),
                     force_refetch: false,
                 })

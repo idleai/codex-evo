@@ -223,7 +223,7 @@ async fn hooks_list_shows_discovered_hook() -> Result<()> {
                 timeout_sec: 5,
                 status_message: Some("running listed hook".to_string()),
                 additional_context_limit: Some(4_096),
-                source_path: config_path,
+                source_path: config_path.to_path_buf(),
                 source: HookSource::User,
                 plugin_id: None,
                 environment_id: None,
@@ -308,7 +308,7 @@ async fn hooks_list_shows_discovered_plugin_hook() -> Result<()> {
                 timeout_sec: 7,
                 status_message: Some("running plugin hook".to_string()),
                 additional_context_limit: None,
-                source_path: plugin_hooks_path,
+                source_path: plugin_hooks_path.to_path_buf(),
                 source: HookSource::Plugin,
                 plugin_id: Some("demo@test".to_string()),
                 environment_id: None,
@@ -367,7 +367,7 @@ async fn plugin_upgrade_refreshes_hook_runtime_for_loaded_session() -> Result<()
         AbsolutePathBuf::try_from(marketplace.path().join(".agents/plugins/marketplace.json"))?;
     let install_id = mcp
         .send_plugin_install_request(PluginInstallParams {
-            marketplace_path: Some(marketplace_path.clone()),
+            marketplace_path: Some(marketplace_path.to_path_buf()),
             remote_marketplace_name: None,
             install_attempt_id: None,
             plugin_name: "demo".to_string(),
@@ -471,7 +471,7 @@ async fn plugin_upgrade_refreshes_hook_runtime_for_loaded_session() -> Result<()
     )?;
     let install_id = mcp
         .send_plugin_install_request(PluginInstallParams {
-            marketplace_path: Some(marketplace_path.clone()),
+            marketplace_path: Some(marketplace_path.to_path_buf()),
             remote_marketplace_name: None,
             install_attempt_id: None,
             plugin_name: "demo".to_string(),
@@ -534,7 +534,7 @@ async fn plugin_upgrade_refreshes_hook_runtime_for_loaded_session() -> Result<()
     )?;
     let install_id = mcp
         .send_plugin_install_request(PluginInstallParams {
-            marketplace_path: Some(marketplace_path),
+            marketplace_path: Some(marketplace_path.to_path_buf()),
             remote_marketplace_name: None,
             install_attempt_id: None,
             plugin_name: "demo".to_string(),
@@ -952,7 +952,7 @@ async fn hooks_list_shows_discovered_plugin_mcp_tool_hook() -> Result<()> {
                 timeout_sec: 9,
                 status_message: Some("checking security policy".to_string()),
                 additional_context_limit: None,
-                source_path,
+                source_path: source_path.to_path_buf(),
                 source: HookSource::Plugin,
                 plugin_id: Some("demo@test".to_string()),
                 environment_id: None,
@@ -1046,7 +1046,7 @@ enabled = false
                 timeout_sec: 5,
                 status_message: None,
                 additional_context_limit: None,
-                source_path,
+                source_path: source_path.to_path_buf(),
                 source: HookSource::Plugin,
                 plugin_id: Some(plugin_id),
                 environment_id: None,
@@ -1241,7 +1241,7 @@ timeout = 5
                     timeout_sec: 5,
                     status_message: None,
                     additional_context_limit: None,
-                    source_path: project_config_path,
+                    source_path: project_config_path.to_path_buf(),
                     source: HookSource::Project,
                     plugin_id: None,
                     environment_id: None,
@@ -1323,8 +1323,8 @@ async fn hooks_list_uses_root_repo_hooks_for_linked_worktrees() -> Result<()> {
         }
     );
     assert_eq!(repo_hook.key, worktree_hook.key);
-    assert_eq!(repo_hook.source_path, repo_config_path);
-    assert_eq!(worktree_hook.source_path, repo_config_path);
+    assert_eq!(repo_hook.source_path, repo_config_path.to_path_buf());
+    assert_eq!(worktree_hook.source_path, repo_config_path.to_path_buf());
 
     let write_id = mcp
         .send_config_batch_write_request(ConfigBatchWriteParams {

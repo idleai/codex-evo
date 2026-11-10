@@ -359,7 +359,7 @@ async fn embedded_session_switch_routes_background_approval_and_restores_draft()
     app.start_agents_overview_session(
         &mut tui,
         &mut server,
-        Some(cwd.clone().abs()),
+        Some(cwd.clone()),
         /*managed_worktree*/ None,
         /*startup_draft*/ None,
     )
@@ -374,7 +374,7 @@ async fn embedded_session_switch_routes_background_approval_and_restores_draft()
     app.start_agents_overview_session(
         &mut tui,
         &mut server,
-        Some(cwd.abs()),
+        Some(cwd),
         /*managed_worktree*/ None,
         /*startup_draft*/ None,
     )

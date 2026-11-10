@@ -197,7 +197,7 @@ impl OnboardingScreen {
                 }) => (cwd, trust_target),
                 None => {
                     let trust_target =
-                        resolve_root_git_project_for_trust(LOCAL_FS.as_ref(), &config.cwd)
+                        resolve_root_git_project_for_trust(LOCAL_FS.as_ref(), config.local_cwd())
                             .await
                             .map(Into::into)
                             .unwrap_or_else(|| cwd.clone());

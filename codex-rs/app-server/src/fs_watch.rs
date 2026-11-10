@@ -132,7 +132,10 @@ impl FsWatchManager {
                             connection_id,
                             ServerNotification::FsChanged(FsChangedNotification {
                                 watch_id: task_watch_id.clone(),
-                                changed_paths,
+                                changed_paths: changed_paths
+                                    .into_iter()
+                                    .map(codex_utils_absolute_path::AbsolutePathBuf::into_path_buf)
+                                    .collect(),
                             }),
                         )
                         .await;

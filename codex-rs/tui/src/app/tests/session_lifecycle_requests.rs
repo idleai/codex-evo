@@ -2011,10 +2011,11 @@ async fn check_dynamic_tool_requests(
             codex_login::AuthKeyringBackendKind::default(),
         )?;
     }
+    let cwd = app.config.cwd.clone().abs();
     app.config
         .permissions
         .set_permission_profile(PermissionProfile::workspace_write_with(
-            &[app.config.cwd.clone()],
+            &[cwd],
             codex_protocol::permissions::NetworkSandboxPolicy::Restricted,
             /*exclude_tmpdir_env_var*/ true,
             /*exclude_slash_tmp*/ true,
@@ -2193,7 +2194,7 @@ async fn check_dynamic_tool_requests(
             params: codex_app_server_protocol::ProjectCreateParams {
                 name: "Source project".to_string(),
                 roots: vec![codex_app_server_protocol::ProjectRoot {
-                    path: app.config.cwd.clone(),
+                    path: app.config.cwd.clone().abs(),
                 }],
                 metadata: None,
                 idempotency_key: "source-project".to_string(),
@@ -3783,7 +3784,7 @@ model_reasoning_effort = "low"
     fs::write(source.join("AGENTS.md"), "dirty source instructions")?;
     app.config.codex_home = home.clone().abs();
     app.config.sqlite = SqliteConfig::new_for_testing(home.clone().abs());
-    app.config.cwd = source.clone().abs();
+    app.config.cwd = source.clone();
     app.harness_overrides.permission_profile = Some(PermissionProfile::workspace_write());
     app.config = app.rebuild_config_for_cwd(source.clone()).await?;
     app.chat_widget
@@ -4314,7 +4315,7 @@ async fn changing_directory_preserves_project_trust_permissions_history_and_hook
         crate::legacy_core::config::set_project_trust_level(codex_home.path(), dir, trust)
             .map_err(|error| color_eyre::eyre::eyre!(error.to_string()))?;
     }
-    app.config.cwd = current.clone().abs();
+    app.config.cwd = current.clone();
     app.chat_widget
         .handle_thread_session_quiet(test_thread_session(ThreadId::new(), current.clone()));
     let (no_list, nick, role, runtime, background) = (None, None, None, None, Some("background"));
@@ -4456,7 +4457,7 @@ async fn changing_directory_preserves_project_trust_permissions_history_and_hook
             Box::pin(app.finish_working_directory_change(&mut tui, &mut server, pending)).await;
         }
         assert_eq!(app.chat_widget.thread_id(), Some(original));
-        assert_eq!(app.config.cwd, current.clone().abs());
+        assert_eq!(app.config.cwd, current.clone());
         assert!(app.runtime_working_directory_override.is_none());
         assert!(
             recorded_params(&requests, "thread/start").is_empty(),
@@ -4530,7 +4531,7 @@ async fn changing_directory_preserves_project_trust_permissions_history_and_hook
         app.change_working_directory(&mut tui, &mut server, path.clone().abs())
             .await;
         assert_eq!(app.chat_widget.thread_id(), Some(original));
-        assert_eq!(app.config.cwd, current.clone().abs());
+        assert_eq!(app.config.cwd, current.clone());
         assert_eq!(rec(&requests, "thread/unsubscribe").len(), expected);
         assert!(history().join("").contains("change"));
     }
@@ -4542,7 +4543,7 @@ async fn changing_directory_preserves_project_trust_permissions_history_and_hook
     app.handle_event(&mut tui, &mut server, change(original, "../trusted"))
         .await?;
     // Dispatch only queues /cd: configuration loading happens on a fresh loop iteration.
-    assert_eq!(app.config.cwd, current.clone().abs());
+    assert_eq!(app.config.cwd, current.clone());
     let pending = app
         .pending_working_directory_change
         .take()
@@ -4556,7 +4557,7 @@ async fn changing_directory_preserves_project_trust_permissions_history_and_hook
     let meta = codex_rollout::read_session_meta_line(&forked_rollout).await?;
     let base = meta.meta.history_base;
     assert!(copied.contains("saved history") || base.is_some_and(|h| h.thread_id == original));
-    assert_eq!(app.config.cwd, trusted.clone().abs());
+    assert_eq!(app.config.cwd, trusted.clone());
     let configured = app.primary_session_configured.as_ref().expect("session");
     let source = codex_utils_path_uri::PathUri::from_abs_path(&agents.abs());
     assert!(configured.instruction_source_paths.contains(&source));
@@ -4616,8 +4617,8 @@ async fn changing_directory_preserves_project_trust_permissions_history_and_hook
     let found = |id: ThreadId| removed.iter().any(|p| p["threadId"] == id.to_string());
     assert!([original, child].into_iter().all(found));
     let retained = server.thread_read(original, /*include_turns*/ false);
-    assert_eq!(retained.await?.cwd, current.abs().canonicalize()?);
-    assert_eq!(app.chat_widget.config_ref().cwd, trusted.clone().abs());
+    assert_eq!(retained.await?.cwd, current.canonicalize()?);
+    assert_eq!(app.chat_widget.config_ref().cwd, trusted.clone());
     assert!(render_bottom_popup(&app.chat_widget, /*width*/ 80).contains("SessionStart"));
     app.chat_widget
         .handle_key_event(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE));
@@ -4647,7 +4648,7 @@ async fn changing_directory_preserves_project_trust_permissions_history_and_hook
     let untrusted_permissions = app.config.permissions.permission_profile().clone();
     app.change_working_directory(&mut tui, &mut server, trusted.clone().abs())
         .await;
-    assert_eq!(app.config.cwd, trusted.abs());
+    assert_eq!(app.config.cwd, trusted);
     assert_eq!(
         (
             app.config.permissions.approval_policy.value(),

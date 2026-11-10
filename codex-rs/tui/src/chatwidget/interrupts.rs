@@ -199,7 +199,9 @@ mod tests {
             turn_id: "turn".to_string(),
             environment_id: None,
             command: vec!["true".to_string()],
-            cwd: AbsolutePathBuf::current_dir().expect("current dir"),
+            cwd: AbsolutePathBuf::current_dir()
+                .expect("current dir")
+                .to_path_buf(),
             reason: None,
             network_approval_context: None,
             proposed_execpolicy_amendment: None,

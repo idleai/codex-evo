@@ -46,7 +46,6 @@ use std::collections::HashMap;
 use std::path::Path;
 use std::path::PathBuf;
 
-use codex_utils_absolute_path::AbsolutePathBuf;
 use unicode_segmentation::UnicodeSegmentation;
 
 /// Replacement for a tab character in rendered diff content.
@@ -310,11 +309,11 @@ fn quantize_rgb_to_ansi256(target: (u8, u8, u8)) -> Color {
 
 pub struct DiffSummary {
     changes: HashMap<PathBuf, FileChange>,
-    cwd: AbsolutePathBuf,
+    cwd: PathBuf,
 }
 
 impl DiffSummary {
-    pub(crate) fn new(changes: HashMap<PathBuf, FileChange>, cwd: AbsolutePathBuf) -> Self {
+    pub(crate) fn new(changes: HashMap<PathBuf, FileChange>, cwd: PathBuf) -> Self {
         Self { changes, cwd }
     }
 }

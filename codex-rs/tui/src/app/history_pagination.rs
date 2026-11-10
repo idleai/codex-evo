@@ -2,6 +2,7 @@
 
 use std::collections::HashSet;
 use std::ops::Range;
+use std::path::Path;
 
 use super::*;
 use crate::app_server_session::HISTORY_ITEM_PAGE_LIMIT;
@@ -147,7 +148,7 @@ impl App {
         turns: &[Turn],
         hidden_item_ids: &HashSet<&str>,
         thread_id: ThreadId,
-        cwd: &AbsolutePathBuf,
+        cwd: &Path,
         visibility: RawReasoningVisibility,
     ) {
         if hidden_item_ids.is_empty() {
@@ -221,7 +222,7 @@ impl App {
         turns: &[Turn],
         hidden_item_ids: &HashSet<&str>,
         thread_id: ThreadId,
-        cwd: &AbsolutePathBuf,
+        cwd: &Path,
         visibility: RawReasoningVisibility,
     ) -> Vec<Arc<dyn HistoryCell>> {
         let mut cells = Vec::new();

@@ -99,7 +99,16 @@ use tracing_subscriber::prelude::*;
 use url::Url;
 use uuid::Uuid;
 
-pub(crate) use codex_app_server_client::legacy_core;
+pub(crate) mod legacy_core {
+    pub(crate) mod config {
+        pub use crate::tui_config::Config;
+        pub use crate::tui_config::ConfigBuilder;
+        pub use codex_app_server_client::legacy_core::config::*;
+    }
+}
+
+mod remote_paths;
+mod tui_config;
 
 pub(crate) use worktree_startup::ManagedTuiWorktree;
 
@@ -411,13 +420,16 @@ async fn init_state_db_for_app_server_target(
     app_server_target: &AppServerTarget,
 ) -> std::io::Result<Option<StateDbHandle>> {
     match app_server_target {
-        AppServerTarget::Embedded => state_db::try_init(config).await.map(Some).map_err(|err| {
-            let database_path = codex_state::runtime_db_path_for_corruption_error(&err)
-                .unwrap_or_else(|| config.sqlite_config().state_db_path());
-            std::io::Error::other(LocalStateDbStartupError::new(database_path, err))
-        }),
+        AppServerTarget::Embedded => state_db::try_init(config.local_config())
+            .await
+            .map(Some)
+            .map_err(|err| {
+                let database_path = codex_state::runtime_db_path_for_corruption_error(&err)
+                    .unwrap_or_else(|| config.sqlite_config().state_db_path());
+                std::io::Error::other(LocalStateDbStartupError::new(database_path, err))
+            }),
         AppServerTarget::LocalDaemon { .. } | AppServerTarget::Remote { .. } => {
-            Ok(state_db::get_state_db(config).await)
+            Ok(state_db::get_state_db(config.local_config()).await)
         }
     }
 }
@@ -738,7 +750,7 @@ where
     let client = start_client(InProcessClientStartArgs {
         required_human_approval: true,
         arg0_paths,
-        config: Arc::new(config),
+        config: Arc::new(config.native_config()?),
         cli_overrides: cli_kv_overrides,
         loader_overrides,
         strict_config,

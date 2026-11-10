@@ -32,7 +32,7 @@ proxy_url = "http://127.0.0.1:43128"
         .await?;
     assert!(proxied.permissions.network.is_some());
     app.chat_widget
-        .set_permission_network(proxied.permissions.network);
+        .set_permission_network(proxied.permissions.network.clone());
     app.chat_widget.handle_server_notification(
         turn_started_notification(thread_id, "turn-1"),
         /*replay_kind*/ None,
@@ -273,8 +273,8 @@ async fn custom_permission_selection_scenario() -> Result<()> {
         .codex_home(client_home.path().into())
         .build()
         .await?;
-    app.config.codex_home = client_config.codex_home;
-    app.config.custom_permission_profiles = client_config.custom_permission_profiles;
+    app.config.codex_home = client_config.codex_home.clone();
+    app.config.custom_permission_profiles = client_config.custom_permission_profiles.clone();
     let selection = PermissionProfileSelection {
         profile_id: "shared".into(),
         approval_policy: Some(AskForApproval::Never),
@@ -295,7 +295,11 @@ async fn custom_permission_selection_scenario() -> Result<()> {
     );
     let settings = next_thread_settings_updated(&mut server, thread_id).await;
     let expected = PermissionProfile::from_legacy_sandbox_policy_for_cwd(
-        &settings.thread_settings.sandbox_policy.to_core(),
+        &settings
+            .thread_settings
+            .sandbox_policy
+            .try_to_core()
+            .expect("native sandbox"),
         settings.thread_settings.cwd.as_path(),
     );
     assert!(matches!(
@@ -511,7 +515,7 @@ async fn accepted_permissions_survive_directory_change_before_notification() -> 
         assert_ne!(app.chat_widget.thread_id(), Some(source));
         assert_eq!(
             (&app.config.cwd, app.config.permissions.permission_profile()),
-            (&destination, &PermissionProfile::read_only())
+            (&destination.to_path_buf(), &PermissionProfile::read_only())
         );
         assert_eq!(
             app.config.permissions.approval_policy.value(),

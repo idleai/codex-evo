@@ -506,6 +506,16 @@ impl ChatWidget {
     }
 
     fn apply_thread_settings(&mut self, mut settings: ThreadSettings) {
+        let permission_profile = match crate::remote_paths::permission_profile(
+            &settings.sandbox_policy,
+            settings.cwd.as_path(),
+        ) {
+            Ok(profile) => profile,
+            Err(error) => {
+                self.add_error_message(format!("Invalid server permissions: {error}"));
+                return;
+            }
+        };
         self.invalidate_permission_discovery();
         let cwd_changed = self.config.cwd != settings.cwd;
         self.apply_thread_settings_cwd(settings.cwd.clone());
@@ -524,10 +534,6 @@ impl ChatWidget {
         }
         self.set_approvals_reviewer(settings.approvals_reviewer.to_core());
 
-        let permission_profile = PermissionProfile::from_legacy_sandbox_policy_for_cwd(
-            &settings.sandbox_policy.to_core(),
-            settings.cwd.as_path(),
-        );
         let permission_snapshot = PermissionProfileSnapshot::from_session_snapshot(
             permission_profile,
             settings.active_permission_profile.take().map(Into::into),
@@ -574,12 +580,12 @@ impl ChatWidget {
         self.request_redraw();
     }
 
-    fn apply_thread_settings_cwd(&mut self, cwd: AbsolutePathBuf) {
+    fn apply_thread_settings_cwd(&mut self, cwd: PathBuf) {
         let previous_cwd = std::mem::replace(&mut self.config.cwd, cwd.clone());
         if previous_cwd != cwd {
             self.permission_discovery = None;
         }
-        self.current_cwd = Some(cwd.to_path_buf());
+        self.current_cwd = Some(cwd.clone());
         self.status_line_project_root_name_cache = None;
 
         if !self.config.workspace_roots.contains(&previous_cwd) {
@@ -593,9 +599,7 @@ impl ChatWidget {
                 self.config.workspace_roots.push(root);
             }
         }
-        self.config
-            .permissions
-            .set_workspace_roots(self.config.workspace_roots.clone());
+        self.config.sync_native_workspace_roots();
     }
 
     pub(crate) fn set_effective_collaboration_mode(&mut self, mode: CollaborationMode) {

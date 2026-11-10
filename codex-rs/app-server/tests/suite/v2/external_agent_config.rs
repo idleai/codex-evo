@@ -677,10 +677,7 @@ source = {:?}
         .find(|marketplace| marketplace.name == "debug")
         .expect("configured marketplace");
     assert_eq!(
-        marketplace
-            .path
-            .as_ref()
-            .map(codex_config::AbsolutePathBuf::as_path),
+        marketplace.path.as_deref(),
         Some(configured_marketplace_manifest.as_path())
     );
     let plugin = marketplace

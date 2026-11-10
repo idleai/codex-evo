@@ -398,9 +398,8 @@ pub(crate) async fn write_skill_enabled(
     path: PathUri,
     enabled: bool,
 ) -> Result<()> {
-    // TODO(anp): Support foreign skill paths through skills/config/write and persisted config.
-    // Both still require host-native paths, so retain that restriction here.
-    let path = path.to_abs_path()?;
+    // The app-server resolves this path on its own host.
+    let path = path.to_path_buf();
     let request_id = RequestId::String(format!("tui-skill-config-write-{}", Uuid::new_v4()));
     let _: SkillsConfigWriteResponse = request_handle
         .request_typed(ClientRequest::SkillsConfigWrite {

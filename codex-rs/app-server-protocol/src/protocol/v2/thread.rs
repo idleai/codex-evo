@@ -35,7 +35,6 @@ use codex_protocol::openai_models::ReasoningEffort;
 use codex_protocol::protocol::ThreadGoalStatus as CoreThreadGoalStatus;
 use codex_protocol::protocol::TokenUsage as CoreTokenUsage;
 use codex_protocol::protocol::TokenUsageInfo as CoreTokenUsageInfo;
-use codex_utils_absolute_path::AbsolutePathBuf;
 use codex_utils_path_uri::LegacyAppPathString;
 use codex_utils_path_uri::PathUri;
 use serde::Deserialize;
@@ -82,7 +81,11 @@ pub struct ThreadStartParams {
     /// Replace the thread's runtime workspace roots. Paths must be absolute.
     #[experimental("thread/start.runtimeWorkspaceRoots")]
     #[ts(optional = nullable)]
-    pub runtime_workspace_roots: Option<Vec<AbsolutePathBuf>>,
+    #[serde(
+        default,
+        deserialize_with = "crate::server_path::deserialize_optional_vec"
+    )]
+    pub runtime_workspace_roots: Option<Vec<PathBuf>>,
     #[experimental(nested)]
     #[ts(optional = nullable)]
     pub approval_policy: Option<AskForApproval>,
@@ -193,12 +196,14 @@ pub struct ThreadStartResponse {
     /// Saved list of disabled plugin IDs. Does not yet filter plugin capabilities.
     #[serde(default)]
     pub disabled_plugin_ids: Vec<String>,
-    pub cwd: AbsolutePathBuf,
+    #[serde(deserialize_with = "crate::server_path::deserialize")]
+    pub cwd: PathBuf,
     /// Thread-scoped runtime workspace roots used to materialize
     /// `:workspace_roots`.
     #[experimental("thread/start.runtimeWorkspaceRoots")]
     #[serde(default)]
-    pub runtime_workspace_roots: Vec<AbsolutePathBuf>,
+    #[serde(deserialize_with = "crate::server_path::deserialize_vec")]
+    pub runtime_workspace_roots: Vec<PathBuf>,
     /// Environment-native paths to instruction source files currently loaded for this thread.
     #[serde(default)]
     pub instruction_sources: Vec<LegacyAppPathString>,
@@ -305,7 +310,8 @@ pub struct ThreadSettings {
     /// Saved list of disabled plugin IDs. Does not yet filter plugin capabilities.
     #[serde(default)]
     pub disabled_plugin_ids: Vec<String>,
-    pub cwd: AbsolutePathBuf,
+    #[serde(deserialize_with = "crate::server_path::deserialize")]
+    pub cwd: PathBuf,
     pub approval_policy: AskForApproval,
     pub approvals_reviewer: ApprovalsReviewer,
     pub sandbox_policy: SandboxPolicy,
@@ -391,7 +397,11 @@ pub struct ThreadResumeParams {
     /// Replace the thread's runtime workspace roots. Paths must be absolute.
     #[experimental("thread/resume.runtimeWorkspaceRoots")]
     #[ts(optional = nullable)]
-    pub runtime_workspace_roots: Option<Vec<AbsolutePathBuf>>,
+    #[serde(
+        default,
+        deserialize_with = "crate::server_path::deserialize_optional_vec"
+    )]
+    pub runtime_workspace_roots: Option<Vec<PathBuf>>,
     #[experimental(nested)]
     #[ts(optional = nullable)]
     pub approval_policy: Option<AskForApproval>,
@@ -441,12 +451,14 @@ pub struct ThreadResumeResponse {
     /// Saved list of disabled plugin IDs. Does not yet filter plugin capabilities.
     #[serde(default)]
     pub disabled_plugin_ids: Vec<String>,
-    pub cwd: AbsolutePathBuf,
+    #[serde(deserialize_with = "crate::server_path::deserialize")]
+    pub cwd: PathBuf,
     /// Thread-scoped runtime workspace roots used to materialize
     /// `:workspace_roots`.
     #[experimental("thread/resume.runtimeWorkspaceRoots")]
     #[serde(default)]
-    pub runtime_workspace_roots: Vec<AbsolutePathBuf>,
+    #[serde(deserialize_with = "crate::server_path::deserialize_vec")]
+    pub runtime_workspace_roots: Vec<PathBuf>,
     /// Environment-native paths to instruction source files currently loaded for this thread.
     #[serde(default)]
     pub instruction_sources: Vec<LegacyAppPathString>,
@@ -612,7 +624,11 @@ pub struct ThreadForkParams {
     /// Replace the thread's runtime workspace roots. Paths must be absolute.
     #[experimental("thread/fork.runtimeWorkspaceRoots")]
     #[ts(optional = nullable)]
-    pub runtime_workspace_roots: Option<Vec<AbsolutePathBuf>>,
+    #[serde(
+        default,
+        deserialize_with = "crate::server_path::deserialize_optional_vec"
+    )]
+    pub runtime_workspace_roots: Option<Vec<PathBuf>>,
     #[experimental(nested)]
     #[ts(optional = nullable)]
     pub approval_policy: Option<AskForApproval>,
@@ -676,12 +692,14 @@ pub struct ThreadForkResponse {
     /// Saved list of disabled plugin IDs. Does not yet filter plugin capabilities.
     #[serde(default)]
     pub disabled_plugin_ids: Vec<String>,
-    pub cwd: AbsolutePathBuf,
+    #[serde(deserialize_with = "crate::server_path::deserialize")]
+    pub cwd: PathBuf,
     /// Thread-scoped runtime workspace roots used to materialize
     /// `:workspace_roots`.
     #[experimental("thread/fork.runtimeWorkspaceRoots")]
     #[serde(default)]
-    pub runtime_workspace_roots: Vec<AbsolutePathBuf>,
+    #[serde(deserialize_with = "crate::server_path::deserialize_vec")]
+    pub runtime_workspace_roots: Vec<PathBuf>,
     /// Environment-native paths to instruction source files currently loaded for this thread.
     #[serde(default)]
     pub instruction_sources: Vec<LegacyAppPathString>,

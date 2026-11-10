@@ -18,7 +18,6 @@ use codex_app_server_protocol::SkillsListEntry;
 use codex_app_server_protocol::SkillsListResponse;
 use codex_connectors::AppInfo;
 use codex_protocol::parse_command::ParsedCommand;
-use codex_utils_absolute_path::AbsolutePathBuf;
 use codex_utils_path_uri::LegacyAppPathString;
 use codex_utils_path_uri::PathUri;
 use codex_utils_plugins::mention_syntax::PLUGIN_TEXT_MENTION_SIGIL;
@@ -180,10 +179,10 @@ impl ChatWidget {
     }
 }
 
-fn skills_for_cwd(cwd: &AbsolutePathBuf, skills_entries: &[SkillsListEntry]) -> Vec<SkillMetadata> {
+fn skills_for_cwd(cwd: &std::path::Path, skills_entries: &[SkillsListEntry]) -> Vec<SkillMetadata> {
     skills_entries
         .iter()
-        .find(|entry| entry.cwd.as_path() == cwd.as_path())
+        .find(|entry| entry.cwd.as_path() == cwd)
         .map(|entry| entry.skills.clone())
         .unwrap_or_default()
 }

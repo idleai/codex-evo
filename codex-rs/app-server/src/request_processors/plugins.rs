@@ -82,8 +82,12 @@ fn plugin_skills_to_info<'a>(
                 codex_app_server_protocol::SkillInterface {
                     display_name: interface.display_name,
                     short_description: interface.short_description,
-                    icon_small: interface.icon_small,
-                    icon_large: interface.icon_large,
+                    icon_small: interface
+                        .icon_small
+                        .map(codex_utils_absolute_path::AbsolutePathBuf::into_path_buf),
+                    icon_large: interface
+                        .icon_large
+                        .map(codex_utils_absolute_path::AbsolutePathBuf::into_path_buf),
                     icon_small_url: None,
                     icon_large_url: None,
                     brand_color: interface.brand_color,
@@ -109,20 +113,32 @@ fn local_plugin_interface_to_info(interface: PluginManifestInterface) -> PluginI
         terms_of_service_url: interface.terms_of_service_url,
         default_prompt: interface.default_prompt,
         brand_color: interface.brand_color,
-        composer_icon: interface.composer_icon,
+        composer_icon: interface
+            .composer_icon
+            .map(codex_utils_absolute_path::AbsolutePathBuf::into_path_buf),
         composer_icon_url: None,
-        logo: interface.logo,
-        logo_dark: interface.logo_dark,
+        logo: interface
+            .logo
+            .map(codex_utils_absolute_path::AbsolutePathBuf::into_path_buf),
+        logo_dark: interface
+            .logo_dark
+            .map(codex_utils_absolute_path::AbsolutePathBuf::into_path_buf),
         logo_url: None,
         logo_url_dark: None,
-        screenshots: interface.screenshots,
+        screenshots: interface
+            .screenshots
+            .into_iter()
+            .map(codex_utils_absolute_path::AbsolutePathBuf::into_path_buf)
+            .collect(),
         screenshot_urls: Vec::new(),
     }
 }
 
 fn marketplace_plugin_source_to_info(source: MarketplacePluginSource) -> PluginSource {
     match source {
-        MarketplacePluginSource::Local { path } => PluginSource::Local { path },
+        MarketplacePluginSource::Local { path } => PluginSource::Local {
+            path: path.into_path_buf(),
+        },
         MarketplacePluginSource::Git {
             url,
             path,
@@ -556,7 +572,11 @@ impl PluginRequestProcessor {
             marketplace_kinds,
             force_refetch,
         } = params;
-        let roots = cwds.unwrap_or_default();
+        let roots = cwds
+            .unwrap_or_default()
+            .into_iter()
+            .map(native_request_path)
+            .collect::<Result<Vec<_>, _>>()?;
         let explicit_marketplace_kinds = marketplace_kinds.is_some();
         let marketplace_kinds =
             marketplace_kinds.unwrap_or_else(|| vec![PluginListMarketplaceKind::Local]);
@@ -631,7 +651,7 @@ impl PluginRequestProcessor {
                         .into_iter()
                         .map(|marketplace| PluginMarketplaceEntry {
                             name: marketplace.name,
-                            path: Some(marketplace.path),
+                            path: Some(marketplace.path.into_path_buf()),
                             interface: marketplace.interface.map(|interface| {
                                 MarketplaceInterface {
                                     display_name: interface.display_name,
@@ -653,7 +673,7 @@ impl PluginRequestProcessor {
                         .errors
                         .into_iter()
                         .map(|err| codex_app_server_protocol::MarketplaceLoadErrorInfo {
-                            marketplace_path: err.path,
+                            marketplace_path: err.path.into_path_buf(),
                             message: err.message,
                         })
                         .collect(),
@@ -828,7 +848,11 @@ impl PluginRequestProcessor {
             cwds,
             install_suggestion_plugin_names,
         } = params;
-        let roots = cwds.unwrap_or_default();
+        let roots = cwds
+            .unwrap_or_default()
+            .into_iter()
+            .map(native_request_path)
+            .collect::<Result<Vec<_>, _>>()?;
         let install_suggestion_plugin_names = install_suggestion_plugin_names
             .unwrap_or_default()
             .into_iter()
@@ -930,7 +954,7 @@ impl PluginRequestProcessor {
 
                         (!plugins.is_empty()).then_some(PluginMarketplaceEntry {
                             name: marketplace.name,
-                            path: Some(marketplace.path),
+                            path: Some(marketplace.path.into_path_buf()),
                             interface: marketplace.interface.map(|interface| {
                                 MarketplaceInterface {
                                     display_name: interface.display_name,
@@ -944,7 +968,7 @@ impl PluginRequestProcessor {
                     .errors
                     .into_iter()
                     .map(|err| codex_app_server_protocol::MarketplaceLoadErrorInfo {
-                        marketplace_path: err.path,
+                        marketplace_path: err.path.into_path_buf(),
                         message: err.message,
                     })
                     .collect(),
@@ -1016,7 +1040,7 @@ impl PluginRequestProcessor {
             plugin_name,
         } = params;
         let read_source = match (marketplace_path, remote_marketplace_name) {
-            (Some(marketplace_path), None) => Ok(marketplace_path),
+            (Some(marketplace_path), None) => Ok(native_request_path(marketplace_path)?),
             (None, Some(remote_marketplace_name)) => Err(remote_marketplace_name),
             (Some(_), Some(_)) | (None, None) => {
                 return Err(invalid_request(
@@ -1137,7 +1161,9 @@ impl PluginRequestProcessor {
                 };
                 PluginDetail {
                     marketplace_name: outcome.marketplace_name,
-                    marketplace_path: outcome.marketplace_path,
+                    marketplace_path: outcome
+                        .marketplace_path
+                        .map(codex_utils_absolute_path::AbsolutePathBuf::into_path_buf),
                     summary: PluginSummary {
                         id: outcome.plugin.id,
                         remote_plugin_id: None,
@@ -1278,6 +1304,7 @@ impl PluginRequestProcessor {
             discoverability,
             share_targets,
         } = params;
+        let plugin_path = native_request_path(plugin_path)?;
         if let Some(remote_plugin_id) = remote_plugin_id.as_ref()
             && (remote_plugin_id.is_empty() || !is_valid_remote_plugin_id(remote_plugin_id))
         {
@@ -1397,7 +1424,8 @@ impl PluginRequestProcessor {
             let plugin = remote_plugin_summary_to_info(summary, plugin_policy);
             PluginShareListItem {
                 plugin,
-                local_plugin_path,
+                local_plugin_path: local_plugin_path
+                    .map(codex_utils_absolute_path::AbsolutePathBuf::into_path_buf),
             }
         })
         .collect();
@@ -1431,9 +1459,9 @@ impl PluginRequestProcessor {
             remote_plugin_id: result.remote_plugin_id,
             plugin_id: result.plugin_id,
             plugin_name: result.plugin_name,
-            plugin_path: result.plugin_path,
+            plugin_path: result.plugin_path.into_path_buf(),
             marketplace_name: result.marketplace_name,
-            marketplace_path: result.marketplace_path,
+            marketplace_path: result.marketplace_path.into_path_buf(),
             remote_version: result.remote_version,
         })
     }
@@ -1489,7 +1517,7 @@ impl PluginRequestProcessor {
             plugin_name,
         } = params;
         let marketplace_path = match (marketplace_path, remote_marketplace_name) {
-            (Some(marketplace_path), None) => marketplace_path,
+            (Some(marketplace_path), None) => native_request_path(marketplace_path)?,
             (None, Some(remote_marketplace_name)) => {
                 return self
                     .remote_plugin_install_response(

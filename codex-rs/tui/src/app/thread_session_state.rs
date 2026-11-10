@@ -155,7 +155,6 @@ mod tests {
     use crate::app::test_support::make_test_app;
     use crate::app::thread_events::ThreadEventChannel;
     use crate::legacy_core::config::PermissionProfileSnapshot;
-    use crate::test_support::PathBufExt;
     use crate::test_support::test_path_buf;
     use codex_app_server_protocol::AskForApproval;
     use codex_config::types::ApprovalsReviewer;
@@ -186,8 +185,8 @@ mod tests {
             approvals_reviewer: ApprovalsReviewer::User,
             permission_profile: PermissionProfile::read_only(),
             active_permission_profile: None,
-            cwd: cwd.abs(),
-            runtime_workspace_roots: vec![cwd.abs()],
+            cwd: cwd.clone(),
+            runtime_workspace_roots: vec![cwd],
             instruction_source_paths: Vec::new(),
             reasoning_effort: None,
             collaboration_mode: None,
@@ -434,7 +433,7 @@ mod tests {
             recency_at: Some(2),
             status: codex_app_server_protocol::ThreadStatus::Idle,
             path: None,
-            cwd: test_path_buf("/tmp/read").abs(),
+            cwd: test_path_buf("/tmp/read"),
             cli_version: "0.0.0".to_string(),
             source: codex_app_server_protocol::SessionSource::Unknown,
             can_accept_direct_input: None,

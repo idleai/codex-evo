@@ -44,7 +44,7 @@ async fn plugins_popup_uses_product_labels_for_remote_and_personal_tabs() {
             ),
             PluginMarketplaceEntry {
                 name: "codex-curated".to_string(),
-                path: Some(plugins_test_personal_marketplace_path()),
+                path: Some(plugins_test_personal_marketplace_path().to_path_buf()),
                 interface: Some(MarketplaceInterface {
                     display_name: Some("Personal".to_string()),
                 }),
@@ -132,7 +132,7 @@ async fn plugins_popup_preserves_workspace_tab_across_load_and_detail_navigation
     chat.add_plugins_output();
     let cwd = chat.config.cwd.clone();
     chat.on_plugins_loaded(
-        cwd.to_path_buf(),
+        cwd.clone(),
         Ok(plugins_test_response(vec![
             plugins_test_curated_marketplace(Vec::new()),
         ])),
@@ -145,7 +145,7 @@ async fn plugins_popup_preserves_workspace_tab_across_load_and_detail_navigation
     );
 
     chat.on_plugin_remote_sections_loaded(
-        cwd.to_path_buf(),
+        cwd.clone(),
         vec![workspace_marketplace.clone()],
         Vec::new(),
     );
@@ -159,7 +159,7 @@ async fn plugins_popup_preserves_workspace_tab_across_load_and_detail_navigation
 
     chat.open_plugin_detail_loading_popup("Buildkite");
     chat.open_plugins_list(
-        cwd.to_path_buf(),
+        cwd,
         plugins_test_response(vec![
             plugins_test_curated_marketplace(Vec::new()),
             workspace_marketplace,
@@ -196,7 +196,7 @@ async fn plugins_popup_remote_local_dedupe_prefers_installed_remote_after_mapped
         plugins_test_response(vec![plugins_test_curated_marketplace(vec![local_summary])]),
     );
     chat.on_plugin_remote_sections_loaded(
-        cwd.to_path_buf(),
+        cwd,
         vec![plugins_test_remote_marketplace(
             "workspace-shared-with-me-private",
             "Shared with me",
@@ -256,14 +256,14 @@ async fn plugin_detail_not_installable_plugin_disables_install_action() {
     );
     let cwd = chat.config.cwd.clone();
     chat.on_plugins_loaded(
-        cwd.to_path_buf(),
+        cwd.clone(),
         Ok(plugins_test_response(vec![
             plugins_test_curated_marketplace(vec![summary.clone()]),
         ])),
     );
     chat.add_plugins_output();
     chat.on_plugin_detail_loaded(
-        cwd.to_path_buf(),
+        cwd,
         Ok(PluginReadResponse {
             plugin: plugins_test_detail(summary, Some("Internal only."), &[], &[], &[], &[]),
         }),

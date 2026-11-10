@@ -2547,13 +2547,10 @@
           ]
         },
         "marketplacePath": {
-          "anyOf": [
-            {
-              "$ref": "#/definitions/AbsolutePathBuf"
-            },
-            {
-              "type": "null"
-            }
+          "default": null,
+          "type": [
+            "string",
+            "null"
           ]
         },
         "pluginName": {
@@ -2574,9 +2571,10 @@
     "PluginInstalledParams": {
       "properties": {
         "cwds": {
+          "default": null,
           "description": "Optional working directories used to discover repo marketplaces.",
           "items": {
-            "$ref": "#/definitions/AbsolutePathBuf"
+            "type": "string"
           },
           "type": [
             "array",
@@ -2609,9 +2607,10 @@
     "PluginListParams": {
       "properties": {
         "cwds": {
+          "default": null,
           "description": "Optional working directories used to discover repo marketplaces. When omitted, only home-scoped marketplaces and the official curated marketplace are considered.",
           "items": {
-            "$ref": "#/definitions/AbsolutePathBuf"
+            "type": "string"
           },
           "type": [
             "array",
@@ -2638,13 +2637,10 @@
     "PluginReadParams": {
       "properties": {
         "marketplacePath": {
-          "anyOf": [
-            {
-              "$ref": "#/definitions/AbsolutePathBuf"
-            },
-            {
-              "type": "null"
-            }
+          "default": null,
+          "type": [
+            "string",
+            "null"
           ]
         },
         "pluginName": {
@@ -2736,7 +2732,7 @@
           ]
         },
         "pluginPath": {
-          "$ref": "#/definitions/AbsolutePathBuf"
+          "type": "string"
         },
         "remotePluginId": {
           "type": [
@@ -4226,7 +4222,7 @@
             "writableRoots": {
               "default": [],
               "items": {
-                "$ref": "#/definitions/AbsolutePathBuf"
+                "type": "string"
               },
               "type": "array"
             }
@@ -4345,15 +4341,12 @@
           ]
         },
         "path": {
-          "anyOf": [
-            {
-              "$ref": "#/definitions/AbsolutePathBuf"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "description": "Path-based selector."
+          "default": null,
+          "description": "Path-based selector.",
+          "type": [
+            "string",
+            "null"
+          ]
         }
       },
       "required": [
@@ -4365,7 +4358,7 @@
       "properties": {
         "extraRoots": {
           "items": {
-            "$ref": "#/definitions/AbsolutePathBuf"
+            "type": "string"
           },
           "type": "array"
         }

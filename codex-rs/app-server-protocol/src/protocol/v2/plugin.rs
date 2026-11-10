@@ -9,7 +9,6 @@ use codex_protocol::protocol::SkillInterface as CoreSkillInterface;
 use codex_protocol::protocol::SkillMetadata as CoreSkillMetadata;
 use codex_protocol::protocol::SkillScope as CoreSkillScope;
 use codex_protocol::protocol::SkillToolDependency as CoreSkillToolDependency;
-use codex_utils_absolute_path::AbsolutePathBuf;
 use codex_utils_path_uri::LegacyAppPathString;
 use serde::Deserialize;
 use serde::Serialize;
@@ -39,7 +38,8 @@ pub struct SkillsListResponse {
 #[serde(rename_all = "camelCase")]
 #[ts(export_to = "v2/")]
 pub struct SkillsExtraRootsSetParams {
-    pub extra_roots: Vec<AbsolutePathBuf>,
+    #[serde(deserialize_with = "crate::server_path::deserialize_vec")]
+    pub extra_roots: Vec<PathBuf>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, JsonSchema, TS)]
@@ -82,7 +82,8 @@ pub struct MarketplaceAddParams {
 #[ts(export_to = "v2/")]
 pub struct MarketplaceAddResponse {
     pub marketplace_name: String,
-    pub installed_root: AbsolutePathBuf,
+    #[serde(deserialize_with = "crate::server_path::deserialize")]
+    pub installed_root: PathBuf,
     pub already_added: bool,
 }
 
@@ -98,7 +99,8 @@ pub struct MarketplaceRemoveParams {
 #[ts(export_to = "v2/")]
 pub struct MarketplaceRemoveResponse {
     pub marketplace_name: String,
-    pub installed_root: Option<AbsolutePathBuf>,
+    #[serde(default, deserialize_with = "crate::server_path::deserialize_optional")]
+    pub installed_root: Option<PathBuf>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, JsonSchema, TS)]
@@ -114,7 +116,8 @@ pub struct MarketplaceUpgradeParams {
 #[ts(export_to = "v2/")]
 pub struct MarketplaceUpgradeResponse {
     pub selected_marketplaces: Vec<String>,
-    pub upgraded_roots: Vec<AbsolutePathBuf>,
+    #[serde(deserialize_with = "crate::server_path::deserialize_vec")]
+    pub upgraded_roots: Vec<PathBuf>,
     pub errors: Vec<MarketplaceUpgradeErrorInfo>,
 }
 
@@ -133,7 +136,11 @@ pub struct PluginListParams {
     /// Optional working directories used to discover repo marketplaces. When omitted,
     /// only home-scoped marketplaces and the official curated marketplace are considered.
     #[ts(optional = nullable)]
-    pub cwds: Option<Vec<AbsolutePathBuf>>,
+    #[serde(
+        default,
+        deserialize_with = "crate::server_path::deserialize_optional_vec"
+    )]
+    pub cwds: Option<Vec<PathBuf>>,
     /// Optional marketplace kind filter. When omitted, only local marketplaces are queried, plus
     /// the default remote catalog when enabled by feature flag.
     #[ts(optional = nullable)]
@@ -149,7 +156,11 @@ pub struct PluginListParams {
 pub struct PluginInstalledParams {
     /// Optional working directories used to discover repo marketplaces.
     #[ts(optional = nullable)]
-    pub cwds: Option<Vec<AbsolutePathBuf>>,
+    #[serde(
+        default,
+        deserialize_with = "crate::server_path::deserialize_optional_vec"
+    )]
+    pub cwds: Option<Vec<PathBuf>>,
     /// Additional uninstalled plugin names that should be returned when present locally.
     /// This is used by mention surfaces that intentionally expose install entrypoints.
     #[ts(optional = nullable)]
@@ -244,7 +255,8 @@ pub struct PluginReconcileChangedPlugin {
 #[serde(rename_all = "camelCase")]
 #[ts(export_to = "v2/")]
 pub struct MarketplaceLoadErrorInfo {
-    pub marketplace_path: AbsolutePathBuf,
+    #[serde(deserialize_with = "crate::server_path::deserialize")]
+    pub marketplace_path: PathBuf,
     pub message: String,
 }
 
@@ -253,7 +265,8 @@ pub struct MarketplaceLoadErrorInfo {
 #[ts(export_to = "v2/")]
 pub struct PluginReadParams {
     #[ts(optional = nullable)]
-    pub marketplace_path: Option<AbsolutePathBuf>,
+    #[serde(default, deserialize_with = "crate::server_path::deserialize_optional")]
+    pub marketplace_path: Option<PathBuf>,
     #[ts(optional = nullable)]
     pub remote_marketplace_name: Option<String>,
     pub plugin_name: String,
@@ -286,7 +299,8 @@ pub struct PluginSkillReadResponse {
 #[serde(rename_all = "camelCase")]
 #[ts(export_to = "v2/")]
 pub struct PluginShareSaveParams {
-    pub plugin_path: AbsolutePathBuf,
+    #[serde(deserialize_with = "crate::server_path::deserialize")]
+    pub plugin_path: PathBuf,
     #[ts(optional = nullable)]
     pub remote_plugin_id: Option<String>,
     #[ts(optional = nullable)]
@@ -348,9 +362,11 @@ pub struct PluginShareCheckoutResponse {
     pub remote_plugin_id: String,
     pub plugin_id: String,
     pub plugin_name: String,
-    pub plugin_path: AbsolutePathBuf,
+    #[serde(deserialize_with = "crate::server_path::deserialize")]
+    pub plugin_path: PathBuf,
     pub marketplace_name: String,
-    pub marketplace_path: AbsolutePathBuf,
+    #[serde(deserialize_with = "crate::server_path::deserialize")]
+    pub marketplace_path: PathBuf,
     pub remote_version: Option<String>,
 }
 
@@ -371,7 +387,8 @@ pub struct PluginShareDeleteResponse {}
 #[ts(export_to = "v2/")]
 pub struct PluginShareListItem {
     pub plugin: PluginSummary,
-    pub local_plugin_path: Option<AbsolutePathBuf>,
+    #[serde(default, deserialize_with = "crate::server_path::deserialize_optional")]
+    pub local_plugin_path: Option<PathBuf>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq, JsonSchema, TS)]
@@ -497,9 +514,11 @@ pub struct SkillInterface {
     #[ts(optional)]
     pub short_description: Option<String>,
     #[ts(optional)]
-    pub icon_small: Option<AbsolutePathBuf>,
+    #[serde(default, deserialize_with = "crate::server_path::deserialize_optional")]
+    pub icon_small: Option<PathBuf>,
     #[ts(optional)]
-    pub icon_large: Option<AbsolutePathBuf>,
+    #[serde(default, deserialize_with = "crate::server_path::deserialize_optional")]
+    pub icon_large: Option<PathBuf>,
     /// Remote small icon URL from the plugin catalog.
     pub icon_small_url: Option<String>,
     /// Remote large icon URL from the plugin catalog.
@@ -597,7 +616,8 @@ pub struct HookMetadata {
     /// Configured `additionalContext` spill threshold.
     /// `null` uses 2,500 tokens; `0` disables spilling.
     pub additional_context_limit: Option<usize>,
-    pub source_path: AbsolutePathBuf,
+    #[serde(deserialize_with = "crate::server_path::deserialize")]
+    pub source_path: PathBuf,
     pub source: HookSource,
     pub plugin_id: Option<String>,
     /// The owning execution environment, if this hook came from its requirements.
@@ -624,7 +644,8 @@ pub struct PluginMarketplaceEntry {
     pub name: String,
     /// Local marketplace file path when the marketplace is backed by a local file.
     /// Remote-only catalog marketplaces do not have a local path.
-    pub path: Option<AbsolutePathBuf>,
+    #[serde(default, deserialize_with = "crate::server_path::deserialize_optional")]
+    pub path: Option<PathBuf>,
     pub interface: Option<MarketplaceInterface>,
     pub plugins: Vec<PluginSummary>,
 }
@@ -762,7 +783,8 @@ pub struct PluginShareContext {
 #[ts(export_to = "v2/")]
 pub struct PluginDetail {
     pub marketplace_name: String,
-    pub marketplace_path: Option<AbsolutePathBuf>,
+    #[serde(default, deserialize_with = "crate::server_path::deserialize_optional")]
+    pub marketplace_path: Option<PathBuf>,
     pub summary: PluginSummary,
     pub share_url: Option<String>,
     pub description: Option<String>,
@@ -886,19 +908,23 @@ pub struct PluginInterface {
     pub default_prompt: Option<Vec<String>>,
     pub brand_color: Option<String>,
     /// Local composer icon path, resolved from the installed plugin package.
-    pub composer_icon: Option<AbsolutePathBuf>,
+    #[serde(default, deserialize_with = "crate::server_path::deserialize_optional")]
+    pub composer_icon: Option<PathBuf>,
     /// Remote composer icon URL from the plugin catalog.
     pub composer_icon_url: Option<String>,
     /// Local logo path, resolved from the installed plugin package.
-    pub logo: Option<AbsolutePathBuf>,
+    #[serde(default, deserialize_with = "crate::server_path::deserialize_optional")]
+    pub logo: Option<PathBuf>,
     /// Local dark-mode logo path, resolved from the installed plugin package.
-    pub logo_dark: Option<AbsolutePathBuf>,
+    #[serde(default, deserialize_with = "crate::server_path::deserialize_optional")]
+    pub logo_dark: Option<PathBuf>,
     /// Remote logo URL from the plugin catalog.
     pub logo_url: Option<String>,
     /// Remote dark-mode logo URL from the plugin catalog.
     pub logo_url_dark: Option<String>,
     /// Local screenshot paths, resolved from the installed plugin package.
-    pub screenshots: Vec<AbsolutePathBuf>,
+    #[serde(deserialize_with = "crate::server_path::deserialize_vec")]
+    pub screenshots: Vec<PathBuf>,
     /// Remote screenshot URLs from the plugin catalog.
     pub screenshot_urls: Vec<String>,
 }
@@ -910,7 +936,10 @@ pub struct PluginInterface {
 pub enum PluginSource {
     #[serde(rename_all = "camelCase")]
     #[ts(rename_all = "camelCase")]
-    Local { path: AbsolutePathBuf },
+    Local {
+        #[serde(deserialize_with = "crate::server_path::deserialize")]
+        path: PathBuf,
+    },
     #[serde(rename_all = "camelCase")]
     #[ts(rename_all = "camelCase")]
     Git {
@@ -939,7 +968,8 @@ pub enum PluginSource {
 pub struct SkillsConfigWriteParams {
     /// Path-based selector.
     #[ts(optional = nullable)]
-    pub path: Option<AbsolutePathBuf>,
+    #[serde(default, deserialize_with = "crate::server_path::deserialize_optional")]
+    pub path: Option<PathBuf>,
     /// Name-based selector.
     #[ts(optional = nullable)]
     pub name: Option<String>,
@@ -958,7 +988,8 @@ pub struct SkillsConfigWriteResponse {
 #[ts(export_to = "v2/")]
 pub struct PluginInstallParams {
     #[ts(optional = nullable)]
-    pub marketplace_path: Option<AbsolutePathBuf>,
+    #[serde(default, deserialize_with = "crate::server_path::deserialize_optional")]
+    pub marketplace_path: Option<PathBuf>,
     #[ts(optional = nullable)]
     pub remote_marketplace_name: Option<String>,
     /// Client-generated identifier used to correlate one installation attempt.
@@ -1010,8 +1041,12 @@ impl From<CoreSkillInterface> for SkillInterface {
             short_description: value.short_description,
             brand_color: value.brand_color,
             default_prompt: value.default_prompt,
-            icon_small: value.icon_small,
-            icon_large: value.icon_large,
+            icon_small: value
+                .icon_small
+                .map(codex_utils_absolute_path::AbsolutePathBuf::into_path_buf),
+            icon_large: value
+                .icon_large
+                .map(codex_utils_absolute_path::AbsolutePathBuf::into_path_buf),
             icon_small_url: None,
             icon_large_url: None,
         }

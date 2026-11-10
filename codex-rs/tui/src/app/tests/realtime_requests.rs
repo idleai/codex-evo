@@ -2033,7 +2033,7 @@ async fn overridden_voice_save_keeps_effective_voice() -> Result<()> {
                 codex_protocol::config_types::TrustLevel::Trusted,
             )
             .map_err(|error| color_eyre::eyre::eyre!(error.to_string()))?;
-            app.config.cwd = AbsolutePathBuf::from_absolute_path(project.path())?;
+            app.config.cwd = AbsolutePathBuf::from_absolute_path(project.path())?.to_path_buf();
             app.chat_widget
                 .handle_thread_session_quiet(test_thread_session(
                     ThreadId::new(),

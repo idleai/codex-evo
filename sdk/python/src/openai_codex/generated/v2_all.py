@@ -840,9 +840,7 @@ class PackagedDefaultsConfigLayerSource(BaseModel):
     model_config = ConfigDict(
         populate_by_name=True,
     )
-    file: Annotated[
-        AbsolutePathBuf, Field(description="Path to the packaged default configuration file.")
-    ]
+    file: Annotated[str, Field(description="Path to the packaged default configuration file.")]
     type: Annotated[
         Literal["packagedDefaults"], Field(title="PackagedDefaultsConfigLayerSourceType")
     ]
@@ -862,7 +860,7 @@ class SystemConfigLayerSource(BaseModel):
         populate_by_name=True,
     )
     file: Annotated[
-        AbsolutePathBuf,
+        str,
         Field(
             description="This is the path to the system config.toml file, though it is not guaranteed to exist."
         ),
@@ -891,7 +889,7 @@ class UserConfigLayerSource(BaseModel):
         populate_by_name=True,
     )
     file: Annotated[
-        AbsolutePathBuf,
+        str,
         Field(
             description="This is the path to the user's config.toml file, though it is not guaranteed to exist."
         ),
@@ -909,7 +907,7 @@ class ProjectConfigLayerSource(BaseModel):
     model_config = ConfigDict(
         populate_by_name=True,
     )
-    dot_codex_folder: Annotated[AbsolutePathBuf, Field(alias="dotCodexFolder")]
+    dot_codex_folder: Annotated[str, Field(alias="dotCodexFolder")]
     type: Annotated[Literal["project"], Field(title="ProjectConfigLayerSourceType")]
 
 
@@ -924,7 +922,7 @@ class LegacyManagedConfigTomlFromFileConfigLayerSource(BaseModel):
     model_config = ConfigDict(
         populate_by_name=True,
     )
-    file: AbsolutePathBuf
+    file: str
     type: Annotated[
         Literal["legacyManagedConfigTomlFromFile"],
         Field(title="LegacyManagedConfigTomlFromFileConfigLayerSourceType"),
@@ -1520,7 +1518,7 @@ class FsChangedNotification(BaseModel):
         populate_by_name=True,
     )
     changed_paths: Annotated[
-        list[AbsolutePathBuf],
+        list[str],
         Field(
             alias="changedPaths", description="File or directory paths associated with this event."
         ),
@@ -2467,7 +2465,7 @@ class MarketplaceAddResponse(BaseModel):
         populate_by_name=True,
     )
     already_added: Annotated[bool, Field(alias="alreadyAdded")]
-    installed_root: Annotated[AbsolutePathBuf, Field(alias="installedRoot")]
+    installed_root: Annotated[str, Field(alias="installedRoot")]
     marketplace_name: Annotated[str, Field(alias="marketplaceName")]
 
 
@@ -2482,7 +2480,7 @@ class MarketplaceLoadErrorInfo(BaseModel):
     model_config = ConfigDict(
         populate_by_name=True,
     )
-    marketplace_path: Annotated[AbsolutePathBuf, Field(alias="marketplacePath")]
+    marketplace_path: Annotated[str, Field(alias="marketplacePath")]
     message: str
 
 
@@ -2497,7 +2495,7 @@ class MarketplaceRemoveResponse(BaseModel):
     model_config = ConfigDict(
         populate_by_name=True,
     )
-    installed_root: Annotated[AbsolutePathBuf | None, Field(alias="installedRoot")] = None
+    installed_root: Annotated[str | None, Field(alias="installedRoot")] = None
     marketplace_name: Annotated[str, Field(alias="marketplaceName")]
 
 
@@ -2522,7 +2520,7 @@ class MarketplaceUpgradeResponse(BaseModel):
     )
     errors: list[MarketplaceUpgradeErrorInfo]
     selected_marketplaces: Annotated[list[str], Field(alias="selectedMarketplaces")]
-    upgraded_roots: Annotated[list[AbsolutePathBuf], Field(alias="upgradedRoots")]
+    upgraded_roots: Annotated[list[str], Field(alias="upgradedRoots")]
 
 
 class McpAppDisplayMode(Enum):
@@ -3263,7 +3261,7 @@ class PluginInstallParams(BaseModel):
             description="Client-generated identifier used to correlate one installation attempt.",
         ),
     ] = None
-    marketplace_path: Annotated[AbsolutePathBuf | None, Field(alias="marketplacePath")] = None
+    marketplace_path: Annotated[str | None, Field(alias="marketplacePath")] = None
     plugin_name: Annotated[str, Field(alias="pluginName")]
     remote_marketplace_name: Annotated[str | None, Field(alias="remoteMarketplaceName")] = None
 
@@ -3292,7 +3290,7 @@ class PluginInstalledParams(BaseModel):
         populate_by_name=True,
     )
     cwds: Annotated[
-        list[AbsolutePathBuf] | None,
+        list[str] | None,
         Field(description="Optional working directories used to discover repo marketplaces."),
     ] = None
     install_suggestion_plugin_names: Annotated[
@@ -3312,7 +3310,7 @@ class PluginInterface(BaseModel):
     capabilities: list[str]
     category: str | None = None
     composer_icon: Annotated[
-        AbsolutePathBuf | None,
+        str | None,
         Field(
             alias="composerIcon",
             description="Local composer icon path, resolved from the installed plugin package.",
@@ -3334,11 +3332,11 @@ class PluginInterface(BaseModel):
     developer_name: Annotated[str | None, Field(alias="developerName")] = None
     display_name: Annotated[str | None, Field(alias="displayName")] = None
     logo: Annotated[
-        AbsolutePathBuf | None,
+        str | None,
         Field(description="Local logo path, resolved from the installed plugin package."),
     ] = None
     logo_dark: Annotated[
-        AbsolutePathBuf | None,
+        str | None,
         Field(
             alias="logoDark",
             description="Local dark-mode logo path, resolved from the installed plugin package.",
@@ -3362,7 +3360,7 @@ class PluginInterface(BaseModel):
         ),
     ]
     screenshots: Annotated[
-        list[AbsolutePathBuf],
+        list[str],
         Field(description="Local screenshot paths, resolved from the installed plugin package."),
     ]
     short_description: Annotated[str | None, Field(alias="shortDescription")] = None
@@ -3383,7 +3381,7 @@ class PluginListParams(BaseModel):
         populate_by_name=True,
     )
     cwds: Annotated[
-        list[AbsolutePathBuf] | None,
+        list[str] | None,
         Field(
             description="Optional working directories used to discover repo marketplaces. When omitted, only home-scoped marketplaces and the official curated marketplace are considered."
         ),
@@ -3408,7 +3406,7 @@ class PluginReadParams(BaseModel):
     model_config = ConfigDict(
         populate_by_name=True,
     )
-    marketplace_path: Annotated[AbsolutePathBuf | None, Field(alias="marketplacePath")] = None
+    marketplace_path: Annotated[str | None, Field(alias="marketplacePath")] = None
     plugin_name: Annotated[str, Field(alias="pluginName")]
     remote_marketplace_name: Annotated[str | None, Field(alias="remoteMarketplaceName")] = None
 
@@ -3489,10 +3487,10 @@ class PluginShareCheckoutResponse(BaseModel):
         populate_by_name=True,
     )
     marketplace_name: Annotated[str, Field(alias="marketplaceName")]
-    marketplace_path: Annotated[AbsolutePathBuf, Field(alias="marketplacePath")]
+    marketplace_path: Annotated[str, Field(alias="marketplacePath")]
     plugin_id: Annotated[str, Field(alias="pluginId")]
     plugin_name: Annotated[str, Field(alias="pluginName")]
-    plugin_path: Annotated[AbsolutePathBuf, Field(alias="pluginPath")]
+    plugin_path: Annotated[str, Field(alias="pluginPath")]
     remote_plugin_id: Annotated[str, Field(alias="remotePluginId")]
     remote_version: Annotated[str | None, Field(alias="remoteVersion")] = None
 
@@ -3574,7 +3572,7 @@ class LocalPluginSource(BaseModel):
     model_config = ConfigDict(
         populate_by_name=True,
     )
-    path: AbsolutePathBuf
+    path: str
     type: Annotated[Literal["local"], Field(title="LocalPluginSourceType")]
 
 
@@ -4335,9 +4333,7 @@ class WorkspaceWriteSandboxPolicy(BaseModel):
     exclude_tmpdir_env_var: Annotated[bool | None, Field(alias="excludeTmpdirEnvVar")] = False
     network_access: Annotated[bool | None, Field(alias="networkAccess")] = False
     type: Annotated[Literal["workspaceWrite"], Field(title="WorkspaceWriteSandboxPolicyType")]
-    writable_roots: Annotated[
-        list[AbsolutePathBuf] | None, Field(alias="writableRoots", validate_default=True)
-    ] = []
+    writable_roots: Annotated[list[str] | None, Field(alias="writableRoots")] = []
 
 
 class SandboxPolicy(
@@ -4958,12 +4954,12 @@ class SkillInterface(BaseModel):
     brand_color: Annotated[str | None, Field(alias="brandColor")] = None
     default_prompt: Annotated[str | None, Field(alias="defaultPrompt")] = None
     display_name: Annotated[str | None, Field(alias="displayName")] = None
-    icon_large: Annotated[AbsolutePathBuf | None, Field(alias="iconLarge")] = None
+    icon_large: Annotated[str | None, Field(alias="iconLarge")] = None
     icon_large_url: Annotated[
         str | None,
         Field(alias="iconLargeUrl", description="Remote large icon URL from the plugin catalog."),
     ] = None
-    icon_small: Annotated[AbsolutePathBuf | None, Field(alias="iconSmall")] = None
+    icon_small: Annotated[str | None, Field(alias="iconSmall")] = None
     icon_small_url: Annotated[
         str | None,
         Field(alias="iconSmallUrl", description="Remote small icon URL from the plugin catalog."),
@@ -5021,7 +5017,7 @@ class SkillsConfigWriteParams(BaseModel):
     )
     enabled: bool
     name: Annotated[str | None, Field(description="Name-based selector.")] = None
-    path: Annotated[AbsolutePathBuf | None, Field(description="Path-based selector.")] = None
+    path: Annotated[str | None, Field(description="Path-based selector.")] = None
 
 
 class SkillsConfigWriteResponse(BaseModel):
@@ -5035,7 +5031,7 @@ class SkillsExtraRootsSetParams(BaseModel):
     model_config = ConfigDict(
         populate_by_name=True,
     )
-    extra_roots: Annotated[list[AbsolutePathBuf], Field(alias="extraRoots")]
+    extra_roots: Annotated[list[str], Field(alias="extraRoots")]
 
 
 class SkillsExtraRootsSetResponse(BaseModel):
@@ -8769,7 +8765,7 @@ class ExecveGuardianApprovalReviewAction(BaseModel):
         populate_by_name=True,
     )
     argv: list[str]
-    cwd: AbsolutePathBuf
+    cwd: str
     program: str
     source: GuardianCommandSource
     type: Annotated[Literal["execve"], Field(title="ExecveGuardianApprovalReviewActionType")]
@@ -8829,7 +8825,7 @@ class HookMetadata1(BaseModel):
     matcher: str | None = None
     plugin_id: Annotated[str | None, Field(alias="pluginId")] = None
     source: HookSource
-    source_path: Annotated[AbsolutePathBuf, Field(alias="sourcePath")]
+    source_path: Annotated[str, Field(alias="sourcePath")]
     status_message: Annotated[str | None, Field(alias="statusMessage")] = None
     timeout_sec: Annotated[int, Field(alias="timeoutSec", ge=0)]
     trust_status: Annotated[HookTrustStatus, Field(alias="trustStatus")]
@@ -8866,7 +8862,7 @@ class HookMetadata2(BaseModel):
     matcher: str | None = None
     plugin_id: Annotated[str | None, Field(alias="pluginId")] = None
     source: HookSource
-    source_path: Annotated[AbsolutePathBuf, Field(alias="sourcePath")]
+    source_path: Annotated[str, Field(alias="sourcePath")]
     status_message: Annotated[str | None, Field(alias="statusMessage")] = None
     timeout_sec: Annotated[int, Field(alias="timeoutSec", ge=0)]
     trust_status: Annotated[HookTrustStatus, Field(alias="trustStatus")]
@@ -8903,7 +8899,7 @@ class PromptHookMetadata(BaseModel):
     matcher: str | None = None
     plugin_id: Annotated[str | None, Field(alias="pluginId")] = None
     source: HookSource
-    source_path: Annotated[AbsolutePathBuf, Field(alias="sourcePath")]
+    source_path: Annotated[str, Field(alias="sourcePath")]
     status_message: Annotated[str | None, Field(alias="statusMessage")] = None
     timeout_sec: Annotated[int, Field(alias="timeoutSec", ge=0)]
     trust_status: Annotated[HookTrustStatus, Field(alias="trustStatus")]
@@ -8938,7 +8934,7 @@ class AgentHookMetadata(BaseModel):
     matcher: str | None = None
     plugin_id: Annotated[str | None, Field(alias="pluginId")] = None
     source: HookSource
-    source_path: Annotated[AbsolutePathBuf, Field(alias="sourcePath")]
+    source_path: Annotated[str, Field(alias="sourcePath")]
     status_message: Annotated[str | None, Field(alias="statusMessage")] = None
     timeout_sec: Annotated[int, Field(alias="timeoutSec", ge=0)]
     trust_status: Annotated[HookTrustStatus, Field(alias="trustStatus")]
@@ -10931,7 +10927,7 @@ class ThreadSettings(BaseModel):
     approval_policy: Annotated[AskForApproval, Field(alias="approvalPolicy")]
     approvals_reviewer: Annotated[ApprovalsReviewer, Field(alias="approvalsReviewer")]
     collaboration_mode: Annotated[CollaborationMode, Field(alias="collaborationMode")]
-    cwd: AbsolutePathBuf
+    cwd: str
     disabled_plugin_ids: Annotated[
         list[str] | None,
         Field(
@@ -11483,7 +11479,7 @@ class ConfigWriteResponse(BaseModel):
         populate_by_name=True,
     )
     file_path: Annotated[
-        AbsolutePathBuf,
+        str,
         Field(alias="filePath", description="Canonical path to the config file that was written."),
     ]
     overridden_metadata: Annotated[OverriddenMetadata | None, Field(alias="overriddenMetadata")] = (
@@ -11729,7 +11725,7 @@ class PluginShareSaveParams(BaseModel):
         populate_by_name=True,
     )
     discoverability: PluginShareDiscoverability | None = None
-    plugin_path: Annotated[AbsolutePathBuf, Field(alias="pluginPath")]
+    plugin_path: Annotated[str, Field(alias="pluginPath")]
     remote_plugin_id: Annotated[str | None, Field(alias="remotePluginId")] = None
     share_targets: Annotated[list[PluginShareTarget] | None, Field(alias="shareTargets")] = None
 
@@ -12636,7 +12632,7 @@ class PluginDetail(BaseModel):
     description: str | None = None
     hooks: list[PluginHookSummary]
     marketplace_name: Annotated[str, Field(alias="marketplaceName")]
-    marketplace_path: Annotated[AbsolutePathBuf | None, Field(alias="marketplacePath")] = None
+    marketplace_path: Annotated[str | None, Field(alias="marketplacePath")] = None
     mcp_servers: Annotated[list[str], Field(alias="mcpServers")]
     onboarding_skill: Annotated[
         SkillSummary | None,
@@ -12660,7 +12656,7 @@ class PluginMarketplaceEntry(BaseModel):
     interface: MarketplaceInterface | None = None
     name: str
     path: Annotated[
-        AbsolutePathBuf | None,
+        str | None,
         Field(
             description="Local marketplace file path when the marketplace is backed by a local file. Remote-only catalog marketplaces do not have a local path."
         ),
@@ -12688,7 +12684,7 @@ class PluginShareListItem(BaseModel):
     model_config = ConfigDict(
         populate_by_name=True,
     )
-    local_plugin_path: Annotated[AbsolutePathBuf | None, Field(alias="localPluginPath")] = None
+    local_plugin_path: Annotated[str | None, Field(alias="localPluginPath")] = None
     plugin: PluginSummary
 
 
@@ -12815,7 +12811,7 @@ class Thread(BaseModel):
             description="Unix timestamp (in seconds) when the thread was created.",
         ),
     ]
-    cwd: Annotated[AbsolutePathBuf, Field(description="Working directory captured for the thread.")]
+    cwd: Annotated[str, Field(description="Working directory captured for the thread.")]
     ephemeral: Annotated[
         bool,
         Field(
@@ -12957,7 +12953,7 @@ class ThreadForkResponse(BaseModel):
             description="Reviewer currently used for approval requests on this thread.",
         ),
     ]
-    cwd: AbsolutePathBuf
+    cwd: str
     disabled_plugin_ids: Annotated[
         list[str] | None,
         Field(
@@ -13040,7 +13036,7 @@ class ThreadResumeResponse(BaseModel):
             description="Effective collaboration mode. Absent when resuming from an older server.",
         ),
     ] = None
-    cwd: AbsolutePathBuf
+    cwd: str
     disabled_plugin_ids: Annotated[
         list[str] | None,
         Field(
@@ -13129,7 +13125,7 @@ class ThreadStartResponse(BaseModel):
             description="Reviewer currently used for approval requests on this thread.",
         ),
     ]
-    cwd: AbsolutePathBuf
+    cwd: str
     disabled_plugin_ids: Annotated[
         list[str] | None,
         Field(

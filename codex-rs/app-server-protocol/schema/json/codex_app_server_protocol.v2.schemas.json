@@ -5776,12 +5776,8 @@
           "description": "Default configuration supplied with the installed Codex package.",
           "properties": {
             "file": {
-              "allOf": [
-                {
-                  "$ref": "#/definitions/AbsolutePathBuf"
-                }
-              ],
-              "description": "Path to the packaged default configuration file."
+              "description": "Path to the packaged default configuration file.",
+              "type": "string"
             },
             "type": {
               "enum": [
@@ -5827,12 +5823,8 @@
           "description": "Managed config layer from a file (usually `managed_config.toml`).",
           "properties": {
             "file": {
-              "allOf": [
-                {
-                  "$ref": "#/definitions/AbsolutePathBuf"
-                }
-              ],
-              "description": "This is the path to the system config.toml file, though it is not guaranteed to exist."
+              "description": "This is the path to the system config.toml file, though it is not guaranteed to exist.",
+              "type": "string"
             },
             "type": {
               "enum": [
@@ -5880,12 +5872,8 @@
           "description": "User config layer from $CODEX_HOME/config.toml. This layer is special in that it is expected to be: - writable by the user - generally outside the workspace directory",
           "properties": {
             "file": {
-              "allOf": [
-                {
-                  "$ref": "#/definitions/AbsolutePathBuf"
-                }
-              ],
-              "description": "This is the path to the user's config.toml file, though it is not guaranteed to exist."
+              "description": "This is the path to the user's config.toml file, though it is not guaranteed to exist.",
+              "type": "string"
             },
             "profile": {
               "description": "Name of the selected profile-v2 config layered on top of the base user config, when this layer represents one.",
@@ -5913,7 +5901,7 @@
           "description": "Path to a .codex/ folder within a project. There could be multiple of these between `cwd` and the project/repo root.",
           "properties": {
             "dotCodexFolder": {
-              "$ref": "#/definitions/AbsolutePathBuf"
+              "type": "string"
             },
             "type": {
               "enum": [
@@ -5951,7 +5939,7 @@
           "description": "`managed_config.toml` was designed to be a config that was loaded as the last layer on top of everything else. This scheme did not quite work out as intended, but we keep this variant as a \"best effort\" while we phase out `managed_config.toml` in favor of `requirements.toml`.",
           "properties": {
             "file": {
-              "$ref": "#/definitions/AbsolutePathBuf"
+              "type": "string"
             },
             "type": {
               "enum": [
@@ -6379,12 +6367,8 @@
       "$schema": "http://json-schema.org/draft-07/schema#",
       "properties": {
         "filePath": {
-          "allOf": [
-            {
-              "$ref": "#/definitions/AbsolutePathBuf"
-            }
-          ],
-          "description": "Canonical path to the config file that was written."
+          "description": "Canonical path to the config file that was written.",
+          "type": "string"
         },
         "overriddenMetadata": {
           "anyOf": [
@@ -8334,7 +8318,7 @@
         "changedPaths": {
           "description": "File or directory paths associated with this event.",
           "items": {
-            "$ref": "#/definitions/AbsolutePathBuf"
+            "type": "string"
           },
           "type": "array"
         },
@@ -9304,7 +9288,7 @@
               "type": "array"
             },
             "cwd": {
-              "$ref": "#/definitions/AbsolutePathBuf"
+              "type": "string"
             },
             "program": {
               "type": "string"
@@ -9753,7 +9737,7 @@
           "$ref": "#/definitions/HookSource"
         },
         "sourcePath": {
-          "$ref": "#/definitions/AbsolutePathBuf"
+          "type": "string"
         },
         "statusMessage": {
           "type": [
@@ -11035,7 +11019,7 @@
           "type": "boolean"
         },
         "installedRoot": {
-          "$ref": "#/definitions/AbsolutePathBuf"
+          "type": "string"
         },
         "marketplaceName": {
           "type": "string"
@@ -11063,7 +11047,7 @@
     "MarketplaceLoadErrorInfo": {
       "properties": {
         "marketplacePath": {
-          "$ref": "#/definitions/AbsolutePathBuf"
+          "type": "string"
         },
         "message": {
           "type": "string"
@@ -11092,13 +11076,10 @@
       "$schema": "http://json-schema.org/draft-07/schema#",
       "properties": {
         "installedRoot": {
-          "anyOf": [
-            {
-              "$ref": "#/definitions/AbsolutePathBuf"
-            },
-            {
-              "type": "null"
-            }
+          "default": null,
+          "type": [
+            "string",
+            "null"
           ]
         },
         "marketplaceName": {
@@ -11156,7 +11137,7 @@
         },
         "upgradedRoots": {
           "items": {
-            "$ref": "#/definitions/AbsolutePathBuf"
+            "type": "string"
           },
           "type": "array"
         }
@@ -13224,13 +13205,10 @@
           "type": "string"
         },
         "marketplacePath": {
-          "anyOf": [
-            {
-              "$ref": "#/definitions/AbsolutePathBuf"
-            },
-            {
-              "type": "null"
-            }
+          "default": null,
+          "type": [
+            "string",
+            "null"
           ]
         },
         "mcpServers": {
@@ -13322,13 +13300,10 @@
           ]
         },
         "marketplacePath": {
-          "anyOf": [
-            {
-              "$ref": "#/definitions/AbsolutePathBuf"
-            },
-            {
-              "type": "null"
-            }
+          "default": null,
+          "type": [
+            "string",
+            "null"
           ]
         },
         "pluginName": {
@@ -13386,9 +13361,10 @@
       "$schema": "http://json-schema.org/draft-07/schema#",
       "properties": {
         "cwds": {
+          "default": null,
           "description": "Optional working directories used to discover repo marketplaces.",
           "items": {
-            "$ref": "#/definitions/AbsolutePathBuf"
+            "type": "string"
           },
           "type": [
             "array",
@@ -13453,15 +13429,12 @@
           ]
         },
         "composerIcon": {
-          "anyOf": [
-            {
-              "$ref": "#/definitions/AbsolutePathBuf"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "description": "Local composer icon path, resolved from the installed plugin package."
+          "default": null,
+          "description": "Local composer icon path, resolved from the installed plugin package.",
+          "type": [
+            "string",
+            "null"
+          ]
         },
         "composerIconUrl": {
           "description": "Remote composer icon URL from the plugin catalog.",
@@ -13493,26 +13466,20 @@
           ]
         },
         "logo": {
-          "anyOf": [
-            {
-              "$ref": "#/definitions/AbsolutePathBuf"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "description": "Local logo path, resolved from the installed plugin package."
+          "default": null,
+          "description": "Local logo path, resolved from the installed plugin package.",
+          "type": [
+            "string",
+            "null"
+          ]
         },
         "logoDark": {
-          "anyOf": [
-            {
-              "$ref": "#/definitions/AbsolutePathBuf"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "description": "Local dark-mode logo path, resolved from the installed plugin package."
+          "default": null,
+          "description": "Local dark-mode logo path, resolved from the installed plugin package.",
+          "type": [
+            "string",
+            "null"
+          ]
         },
         "logoUrl": {
           "description": "Remote logo URL from the plugin catalog.",
@@ -13550,7 +13517,7 @@
         "screenshots": {
           "description": "Local screenshot paths, resolved from the installed plugin package.",
           "items": {
-            "$ref": "#/definitions/AbsolutePathBuf"
+            "type": "string"
           },
           "type": "array"
         },
@@ -13594,9 +13561,10 @@
       "$schema": "http://json-schema.org/draft-07/schema#",
       "properties": {
         "cwds": {
+          "default": null,
           "description": "Optional working directories used to discover repo marketplaces. When omitted, only home-scoped marketplaces and the official curated marketplace are considered.",
           "items": {
-            "$ref": "#/definitions/AbsolutePathBuf"
+            "type": "string"
           },
           "type": [
             "array",
@@ -13667,15 +13635,12 @@
           "type": "string"
         },
         "path": {
-          "anyOf": [
-            {
-              "$ref": "#/definitions/AbsolutePathBuf"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "description": "Local marketplace file path when the marketplace is backed by a local file. Remote-only catalog marketplaces do not have a local path."
+          "default": null,
+          "description": "Local marketplace file path when the marketplace is backed by a local file. Remote-only catalog marketplaces do not have a local path.",
+          "type": [
+            "string",
+            "null"
+          ]
         },
         "plugins": {
           "items": {
@@ -13694,13 +13659,10 @@
       "$schema": "http://json-schema.org/draft-07/schema#",
       "properties": {
         "marketplacePath": {
-          "anyOf": [
-            {
-              "$ref": "#/definitions/AbsolutePathBuf"
-            },
-            {
-              "type": "null"
-            }
+          "default": null,
+          "type": [
+            "string",
+            "null"
           ]
         },
         "pluginName": {
@@ -13863,7 +13825,7 @@
           "type": "string"
         },
         "marketplacePath": {
-          "$ref": "#/definitions/AbsolutePathBuf"
+          "type": "string"
         },
         "pluginId": {
           "type": "string"
@@ -13872,7 +13834,7 @@
           "type": "string"
         },
         "pluginPath": {
-          "$ref": "#/definitions/AbsolutePathBuf"
+          "type": "string"
         },
         "remotePluginId": {
           "type": "string"
@@ -13987,13 +13949,10 @@
     "PluginShareListItem": {
       "properties": {
         "localPluginPath": {
-          "anyOf": [
-            {
-              "$ref": "#/definitions/AbsolutePathBuf"
-            },
-            {
-              "type": "null"
-            }
+          "default": null,
+          "type": [
+            "string",
+            "null"
           ]
         },
         "plugin": {
@@ -14079,7 +14038,7 @@
           ]
         },
         "pluginPath": {
-          "$ref": "#/definitions/AbsolutePathBuf"
+          "type": "string"
         },
         "remotePluginId": {
           "type": [
@@ -14244,7 +14203,7 @@
         {
           "properties": {
             "path": {
-              "$ref": "#/definitions/AbsolutePathBuf"
+              "type": "string"
             },
             "type": {
               "enum": [
@@ -16761,7 +16720,7 @@
             "writableRoots": {
               "default": [],
               "items": {
-                "$ref": "#/definitions/AbsolutePathBuf"
+                "type": "string"
               },
               "type": "array"
             }
@@ -18927,13 +18886,10 @@
           ]
         },
         "iconLarge": {
-          "anyOf": [
-            {
-              "$ref": "#/definitions/AbsolutePathBuf"
-            },
-            {
-              "type": "null"
-            }
+          "default": null,
+          "type": [
+            "string",
+            "null"
           ]
         },
         "iconLargeUrl": {
@@ -18944,13 +18900,10 @@
           ]
         },
         "iconSmall": {
-          "anyOf": [
-            {
-              "$ref": "#/definitions/AbsolutePathBuf"
-            },
-            {
-              "type": "null"
-            }
+          "default": null,
+          "type": [
+            "string",
+            "null"
           ]
         },
         "iconSmallUrl": {
@@ -19154,15 +19107,12 @@
           ]
         },
         "path": {
-          "anyOf": [
-            {
-              "$ref": "#/definitions/AbsolutePathBuf"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "description": "Path-based selector."
+          "default": null,
+          "description": "Path-based selector.",
+          "type": [
+            "string",
+            "null"
+          ]
         }
       },
       "required": [
@@ -19189,7 +19139,7 @@
       "properties": {
         "extraRoots": {
           "items": {
-            "$ref": "#/definitions/AbsolutePathBuf"
+            "type": "string"
           },
           "type": "array"
         }
@@ -19529,12 +19479,8 @@
           "type": "integer"
         },
         "cwd": {
-          "allOf": [
-            {
-              "$ref": "#/definitions/AbsolutePathBuf"
-            }
-          ],
-          "description": "Working directory captured for the thread."
+          "description": "Working directory captured for the thread.",
+          "type": "string"
         },
         "ephemeral": {
           "description": "Whether the thread is ephemeral and should not be materialized on disk.",
@@ -20273,7 +20219,7 @@
           "description": "Reviewer currently used for approval requests on this thread."
         },
         "cwd": {
-          "$ref": "#/definitions/AbsolutePathBuf"
+          "type": "string"
         },
         "disabledPluginIds": {
           "default": [],
@@ -22864,7 +22810,7 @@
           "description": "Effective collaboration mode. Absent when resuming from an older server."
         },
         "cwd": {
-          "$ref": "#/definitions/AbsolutePathBuf"
+          "type": "string"
         },
         "disabledPluginIds": {
           "default": [],
@@ -23334,7 +23280,7 @@
           "$ref": "#/definitions/CollaborationMode"
         },
         "cwd": {
-          "$ref": "#/definitions/AbsolutePathBuf"
+          "type": "string"
         },
         "disabledPluginIds": {
           "default": [],
@@ -23617,7 +23563,7 @@
           "description": "Reviewer currently used for approval requests on this thread."
         },
         "cwd": {
-          "$ref": "#/definitions/AbsolutePathBuf"
+          "type": "string"
         },
         "disabledPluginIds": {
           "default": [],

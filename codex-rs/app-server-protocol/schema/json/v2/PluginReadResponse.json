@@ -1,10 +1,6 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
   "definitions": {
-    "AbsolutePathBuf": {
-      "description": "A path that is guaranteed to be absolute and normalized (though it is not guaranteed to be canonicalized or exist on the filesystem).\n\nIMPORTANT: When deserializing an `AbsolutePathBuf`, a base path must be set using [AbsolutePathBufGuard::new]. If no base path is set, the deserialization will fail unless the path being deserialized is already absolute.",
-      "type": "string"
-    },
     "AppSummary": {
       "description": "EXPERIMENTAL - app metadata summary for plugin responses.",
       "properties": {
@@ -184,13 +180,10 @@
           "type": "string"
         },
         "marketplacePath": {
-          "anyOf": [
-            {
-              "$ref": "#/definitions/AbsolutePathBuf"
-            },
-            {
-              "type": "null"
-            }
+          "default": null,
+          "type": [
+            "string",
+            "null"
           ]
         },
         "mcpServers": {
@@ -307,15 +300,12 @@
           ]
         },
         "composerIcon": {
-          "anyOf": [
-            {
-              "$ref": "#/definitions/AbsolutePathBuf"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "description": "Local composer icon path, resolved from the installed plugin package."
+          "default": null,
+          "description": "Local composer icon path, resolved from the installed plugin package.",
+          "type": [
+            "string",
+            "null"
+          ]
         },
         "composerIconUrl": {
           "description": "Remote composer icon URL from the plugin catalog.",
@@ -347,26 +337,20 @@
           ]
         },
         "logo": {
-          "anyOf": [
-            {
-              "$ref": "#/definitions/AbsolutePathBuf"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "description": "Local logo path, resolved from the installed plugin package."
+          "default": null,
+          "description": "Local logo path, resolved from the installed plugin package.",
+          "type": [
+            "string",
+            "null"
+          ]
         },
         "logoDark": {
-          "anyOf": [
-            {
-              "$ref": "#/definitions/AbsolutePathBuf"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "description": "Local dark-mode logo path, resolved from the installed plugin package."
+          "default": null,
+          "description": "Local dark-mode logo path, resolved from the installed plugin package.",
+          "type": [
+            "string",
+            "null"
+          ]
         },
         "logoUrl": {
           "description": "Remote logo URL from the plugin catalog.",
@@ -404,7 +388,7 @@
         "screenshots": {
           "description": "Local screenshot paths, resolved from the installed plugin package.",
           "items": {
-            "$ref": "#/definitions/AbsolutePathBuf"
+            "type": "string"
           },
           "type": "array"
         },
@@ -549,7 +533,7 @@
         {
           "properties": {
             "path": {
-              "$ref": "#/definitions/AbsolutePathBuf"
+              "type": "string"
             },
             "type": {
               "enum": [
@@ -959,13 +943,10 @@
           ]
         },
         "iconLarge": {
-          "anyOf": [
-            {
-              "$ref": "#/definitions/AbsolutePathBuf"
-            },
-            {
-              "type": "null"
-            }
+          "default": null,
+          "type": [
+            "string",
+            "null"
           ]
         },
         "iconLargeUrl": {
@@ -976,13 +957,10 @@
           ]
         },
         "iconSmall": {
-          "anyOf": [
-            {
-              "$ref": "#/definitions/AbsolutePathBuf"
-            },
-            {
-              "type": "null"
-            }
+          "default": null,
+          "type": [
+            "string",
+            "null"
           ]
         },
         "iconSmallUrl": {

@@ -57,7 +57,9 @@ impl MarketplaceRequestProcessor {
         .await
         .map(|outcome| MarketplaceRemoveResponse {
             marketplace_name: outcome.marketplace_name,
-            installed_root: outcome.removed_installed_root,
+            installed_root: outcome
+                .removed_installed_root
+                .map(codex_utils_absolute_path::AbsolutePathBuf::into_path_buf),
         })
         .map_err(|err| match err {
             MarketplaceRemoveError::InvalidRequest(message) => invalid_request(message),
@@ -95,7 +97,11 @@ impl MarketplaceRequestProcessor {
 
         Ok(MarketplaceUpgradeResponse {
             selected_marketplaces: outcome.selected_marketplaces,
-            upgraded_roots: outcome.upgraded_roots,
+            upgraded_roots: outcome
+                .upgraded_roots
+                .into_iter()
+                .map(codex_utils_absolute_path::AbsolutePathBuf::into_path_buf)
+                .collect(),
             errors: outcome
                 .errors
                 .into_iter()
@@ -124,7 +130,7 @@ impl MarketplaceRequestProcessor {
         .await
         .map(|outcome| MarketplaceAddResponse {
             marketplace_name: outcome.marketplace_name,
-            installed_root: outcome.installed_root,
+            installed_root: outcome.installed_root.into_path_buf(),
             already_added: outcome.already_added,
         })
         .map_err(|err| match err {

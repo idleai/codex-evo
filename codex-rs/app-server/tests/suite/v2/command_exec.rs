@@ -380,7 +380,7 @@ async fn command_exec_enforces_managed_deny_read_requirements() -> Result<()> {
     for sandbox_policy in [
         SandboxPolicy::DangerFullAccess,
         SandboxPolicy::WorkspaceWrite {
-            writable_roots: vec![nested_root.try_into()?],
+            writable_roots: vec![nested_root],
             network_access: false,
             exclude_tmpdir_env_var: false,
             exclude_slash_tmp: false,

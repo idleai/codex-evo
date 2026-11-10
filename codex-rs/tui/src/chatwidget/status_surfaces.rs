@@ -1255,7 +1255,7 @@ fn permissions_display(config: &Config) -> String {
     let permission_profile = config.permissions.effective_permission_profile();
     let summary = summarize_permission_profile(
         &permission_profile,
-        &PathUri::from_abs_path(&config.cwd),
+        &config.cwd_uri(),
         &config.effective_workspace_roots(),
     );
     if let Some(details) = summary.strip_prefix("read-only")

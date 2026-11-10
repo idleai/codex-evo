@@ -245,7 +245,7 @@ async fn adjacent_exploration_groups_across_reasoning_live_and_replayed() {
                 sandbox_type: None,
                 id: id.to_string(),
                 command: codex_shell_command::parse_command::shlex_join(&command),
-                cwd: chat.config.cwd.clone().into(),
+                cwd: codex_utils_path_uri::LegacyAppPathString::from_path(&chat.config.cwd),
                 process_id: None,
                 plugin_id: None,
                 script_path: None,
@@ -254,7 +254,10 @@ async fn adjacent_exploration_groups_across_reasoning_live_and_replayed() {
                 command_actions: codex_shell_command::parse_command::parse_command(&command)
                     .into_iter()
                     .map(|parsed| {
-                        AppServerCommandAction::from_core_with_cwd(parsed, &chat.config.cwd)
+                        AppServerCommandAction::from_core_with_cwd(
+                            parsed,
+                            &chat.config.cwd.clone().abs(),
+                        )
                     })
                     .collect(),
                 aggregated_output: Some(format!("{id} output\n")),
@@ -340,7 +343,7 @@ async fn replayed_commands_preserve_individual_output_and_failure_status() {
             sandbox_type: None,
             id: id.to_string(),
             command: format!("printf {output}"),
-            cwd: cwd.clone().into(),
+            cwd: codex_utils_path_uri::LegacyAppPathString::from_path(&cwd),
             process_id: None,
             plugin_id: None,
             script_path: None,
@@ -532,7 +535,9 @@ async fn exec_end_without_begin_uses_event_command() {
     ];
     let command_actions = codex_shell_command::parse_command::parse_command(&command)
         .into_iter()
-        .map(|parsed| AppServerCommandAction::from_core_with_cwd(parsed, &chat.config.cwd))
+        .map(|parsed| {
+            AppServerCommandAction::from_core_with_cwd(parsed, &chat.config.cwd.clone().abs())
+        })
         .collect();
     let cwd = chat.config.cwd.clone();
     handle_exec_end(
@@ -542,7 +547,7 @@ async fn exec_end_without_begin_uses_event_command() {
             sandbox_type: None,
             id: "call-orphan".to_string(),
             command: codex_shell_command::parse_command::shlex_join(&command),
-            cwd: cwd.into(),
+            cwd: codex_utils_path_uri::LegacyAppPathString::from_path(&cwd),
             process_id: None,
             plugin_id: None,
             script_path: None,
@@ -1068,7 +1073,11 @@ async fn view_image_tool_call_adds_history_cell() {
     let (mut chat, mut rx, _op_rx) = make_chatwidget_manual(/*model_override*/ None).await;
     let image_path = chat.config.cwd.join("example.png");
 
-    handle_view_image_tool_call(&mut chat, "call-image", image_path);
+    handle_view_image_tool_call(
+        &mut chat,
+        "call-image",
+        codex_utils_path_uri::LegacyAppPathString::from_path(&image_path),
+    );
 
     let cells = drain_insert_history(&mut rx);
     assert_eq!(cells.len(), 1, "expected a single history cell");
@@ -1237,7 +1246,7 @@ async fn bang_shell_enter_while_task_running_submits_run_user_shell_command() {
         approvals_reviewer: ApprovalsReviewer::User,
         permission_profile: PermissionProfile::read_only(),
         active_permission_profile: None,
-        cwd: test_path_buf("/home/user/project").abs(),
+        cwd: test_path_buf("/home/user/project"),
         runtime_workspace_roots: Vec::new(),
         instruction_source_paths: Vec::new(),
         reasoning_effort: Some(ReasoningEffortConfig::default()),
@@ -1350,7 +1359,9 @@ async fn approval_modal_exec_snapshot() -> anyhow::Result<()> {
         turn_id: "turn-approve-cmd".into(),
         environment_id: None,
         command: vec!["bash".into(), "-lc".into(), "echo hello world".into()],
-        cwd: AbsolutePathBuf::current_dir().expect("current dir"),
+        cwd: AbsolutePathBuf::current_dir()
+            .expect("current dir")
+            .to_path_buf(),
         reason: Some(
             "this is a test reason such as one that would be produced by the model".into(),
         ),
@@ -1409,7 +1420,9 @@ async fn approval_modal_exec_without_reason_snapshot() -> anyhow::Result<()> {
         turn_id: "turn-approve-cmd-noreason".into(),
         environment_id: None,
         command: vec!["bash".into(), "-lc".into(), "echo hello world".into()],
-        cwd: AbsolutePathBuf::current_dir().expect("current dir"),
+        cwd: AbsolutePathBuf::current_dir()
+            .expect("current dir")
+            .to_path_buf(),
         reason: None,
         network_approval_context: None,
         proposed_execpolicy_amendment: Some(ExecPolicyAmendment {
@@ -1456,7 +1469,9 @@ async fn approval_modal_exec_multiline_prefix_hides_execpolicy_option_snapshot()
         turn_id: "turn-approve-cmd-multiline-trunc".into(),
         environment_id: None,
         command: command.clone(),
-        cwd: AbsolutePathBuf::current_dir().expect("current dir"),
+        cwd: AbsolutePathBuf::current_dir()
+            .expect("current dir")
+            .to_path_buf(),
         reason: None,
         network_approval_context: None,
         proposed_execpolicy_amendment: Some(ExecPolicyAmendment { command }),
@@ -1487,7 +1502,7 @@ async fn approval_modal_exec_multiline_prefix_hides_execpolicy_option_snapshot()
 #[tokio::test]
 async fn approval_modal_patch_snapshot() -> anyhow::Result<()> {
     let (mut chat, _rx, _op_rx) = make_chatwidget_manual(/*model_override*/ None).await;
-    chat.config.cwd = test_path_buf("/tmp/project").abs();
+    chat.config.cwd = test_path_buf("/tmp/project");
     chat.config
         .permissions
         .approval_policy

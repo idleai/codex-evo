@@ -1,10 +1,6 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
   "definitions": {
-    "AbsolutePathBuf": {
-      "description": "A path that is guaranteed to be absolute and normalized (though it is not guaranteed to be canonicalized or exist on the filesystem).\n\nIMPORTANT: When deserializing an `AbsolutePathBuf`, a base path must be set using [AbsolutePathBufGuard::new]. If no base path is set, the deserialization will fail unless the path being deserialized is already absolute.",
-      "type": "string"
-    },
     "AllowDenyRequirement": {
       "enum": [
         "allow",
@@ -731,12 +727,8 @@
           "description": "Default configuration supplied with the installed Codex package.",
           "properties": {
             "file": {
-              "allOf": [
-                {
-                  "$ref": "#/definitions/AbsolutePathBuf"
-                }
-              ],
-              "description": "Path to the packaged default configuration file."
+              "description": "Path to the packaged default configuration file.",
+              "type": "string"
             },
             "type": {
               "enum": [
@@ -782,12 +774,8 @@
           "description": "Managed config layer from a file (usually `managed_config.toml`).",
           "properties": {
             "file": {
-              "allOf": [
-                {
-                  "$ref": "#/definitions/AbsolutePathBuf"
-                }
-              ],
-              "description": "This is the path to the system config.toml file, though it is not guaranteed to exist."
+              "description": "This is the path to the system config.toml file, though it is not guaranteed to exist.",
+              "type": "string"
             },
             "type": {
               "enum": [
@@ -835,12 +823,8 @@
           "description": "User config layer from $CODEX_HOME/config.toml. This layer is special in that it is expected to be: - writable by the user - generally outside the workspace directory",
           "properties": {
             "file": {
-              "allOf": [
-                {
-                  "$ref": "#/definitions/AbsolutePathBuf"
-                }
-              ],
-              "description": "This is the path to the user's config.toml file, though it is not guaranteed to exist."
+              "description": "This is the path to the user's config.toml file, though it is not guaranteed to exist.",
+              "type": "string"
             },
             "profile": {
               "description": "Name of the selected profile-v2 config layered on top of the base user config, when this layer represents one.",
@@ -868,7 +852,7 @@
           "description": "Path to a .codex/ folder within a project. There could be multiple of these between `cwd` and the project/repo root.",
           "properties": {
             "dotCodexFolder": {
-              "$ref": "#/definitions/AbsolutePathBuf"
+              "type": "string"
             },
             "type": {
               "enum": [
@@ -906,7 +890,7 @@
           "description": "`managed_config.toml` was designed to be a config that was loaded as the last layer on top of everything else. This scheme did not quite work out as intended, but we keep this variant as a \"best effort\" while we phase out `managed_config.toml` in favor of `requirements.toml`.",
           "properties": {
             "file": {
-              "$ref": "#/definitions/AbsolutePathBuf"
+              "type": "string"
             },
             "type": {
               "enum": [

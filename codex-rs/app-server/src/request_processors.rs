@@ -695,14 +695,64 @@ fn resolve_turn_environment_requests(
     Ok(Some(requests))
 }
 
-fn resolve_runtime_workspace_roots(workspace_roots: Vec<AbsolutePathBuf>) -> Vec<AbsolutePathBuf> {
+// Wire paths belong to this server. Validate at execution/configuration boundaries,
+// including typed in-process requests which do not pass through serde.
+fn native_request_path(path: PathBuf) -> Result<AbsolutePathBuf, JSONRPCErrorError> {
+    AbsolutePathBuf::from_absolute_path_checked(&path).map_err(|err| {
+        invalid_params(format!(
+            "invalid absolute path `{}` on this host: {err}",
+            path.display()
+        ))
+    })
+}
+
+fn resolve_runtime_workspace_roots(
+    workspace_roots: Vec<PathBuf>,
+) -> Result<Vec<AbsolutePathBuf>, JSONRPCErrorError> {
     let mut resolved_roots = Vec::new();
     for root in workspace_roots {
+        let root = AbsolutePathBuf::from_absolute_path_checked(&root).map_err(|err| {
+            invalid_params(format!(
+                "invalid runtime workspace root `{}` on this host: {err}",
+                root.display()
+            ))
+        })?;
         if !resolved_roots.iter().any(|existing| existing == &root) {
             resolved_roots.push(root);
         }
     }
-    resolved_roots
+    Ok(resolved_roots)
+}
+
+#[cfg(test)]
+mod native_path_tests {
+    use super::*;
+
+    #[test]
+    fn runtime_workspace_roots_validate_then_deduplicate() {
+        let home = tempfile::tempdir().expect("test directory");
+        let root = home.path().to_path_buf();
+        let roots = resolve_runtime_workspace_roots(vec![root.clone(), root.clone()])
+            .expect("native absolute roots");
+        assert_eq!(roots.len(), 1);
+        assert_eq!(roots[0].as_path(), root.as_path());
+    }
+
+    #[test]
+    fn execution_boundaries_reject_relative_and_foreign_paths() {
+        let foreign = if cfg!(windows) {
+            "/home/alice/project"
+        } else {
+            r"C:\Users\alice\project"
+        };
+        for path in ["relative/project", "", foreign] {
+            assert!(native_request_path(PathBuf::from(path)).is_err(), "{path}");
+            assert!(
+                resolve_runtime_workspace_roots(vec![PathBuf::from(path)]).is_err(),
+                "{path}"
+            );
+        }
+    }
 }
 
 pub(crate) mod config_errors;

@@ -35,7 +35,6 @@ use codex_app_server_protocol::TurnStatus;
 use codex_app_server_protocol::UserInput as V2UserInput;
 use codex_config::types::AuthCredentialsStoreMode;
 use codex_features::Feature;
-use codex_utils_absolute_path::test_support::PathExt;
 use core_test_support::responses;
 use core_test_support::skip_if_no_network;
 use pretty_assertions::assert_eq;
@@ -493,7 +492,10 @@ async fn thread_compact_start_triggers_compaction_and_returns_empty_response() -
     let initial_cwd = TempDir::new()?;
     let updated_cwd = TempDir::new()?;
     let extra_root = TempDir::new()?;
-    let updated_roots = vec![updated_cwd.path().abs(), extra_root.path().abs()];
+    let updated_roots = vec![
+        updated_cwd.path().to_path_buf(),
+        extra_root.path().to_path_buf(),
+    ];
     compaction_config(&server.uri(), /*auto_compact_limit*/ 1_000_000).write(codex_home.path())?;
 
     // Top-level cwd restoration uses host-native paths, not a foreign executor's paths.

@@ -2904,7 +2904,7 @@ async fn status_widget_and_approval_modal_snapshot() {
         turn_id: "turn-approve-exec".into(),
         environment_id: None,
         command: vec!["echo".into(), "hello world".into()],
-        cwd: test_path_buf("/tmp").abs(),
+        cwd: test_path_buf("/tmp"),
         reason: Some(
             "this is a test reason such as one that would be produced by the model".into(),
         ),
@@ -4190,7 +4190,7 @@ async fn status_line_model_with_reasoning_includes_fast_for_fast_capable_models(
     let (mut chat, _rx, _op_rx) = make_chatwidget_manual(Some("gpt-5.4")).await;
     set_fast_mode_test_catalog(&mut chat);
     assert!(get_available_model(&chat, "gpt-5.4").supports_fast_mode());
-    chat.config.cwd = test_project_path().abs();
+    chat.config.cwd = test_project_path();
     chat.local_settings.tui.status_line = Some(vec![
         "model-with-reasoning".to_string(),
         "context-used".to_string(),
@@ -4357,7 +4357,7 @@ async fn status_line_model_with_reasoning_fast_footer_snapshot() {
     set_fast_mode_test_catalog(&mut chat);
     assert!(get_available_model(&chat, "gpt-5.4").supports_fast_mode());
     chat.show_welcome_banner = false;
-    chat.config.cwd = test_project_path().abs();
+    chat.config.cwd = test_project_path();
     chat.local_settings.tui.status_line = Some(vec![
         "model-with-reasoning".to_string(),
         "context-used".to_string(),
@@ -4391,7 +4391,7 @@ async fn status_line_model_with_reasoning_context_remaining_footer_snapshot() {
     set_fast_mode_test_catalog(&mut chat);
     assert!(get_available_model(&chat, "gpt-5.4").supports_fast_mode());
     chat.show_welcome_banner = false;
-    chat.config.cwd = test_project_path().abs();
+    chat.config.cwd = test_project_path();
     chat.local_settings.tui.status_line = Some(vec![
         "model-with-reasoning".to_string(),
         "context-remaining".to_string(),
@@ -4535,7 +4535,7 @@ async fn session_configured_clears_goal_status_footer() {
         approvals_reviewer: ApprovalsReviewer::User,
         permission_profile: PermissionProfile::read_only(),
         active_permission_profile: None,
-        cwd: test_path_buf("/home/user/project").abs(),
+        cwd: test_path_buf("/home/user/project"),
         runtime_workspace_roots: Vec::new(),
         instruction_source_paths: Vec::new(),
         reasoning_effort: Some(ReasoningEffortConfig::default()),
@@ -5854,7 +5854,9 @@ async fn chatwidget_exec_and_status_layout_vt100_snapshot() {
     let command_actions = parsed_cmd
         .iter()
         .cloned()
-        .map(|parsed| AppServerCommandAction::from_core_with_cwd(parsed, &chat.config.cwd))
+        .map(|parsed| {
+            AppServerCommandAction::from_core_with_cwd(parsed, &chat.config.cwd.clone().abs())
+        })
         .collect::<Vec<_>>();
     let cwd = chat.config.cwd.clone();
     handle_exec_begin(
@@ -5864,7 +5866,7 @@ async fn chatwidget_exec_and_status_layout_vt100_snapshot() {
             sandbox_type: None,
             id: "c1".into(),
             command: codex_shell_command::parse_command::shlex_join(&command),
-            cwd: cwd.clone().into(),
+            cwd: codex_utils_path_uri::LegacyAppPathString::from_path(&cwd),
             process_id: None,
             plugin_id: None,
             script_path: None,
@@ -5883,7 +5885,7 @@ async fn chatwidget_exec_and_status_layout_vt100_snapshot() {
             sandbox_type: None,
             id: "c1".into(),
             command: codex_shell_command::parse_command::shlex_join(&command),
-            cwd: cwd.into(),
+            cwd: codex_utils_path_uri::LegacyAppPathString::from_path(&cwd),
             process_id: None,
             plugin_id: None,
             script_path: None,

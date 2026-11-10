@@ -336,7 +336,6 @@ mod tests {
     use crate::bottom_pane::BottomPaneView;
     use crate::keymap::RuntimeKeymap;
     use crate::render::renderable::Renderable;
-    use crate::test_support::PathBufExt;
     use crate::test_support::test_path_buf;
     use codex_app_server_protocol::HookEventName;
     use codex_app_server_protocol::HookHandlerMetadata;
@@ -366,7 +365,7 @@ mod tests {
             timeout_sec: 30,
             status_message: None,
             additional_context_limit: None,
-            source_path: test_path_buf("/tmp/hooks.json").abs(),
+            source_path: test_path_buf("/tmp/hooks.json"),
             source: HookSource::User,
             plugin_id: None,
             environment_id: None,

@@ -1832,7 +1832,6 @@ impl App {
                     let cwd = self
                         .thread_cwd(thread_id)
                         .await
-                        .map(|cwd| cwd.to_path_buf())
                         .or_else(|| {
                             app_server
                                 .remote_cwd_override()
@@ -3059,7 +3058,7 @@ impl App {
                         };
                         let manager = pending.manager.clone();
                         let cwd = AbsolutePathBuf::try_from(checkout.cwd.clone())?;
-                        return Box::pin(self.start_agents_overview_session(tui, app_server, Some(cwd), Some((manager, checkout)), /*startup_draft*/ None)).await;
+                        return Box::pin(self.start_agents_overview_session(tui, app_server, Some(cwd.into_path_buf()), Some((manager, checkout)), /*startup_draft*/ None)).await;
                     }
                     Err(error) => self.add_agents_overview_error(error),
                 }

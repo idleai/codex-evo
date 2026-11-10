@@ -12,8 +12,9 @@ async fn slash_new_and_fork_offer_checkout_choices_inside_local_git_repository()
     let checkout = tempdir().expect("temporary checkout");
     std::fs::create_dir(checkout.path().join(".git")).expect("git directory");
     std::fs::write(checkout.path().join(".git/HEAD"), "ref: refs/heads/main\n").expect("git HEAD");
-    chat.config.cwd =
-        AbsolutePathBuf::from_absolute_path(checkout.path()).expect("absolute checkout");
+    chat.config.cwd = AbsolutePathBuf::from_absolute_path(checkout.path())
+        .expect("absolute checkout")
+        .to_path_buf();
 
     chat.dispatch_command(SlashCommand::Fork);
     assert_matches!(
@@ -79,8 +80,9 @@ async fn slash_worktree_offers_current_or_new_conversation() {
     let checkout = tempdir().expect("temporary checkout");
     std::fs::create_dir(checkout.path().join(".git")).expect("git directory");
     std::fs::write(checkout.path().join(".git/HEAD"), "ref: refs/heads/main\n").expect("git HEAD");
-    chat.config.cwd =
-        AbsolutePathBuf::from_absolute_path(checkout.path()).expect("absolute checkout");
+    chat.config.cwd = AbsolutePathBuf::from_absolute_path(checkout.path())
+        .expect("absolute checkout")
+        .to_path_buf();
 
     chat.set_local_worktree_operations(/*enabled*/ true);
     chat.dispatch_command(SlashCommand::Worktree);
@@ -104,7 +106,9 @@ async fn worktree_browser_actions_and_stale_results() {
     let checkout = tempdir().unwrap();
     std::fs::create_dir(checkout.path().join(".git")).unwrap();
     std::fs::write(checkout.path().join(".git/HEAD"), "ref: refs/heads/main\n").unwrap();
-    chat.config.cwd = AbsolutePathBuf::from_absolute_path(checkout.path()).unwrap();
+    chat.config.cwd = AbsolutePathBuf::from_absolute_path(checkout.path())
+        .unwrap()
+        .to_path_buf();
     chat.set_local_worktree_operations(/*enabled*/ true);
     let request = chat.request_managed_worktrees().unwrap();
     assert_chatwidget_snapshot!(
@@ -197,7 +201,9 @@ async fn worktree_browser_actions_and_stale_results() {
     let current = chat.request_managed_worktrees().unwrap();
     chat.on_managed_worktrees_loaded(stale, Err("stale result".to_string()));
     assert_eq!(chat.worktree_popup_request_id, Some(current.id));
-    chat.config.cwd = AbsolutePathBuf::from_absolute_path(checkout.path().join("other")).unwrap();
+    chat.config.cwd = AbsolutePathBuf::from_absolute_path(checkout.path().join("other"))
+        .unwrap()
+        .to_path_buf();
     chat.on_managed_worktrees_loaded(current, Ok(Vec::new()));
     assert!(!chat.bottom_pane.has_active_view());
 }
@@ -211,7 +217,9 @@ async fn worktree_browser_names_archived_and_missing_owners() {
     let checkout = tempdir().unwrap();
     std::fs::create_dir(checkout.path().join(".git")).unwrap();
     std::fs::write(checkout.path().join(".git/HEAD"), "ref: refs/heads/main\n").unwrap();
-    chat.config.cwd = AbsolutePathBuf::from_absolute_path(checkout.path()).unwrap();
+    chat.config.cwd = AbsolutePathBuf::from_absolute_path(checkout.path())
+        .unwrap()
+        .to_path_buf();
     chat.set_local_worktree_operations(/*enabled*/ true);
     let request = chat.request_managed_worktrees().unwrap();
     let owner = ThreadId::from_string("00000000-0000-0000-0000-000000000002").unwrap();
@@ -267,7 +275,9 @@ async fn worktree_picker_custom_keys_preserve_draft_and_protect_current_checkout
     let checkout = tempdir().unwrap();
     std::fs::create_dir(checkout.path().join(".git")).unwrap();
     std::fs::write(checkout.path().join(".git/HEAD"), "ref: refs/heads/main\n").unwrap();
-    chat.config.cwd = AbsolutePathBuf::from_absolute_path(checkout.path()).unwrap();
+    chat.config.cwd = AbsolutePathBuf::from_absolute_path(checkout.path())
+        .unwrap()
+        .to_path_buf();
     chat.set_local_worktree_operations(/*enabled*/ true);
     let mut keymap = crate::keymap::RuntimeKeymap::defaults();
     keymap.list.accept = vec![key_hint::plain(KeyCode::F(/*n*/ 3))];

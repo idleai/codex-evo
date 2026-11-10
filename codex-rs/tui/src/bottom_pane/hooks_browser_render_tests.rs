@@ -7,7 +7,6 @@ use super::*;
 use crate::app_event::AppEvent;
 use crate::app_event_sender::AppEventSender;
 use crate::bottom_pane::bottom_pane_view::BottomPaneView;
-use crate::test_support::PathBufExt;
 use crate::test_support::test_path_buf;
 use codex_app_server_protocol::HookEventName;
 use codex_app_server_protocol::HookSource;
@@ -67,7 +66,7 @@ fn wrapped_hook_command_preserves_the_complete_url_destination() {
         /*is_managed*/ false,
         /*display_order*/ 0,
     );
-    url_hook.source_path = test_path_buf("/tmp/h.json").abs();
+    url_hook.source_path = test_path_buf("/tmp/h.json");
     let mut view = HooksBrowserView::new(
         vec![url_hook],
         Vec::new(),

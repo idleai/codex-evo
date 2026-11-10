@@ -20,7 +20,6 @@ use codex_protocol::turn_input::CyberAccessProgram as CoreCyberAccessProgram;
 use codex_protocol::user_input::ByteRange as CoreByteRange;
 use codex_protocol::user_input::TextElement as CoreTextElement;
 use codex_protocol::user_input::UserInput as CoreUserInput;
-use codex_utils_absolute_path::AbsolutePathBuf;
 use codex_utils_path_uri::LegacyAppPathString;
 use serde::Deserialize;
 use serde::Serialize;
@@ -236,7 +235,11 @@ pub struct TurnStartParams {
     /// subsequent turns. Paths must be absolute.
     #[experimental("turn/start.runtimeWorkspaceRoots")]
     #[ts(optional = nullable)]
-    pub runtime_workspace_roots: Option<Vec<AbsolutePathBuf>>,
+    #[serde(
+        default,
+        deserialize_with = "crate::server_path::deserialize_optional_vec"
+    )]
+    pub runtime_workspace_roots: Option<Vec<PathBuf>>,
     /// Override the approval policy for this turn and subsequent turns.
     #[experimental(nested)]
     #[ts(optional = nullable)]

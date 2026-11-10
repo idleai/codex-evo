@@ -104,7 +104,7 @@ async fn marketplace_upgrade_failure_includes_backend_messages_snapshot() {
     let cwd = chat.config.cwd.clone();
 
     chat.on_marketplace_upgrade_loaded(
-        cwd.to_path_buf(),
+        cwd,
         Ok(MarketplaceUpgradeResponse {
             selected_marketplaces: vec!["debug".to_string(), "tools".to_string()],
             upgraded_roots: Vec::new(),
@@ -142,7 +142,7 @@ async fn hooks_popup_shows_list_diagnostics() {
     chat.on_hooks_loaded(
         HooksListTarget::Thread(thread_id),
         Ok(HooksListEntry {
-            cwd: cwd.to_path_buf(),
+            cwd: cwd,
             hooks: Vec::new(),
             warnings: vec!["skipped invalid matcher for PreToolUse".to_string()],
             errors: vec![HookErrorInfo {
@@ -228,7 +228,7 @@ async fn plugins_popup_keeps_loaded_marketplace_state_with_load_errors() {
     response
         .marketplace_load_errors
         .push(MarketplaceLoadErrorInfo {
-            marketplace_path: plugins_test_absolute_path("marketplaces/broken"),
+            marketplace_path: plugins_test_absolute_path("marketplaces/broken").to_path_buf(),
             message: "failed to load marketplace manifest".to_string(),
         });
 
@@ -445,7 +445,7 @@ async fn marketplace_add_success_refreshes_to_new_marketplace_tab() {
         "owner/repo".to_string(),
         Ok(MarketplaceAddResponse {
             marketplace_name: "debug".to_string(),
-            installed_root: marketplace_root,
+            installed_root: marketplace_root.to_path_buf(),
             already_added: false,
         }),
     );
@@ -455,7 +455,7 @@ async fn marketplace_add_success_refreshes_to_new_marketplace_tab() {
             plugins_test_curated_marketplace(Vec::new()),
             PluginMarketplaceEntry {
                 name: "debug".to_string(),
-                path: Some(marketplace_path),
+                path: Some(marketplace_path.to_path_buf()),
                 interface: Some(MarketplaceInterface {
                     display_name: Some("Debug Marketplace".to_string()),
                 }),
@@ -596,7 +596,7 @@ async fn plugins_popup_removes_user_configured_marketplace_flow() {
         marketplace_display_name,
         Ok(MarketplaceRemoveResponse {
             marketplace_name: "repo".to_string(),
-            installed_root: Some(plugins_test_absolute_path("marketplaces/repo")),
+            installed_root: Some(plugins_test_absolute_path("marketplaces/repo").to_path_buf()),
         }),
     );
     chat.on_plugins_loaded(
@@ -639,12 +639,12 @@ async fn plugin_detail_popup_snapshot_labels_personal_marketplace_as_local() {
     );
     let response = plugins_test_response(vec![PluginMarketplaceEntry {
         name: marketplace_name.to_string(),
-        path: Some(personal_marketplace_path.clone()),
+        path: Some(personal_marketplace_path.to_path_buf()),
         interface: None,
         plugins: vec![summary.clone()],
     }]);
     let cwd = chat.config.cwd.clone();
-    chat.on_plugins_loaded(cwd.to_path_buf(), Ok(response));
+    chat.on_plugins_loaded(cwd.clone(), Ok(response));
     chat.add_plugins_output();
     let mut plugin = plugins_test_detail(
         summary,
@@ -658,8 +658,8 @@ async fn plugin_detail_popup_snapshot_labels_personal_marketplace_as_local() {
         &["figma-mcp", "docs-mcp"],
     );
     plugin.marketplace_name = marketplace_name.to_string();
-    plugin.marketplace_path = Some(personal_marketplace_path);
-    chat.on_plugin_detail_loaded(cwd.to_path_buf(), Ok(PluginReadResponse { plugin }));
+    plugin.marketplace_path = Some(personal_marketplace_path.to_path_buf());
+    chat.on_plugin_detail_loaded(cwd, Ok(PluginReadResponse { plugin }));
 
     let popup = render_bottom_popup(&chat, /*width*/ 100);
     assert_chatwidget_snapshot!(
@@ -691,7 +691,7 @@ async fn plugin_detail_popup_snapshot_shows_npm_source() {
         summary.clone(),
     ])]);
     let cwd = chat.config.cwd.clone();
-    chat.on_plugins_loaded(cwd.to_path_buf(), Ok(response));
+    chat.on_plugins_loaded(cwd.clone(), Ok(response));
     chat.add_plugins_output();
     let plugin = plugins_test_detail(
         summary,
@@ -704,7 +704,7 @@ async fn plugin_detail_popup_snapshot_shows_npm_source() {
         &["Figma", "Slack"],
         &["figma-mcp", "docs-mcp"],
     );
-    chat.on_plugin_detail_loaded(cwd.to_path_buf(), Ok(PluginReadResponse { plugin }));
+    chat.on_plugin_detail_loaded(cwd, Ok(PluginReadResponse { plugin }));
 
     let popup = render_bottom_popup(&chat, /*width*/ 100);
     assert_chatwidget_snapshot!(
@@ -730,7 +730,7 @@ async fn plugin_detail_popup_distinguishes_admin_installed_from_enabled() {
         summary.clone(),
     ])]);
     let cwd = chat.config.cwd.clone();
-    chat.on_plugins_loaded(cwd.to_path_buf(), Ok(response));
+    chat.on_plugins_loaded(cwd.clone(), Ok(response));
     chat.add_plugins_output();
     let mut plugin = plugins_test_detail(
         summary,
@@ -744,7 +744,7 @@ async fn plugin_detail_popup_distinguishes_admin_installed_from_enabled() {
         &["figma-mcp", "docs-mcp"],
     );
     chat.on_plugin_detail_loaded(
-        cwd.to_path_buf(),
+        cwd.clone(),
         Ok(PluginReadResponse {
             plugin: plugin.clone(),
         }),
@@ -764,7 +764,7 @@ async fn plugin_detail_popup_distinguishes_admin_installed_from_enabled() {
 
     plugin.summary.installed = false;
     plugin.summary.enabled = false;
-    chat.on_plugin_detail_loaded(cwd.to_path_buf(), Ok(PluginReadResponse { plugin }));
+    chat.on_plugin_detail_loaded(cwd, Ok(PluginReadResponse { plugin }));
     let popup = render_bottom_popup(&chat, /*width*/ 100);
     assert!(
         popup.contains("Enabled by Admin")
@@ -855,7 +855,7 @@ async fn plugin_detail_unmaterialized_default_uses_remote_install_path() {
     };
     let cwd = chat.config.cwd.clone();
     chat.on_plugins_loaded(
-        cwd.to_path_buf(),
+        cwd.clone(),
         Ok(plugins_test_response(vec![PluginMarketplaceEntry {
             name: "workspace-shared-with-me-private".to_string(),
             path: None,
@@ -867,7 +867,7 @@ async fn plugin_detail_unmaterialized_default_uses_remote_install_path() {
     );
     chat.add_plugins_output();
     chat.on_plugin_detail_loaded(
-        cwd.to_path_buf(),
+        cwd,
         Ok(PluginReadResponse {
             plugin: PluginDetail {
                 onboarding_skill: None,
@@ -932,7 +932,7 @@ async fn plugin_detail_remote_uninstall_uses_remote_plugin_id() {
     );
     let cwd = chat.config.cwd.clone();
     chat.on_plugins_loaded(
-        cwd.to_path_buf(),
+        cwd.clone(),
         Ok(plugins_test_response(vec![
             plugins_test_remote_marketplace(
                 "workspace-shared-with-me-private",
@@ -943,7 +943,7 @@ async fn plugin_detail_remote_uninstall_uses_remote_plugin_id() {
     );
     chat.add_plugins_output();
     chat.on_plugin_detail_loaded(
-        cwd.to_path_buf(),
+        cwd,
         Ok(PluginReadResponse {
             plugin: plugins_test_remote_detail(
                 "workspace-shared-with-me-private",
@@ -997,7 +997,7 @@ async fn plugin_detail_remote_without_remote_id_disables_uninstall_action() {
     };
     let cwd = chat.config.cwd.clone();
     chat.on_plugins_loaded(
-        cwd.to_path_buf(),
+        cwd.clone(),
         Ok(plugins_test_response(vec![
             plugins_test_remote_marketplace(
                 "workspace-shared-with-me-private",
@@ -1008,7 +1008,7 @@ async fn plugin_detail_remote_without_remote_id_disables_uninstall_action() {
     );
     chat.add_plugins_output();
     chat.on_plugin_detail_loaded(
-        cwd.to_path_buf(),
+        cwd,
         Ok(PluginReadResponse {
             plugin: plugins_test_remote_detail(
                 "workspace-shared-with-me-private",
@@ -1063,11 +1063,11 @@ async fn plugin_detail_popup_shows_local_share_context_as_read_only_snapshot() {
         summary.clone(),
     ])]);
     let cwd = chat.config.cwd.clone();
-    chat.on_plugins_loaded(cwd.to_path_buf(), Ok(response));
+    chat.on_plugins_loaded(cwd.clone(), Ok(response));
     chat.add_plugins_output();
     let mut detail = plugins_test_detail(summary, Some("Workspace docs."), &[], &[], &[], &[]);
-    detail.marketplace_path = Some(plugins_test_personal_marketplace_path());
-    chat.on_plugin_detail_loaded(cwd.to_path_buf(), Ok(PluginReadResponse { plugin: detail }));
+    detail.marketplace_path = Some(plugins_test_personal_marketplace_path().to_path_buf());
+    chat.on_plugin_detail_loaded(cwd, Ok(PluginReadResponse { plugin: detail }));
 
     let popup = render_bottom_popup(&chat, /*width*/ 120);
     assert_chatwidget_snapshot!(
@@ -1097,10 +1097,10 @@ async fn plugin_detail_popup_shows_admin_disabled_status_snapshot() {
         summary.clone(),
     ])]);
     let cwd = chat.config.cwd.clone();
-    chat.on_plugins_loaded(cwd.to_path_buf(), Ok(response));
+    chat.on_plugins_loaded(cwd.clone(), Ok(response));
     chat.add_plugins_output();
     chat.on_plugin_detail_loaded(
-        cwd.to_path_buf(),
+        cwd,
         Ok(PluginReadResponse {
             plugin: plugins_test_detail(summary, Some("Blocked by policy."), &[], &[], &[], &[]),
         }),
@@ -1277,7 +1277,7 @@ async fn plugins_popup_remote_section_fallback_states_when_remote_plugin_disable
     remote_chat.add_plugins_output();
     let remote_cwd = remote_chat.config.cwd.clone();
     remote_chat.on_plugins_loaded(
-        remote_cwd.to_path_buf(),
+        remote_cwd,
         Ok(plugins_test_response(vec![
             plugins_test_curated_marketplace(Vec::new()),
         ])),
@@ -1477,12 +1477,9 @@ async fn plugin_detail_error_popup_skips_disabled_row_numbering() {
         ),
     ])]);
     let cwd = chat.config.cwd.clone();
-    chat.on_plugins_loaded(cwd.to_path_buf(), Ok(response));
+    chat.on_plugins_loaded(cwd.clone(), Ok(response));
     chat.add_plugins_output();
-    chat.on_plugin_detail_loaded(
-        cwd.to_path_buf(),
-        Err("Failed to load plugin details.".to_string()),
-    );
+    chat.on_plugin_detail_loaded(cwd, Err("Failed to load plugin details.".to_string()));
 
     let popup = render_bottom_popup(&chat, /*width*/ 100);
     assert_chatwidget_snapshot!("plugin_detail_error_popup", popup);
@@ -1552,7 +1549,7 @@ async fn plugins_popup_refresh_preserves_selected_row_position() {
         ),
     ])]);
     let cwd = chat.config.cwd.clone();
-    chat.on_plugins_loaded(cwd.to_path_buf(), Ok(refreshed));
+    chat.on_plugins_loaded(cwd, Ok(refreshed));
 
     let after = render_bottom_popup(&chat, /*width*/ 100);
     assert!(
@@ -1625,7 +1622,7 @@ async fn plugins_popup_refreshes_installed_counts_after_install() {
         ),
     ])]);
     let cwd = chat.config.cwd.clone();
-    chat.on_plugins_loaded(cwd.to_path_buf(), Ok(refreshed));
+    chat.on_plugins_loaded(cwd, Ok(refreshed));
 
     let after = render_bottom_popup(&chat, /*width*/ 100);
     assert!(
@@ -2019,9 +2016,9 @@ async fn plugins_popup_refresh_preserves_duplicate_marketplace_tab_by_path() {
     let response = plugins_test_response(vec![
         PluginMarketplaceEntry {
             name: "duplicate".to_string(),
-            path: Some(plugins_test_absolute_path(
-                "marketplaces/home/marketplace.json",
-            )),
+            path: Some(
+                plugins_test_absolute_path("marketplaces/home/marketplace.json").to_path_buf(),
+            ),
             interface: Some(MarketplaceInterface {
                 display_name: Some("Duplicate Marketplace".to_string()),
             }),
@@ -2037,9 +2034,9 @@ async fn plugins_popup_refresh_preserves_duplicate_marketplace_tab_by_path() {
         },
         PluginMarketplaceEntry {
             name: "duplicate".to_string(),
-            path: Some(plugins_test_absolute_path(
-                "marketplaces/repo/marketplace.json",
-            )),
+            path: Some(
+                plugins_test_absolute_path("marketplaces/repo/marketplace.json").to_path_buf(),
+            ),
             interface: Some(MarketplaceInterface {
                 display_name: Some("Duplicate Marketplace".to_string()),
             }),

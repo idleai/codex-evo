@@ -713,10 +713,7 @@ async fn fs_watch_directory_reports_changed_child_paths_and_unwatch_stops_notifi
     // fail the whole suite if no OS event arrives.
     if let Some(changed) = maybe_fs_changed_notification(&mut mcp).await? {
         assert_eq!(changed.watch_id, watch_id.clone());
-        assert_eq!(
-            changed.changed_paths,
-            vec![absolute_path(fetch_head.clone())]
-        );
+        assert_eq!(changed.changed_paths, vec![fetch_head.clone()]);
     }
     while timeout(
         Duration::from_millis(200),
@@ -781,7 +778,7 @@ async fn fs_watch_file_reports_atomic_replace_events() -> Result<()> {
             changed,
             FsChangedNotification {
                 watch_id,
-                changed_paths: vec![absolute_path(head_path.clone())],
+                changed_paths: vec![absolute_path(head_path.clone()).to_path_buf()],
             }
         );
     }
@@ -820,7 +817,7 @@ async fn fs_watch_allows_missing_file_targets() -> Result<()> {
             changed,
             FsChangedNotification {
                 watch_id,
-                changed_paths: vec![absolute_path(fetch_head.clone())],
+                changed_paths: vec![absolute_path(fetch_head.clone()).to_path_buf()],
             }
         );
     }

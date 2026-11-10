@@ -105,7 +105,15 @@ impl App {
         cwd: PathBuf,
     ) -> Result<Config> {
         let mut overrides = self.harness_overrides.clone();
-        overrides.cwd = Some(cwd.clone());
+        let remote = self.app_server_target.thread_params_mode()
+            != crate::app_server_session::ThreadParamsMode::Embedded;
+        // This reloads client preferences. A foreign server path cannot be a
+        // local config-loader base; the live widget keeps its server workspace.
+        overrides.cwd = Some(if remote && !cwd.is_absolute() {
+            base.local_cwd().to_path_buf()
+        } else {
+            cwd.clone()
+        });
         let cwd_display = cwd.display().to_string();
         let builder = ConfigBuilder::default()
             .codex_home(base.codex_home.to_path_buf())
@@ -1830,6 +1838,44 @@ enabled = false
     }
 
     #[tokio::test]
+    async fn remote_config_reload_keeps_foreign_workspace_out_of_local_preferences() -> Result<()> {
+        let mut app = make_test_app().await;
+        let home = tempdir()?;
+        let local_workspace = tempdir()?;
+        let local = ConfigBuilder::default()
+            .codex_home(home.path().to_path_buf())
+            .harness_overrides(ConfigOverrides {
+                cwd: Some(local_workspace.path().to_path_buf()),
+                ..Default::default()
+            })
+            .build()
+            .await?;
+        app.app_server_target = crate::AppServerTarget::Remote {
+            endpoint: crate::RemoteAppServerEndpoint::WebSocket {
+                websocket_url: "ws://127.0.0.1:4500".to_string(),
+                auth_token: None,
+            },
+        };
+        let foreign = PathBuf::from(if cfg!(windows) {
+            "/srv/remote/project"
+        } else {
+            r"C:\Users\alice\project with spaces"
+        });
+        let mut active = local.clone();
+        active.cwd = foreign.clone();
+        active.workspace_roots = vec![foreign.clone()];
+        let reloaded = app
+            .rebuild_config_for_cwd_from(&active, foreign.clone())
+            .await?;
+        assert_eq!(reloaded.cwd, local.cwd);
+        assert_eq!(reloaded.workspace_roots, local.workspace_roots);
+        assert!(reloaded.native_config().is_ok());
+        assert_eq!(active.cwd, foreign);
+        assert_eq!(active.workspace_roots, vec![foreign]);
+        Ok(())
+    }
+
+    #[tokio::test]
     async fn new_session_and_config_rebuilds_keep_the_live_application_network_policy() -> Result<()>
     {
         use codex_http_client::ClientRouteClass;
@@ -1939,7 +1985,7 @@ enabled = false
                 approvals_reviewer: ApprovalsReviewer::User,
                 permission_profile: PermissionProfile::read_only(),
                 active_permission_profile: None,
-                cwd: next_cwd.clone().abs(),
+                cwd: next_cwd.clone(),
                 runtime_workspace_roots: Vec::new(),
                 instruction_source_paths: Vec::new(),
                 reasoning_effort: None,

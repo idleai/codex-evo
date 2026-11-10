@@ -16,7 +16,7 @@ fn thread_settings_for_test(
         thread_id: thread_id.to_string(),
         thread_settings: codex_app_server_protocol::ThreadSettings {
             disabled_plugin_ids: Vec::new(),
-            cwd: test_path_buf("/tmp/thread-settings").abs(),
+            cwd: test_path_buf("/tmp/thread-settings"),
             approval_policy: AskForApproval::OnRequest,
             approvals_reviewer: codex_app_server_protocol::ApprovalsReviewer::AutoReview,
             sandbox_policy: codex_app_server_protocol::SandboxPolicy::ReadOnly {
@@ -59,8 +59,8 @@ fn configured_thread_session(thread_id: ThreadId) -> crate::session_state::Threa
         approvals_reviewer: ApprovalsReviewer::User,
         permission_profile: PermissionProfile::read_only(),
         active_permission_profile: None,
-        cwd: test_path_buf("/tmp/thread-settings").abs(),
-        runtime_workspace_roots: vec![test_path_buf("/tmp/thread-settings").abs()],
+        cwd: test_path_buf("/tmp/thread-settings"),
+        runtime_workspace_roots: vec![test_path_buf("/tmp/thread-settings")],
         instruction_source_paths: Vec::new(),
         reasoning_effort: None,
         collaboration_mode: None,
@@ -112,9 +112,10 @@ async fn session_and_settings_sync_server_provider_id() {
         .features
         .enable(Feature::CliDaybreak)
         .expect("enable Daybreak");
+    let provider = chat.config.model_provider.clone();
     chat.config
         .model_providers
-        .insert("server-bedrock".into(), chat.config.model_provider.clone());
+        .insert("server-bedrock".into(), provider);
     chat.local_settings.tui.status_line = Some(vec!["profile".into(), "provider".into()]);
     chat.refresh_status_line();
     assert_eq!(status_line_text(&chat), None);
@@ -687,7 +688,7 @@ async fn thread_settings_updated_updates_visible_state_without_transcript() {
     chat.set_feature_enabled(Feature::Apps, /*enabled*/ true);
     let thread_id = ThreadId::new();
     let mut session = configured_thread_session(thread_id);
-    session.cwd = test_path_buf("/tmp/original-workspace").abs();
+    session.cwd = test_path_buf("/tmp/original-workspace");
     chat.handle_thread_session(session);
     chat.config.permissions.approval_policy =
         Constrained::allow_only(AskForApproval::Never.to_core());

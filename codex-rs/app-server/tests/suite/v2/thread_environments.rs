@@ -110,12 +110,11 @@ async fn thread_environments_follow_the_loaded_thread_selection() -> Result<()> 
         timeout(DEFAULT_READ_TIMEOUT, second.read_response(request)).await??;
     let expected = Some(vec![ThreadEnvironment {
         environment_id: second.auto_env_params()?.environment_id,
-        cwd: resumed.cwd.clone().into(),
+        cwd: codex_utils_path_uri::LegacyAppPathString::from_path(&resumed.cwd),
         runtime_workspace_roots: resumed
             .runtime_workspace_roots
             .iter()
-            .cloned()
-            .map(Into::into)
+            .map(|path| codex_utils_path_uri::LegacyAppPathString::from_path(path))
             .collect(),
     }]);
     assert_eq!(resumed.thread.environments, expected);

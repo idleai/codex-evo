@@ -668,7 +668,8 @@ pub struct GuardianExecveReviewAction {
     pub source: GuardianCommandSource,
     pub program: String,
     pub argv: Vec<String>,
-    pub cwd: AbsolutePathBuf,
+    #[serde(deserialize_with = "crate::server_path::deserialize")]
+    pub cwd: PathBuf,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, JsonSchema, TS)]
@@ -726,7 +727,8 @@ pub enum GuardianApprovalReviewAction {
         source: GuardianCommandSource,
         program: String,
         argv: Vec<String>,
-        cwd: AbsolutePathBuf,
+        #[serde(deserialize_with = "crate::server_path::deserialize")]
+        cwd: PathBuf,
     },
     /// A child approval for input to an existing command execution item.
     #[serde(rename_all = "camelCase")]
@@ -789,7 +791,7 @@ impl From<CoreGuardianAssessmentAction> for GuardianApprovalReviewAction {
                 source: source.into(),
                 program,
                 argv,
-                cwd,
+                cwd: cwd.into_path_buf(),
             },
             CoreGuardianAssessmentAction::WriteStdin {
                 approval_id,
@@ -863,7 +865,7 @@ impl TryFrom<GuardianApprovalReviewAction> for CoreGuardianAssessmentAction {
                 source: source.into(),
                 program,
                 argv,
-                cwd,
+                cwd: AbsolutePathBuf::from_absolute_path_checked(cwd)?,
             },
             GuardianApprovalReviewAction::WriteStdin {
                 approval_id,

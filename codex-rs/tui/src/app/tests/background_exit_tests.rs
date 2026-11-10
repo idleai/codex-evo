@@ -439,7 +439,7 @@ async fn exit_interrupts_before_requesting_shutdown() -> Result<()> {
     // The UI fixture's placeholder cwd does not exist on clean runners.
     // This test starts a real shell, so keep its working directory alive.
     let cwd = tempdir()?;
-    app.config.cwd = cwd.path().abs();
+    app.config.cwd = cwd.path().to_path_buf();
     prepare_running_local_daemon(&mut app)?;
     app.chat_widget
         .set_feature_enabled(Feature::Goals, /*enabled*/ true);

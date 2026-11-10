@@ -394,7 +394,7 @@ impl ThreadParamsMode {
         }
     }
 
-    fn workspace_roots_from_config(self, config: &Config) -> Option<Vec<AbsolutePathBuf>> {
+    fn workspace_roots_from_config(self, config: &Config) -> Option<Vec<PathBuf>> {
         match self {
             Self::Embedded => Some(config.workspace_roots.clone()),
             // Client config paths belong to the client host. Let the server resolve its
@@ -1078,12 +1078,11 @@ impl AppServerSession {
             self.history_support = ThreadHistorySupport::LegacyOnly;
         }
         // An explicit server selection must not reuse the client's local display policy.
-        let selected_permissions = selected_profile.map(|_| {
-            PermissionProfile::from_legacy_sandbox_policy_for_cwd(
-                &response.sandbox.to_core(),
-                response.cwd.as_path(),
-            )
-        });
+        let selected_permissions = selected_profile
+            .map(|_| {
+                crate::remote_paths::permission_profile(&response.sandbox, response.cwd.as_path())
+            })
+            .transpose()?;
         let mut started = started_thread_from_start_response(
             response,
             local_settings,
@@ -1403,12 +1402,11 @@ impl AppServerSession {
             );
         }
         // Explicit selections use the server's effective policy, including on local daemons.
-        let selected_permissions = permission_profile_selection.map(|_| {
-            PermissionProfile::from_legacy_sandbox_policy_for_cwd(
-                &response.sandbox.to_core(),
-                response.cwd.as_path(),
-            )
-        });
+        let selected_permissions = permission_profile_selection
+            .map(|_| {
+                crate::remote_paths::permission_profile(&response.sandbox, response.cwd.as_path())
+            })
+            .transpose()?;
         let mut started = started_thread_from_fork_response(
             response,
             local_settings,
@@ -1693,7 +1691,7 @@ impl AppServerSession {
         approval_policy: Option<AskForApproval>,
         approvals_reviewer: Option<codex_app_server_protocol::ApprovalsReviewer>,
         permissions_override: TurnPermissionsOverride,
-        workspace_roots: &[AbsolutePathBuf],
+        workspace_roots: &[PathBuf],
         model: String,
         effort: Option<codex_protocol::openai_models::ReasoningEffort>,
         summary: Option<codex_protocol::config_types::ReasoningSummary>,
@@ -2711,7 +2709,7 @@ async fn thread_session_state_from_thread_start_response(
         response.cwd.as_path(),
         config,
         thread_params_mode,
-    );
+    )?;
     let mut session = thread_session_state_from_thread_response(
         &response.thread.id,
         crate::windows_sandbox::host_from_environments(response.thread.environments.as_deref()),
@@ -2746,10 +2744,9 @@ async fn thread_session_state_from_thread_resume_response(
 ) -> Result<ThreadSessionState, String> {
     // The server owns restored rules. This legacy projection is for display only;
     // normal turns do not send it back as an execution override.
-    let permission_profile = PermissionProfile::from_legacy_sandbox_policy_for_cwd(
-        &response.sandbox.to_core(),
-        response.cwd.as_path(),
-    );
+    let permission_profile =
+        crate::remote_paths::permission_profile(&response.sandbox, response.cwd.as_path())
+            .map_err(|error| error.to_string())?;
     let mut session = thread_session_state_from_thread_response(
         &response.thread.id,
         crate::windows_sandbox::host_from_environments(response.thread.environments.as_deref()),
@@ -2786,7 +2783,7 @@ async fn thread_session_state_from_thread_fork_response(
         response.cwd.as_path(),
         config,
         thread_params_mode,
-    );
+    )?;
     let mut session = thread_session_state_from_thread_response(
         &response.thread.id,
         crate::windows_sandbox::host_from_environments(response.thread.environments.as_deref()),
@@ -2816,24 +2813,19 @@ fn display_permission_profile_from_thread_response(
     cwd: &std::path::Path,
     config: &Config,
     thread_params_mode: ThreadParamsMode,
-) -> PermissionProfile {
-    match thread_params_mode {
-        ThreadParamsMode::Embedded
-            if matches!(
-                config.permissions.effective_permission_profile(),
-                PermissionProfile::Disabled
-            ) && !matches!(
-                sandbox,
-                codex_app_server_protocol::SandboxPolicy::DangerFullAccess
-            ) =>
-        {
-            PermissionProfile::from_legacy_sandbox_policy_for_cwd(&sandbox.to_core(), cwd)
-        }
-        ThreadParamsMode::Embedded => config.permissions.effective_permission_profile(),
-        ThreadParamsMode::Remote | ThreadParamsMode::Cloud => {
-            PermissionProfile::from_legacy_sandbox_policy_for_cwd(&sandbox.to_core(), cwd)
-        }
+) -> Result<PermissionProfile, String> {
+    if thread_params_mode == ThreadParamsMode::Embedded
+        && !(matches!(
+            config.permissions.effective_permission_profile(),
+            PermissionProfile::Disabled
+        ) && !matches!(
+            sandbox,
+            codex_app_server_protocol::SandboxPolicy::DangerFullAccess
+        ))
+    {
+        return Ok(config.permissions.effective_permission_profile());
     }
+    crate::remote_paths::permission_profile(sandbox, cwd).map_err(|error| error.to_string())
 }
 
 #[expect(
@@ -2853,8 +2845,8 @@ async fn thread_session_state_from_thread_response(
     approvals_reviewer: codex_protocol::config_types::ApprovalsReviewer,
     permission_profile: PermissionProfile,
     active_permission_profile: Option<ActivePermissionProfile>,
-    cwd: AbsolutePathBuf,
-    runtime_workspace_roots: Vec<AbsolutePathBuf>,
+    cwd: PathBuf,
+    runtime_workspace_roots: Vec<PathBuf>,
     instruction_source_paths: Vec<PathUri>,
     reasoning_effort: Option<codex_protocol::openai_models::ReasoningEffort>,
     local_settings: &LocalSettings,
@@ -3506,7 +3498,7 @@ mod tests {
             text_elements: Vec::new(),
         }];
         let output_schema = serde_json::json!({"type": "string"});
-        let workspace_roots = vec![test_path_buf("/local/workspace").abs()];
+        let workspace_roots = vec![test_path_buf("/local/workspace")];
         let (turn, sent_params) = tokio::join!(
             app_server.turn_start(
                 thread_id,
@@ -4773,7 +4765,7 @@ mod tests {
                 recency_at: Some(2),
                 status: ThreadStatus::Idle,
                 path: None,
-                cwd: test_path_buf("/tmp/project").abs(),
+                cwd: test_path_buf("/tmp/project"),
                 cli_version: "0.0.0".to_string(),
                 source: codex_app_server_protocol::SessionSource::Cli,
                 can_accept_direct_input: None,
@@ -4818,10 +4810,10 @@ mod tests {
             model: "gpt-5.5".to_string(),
             model_provider: "openai".to_string(),
             service_tier: None,
-            cwd: test_path_buf("/tmp/project").abs(),
+            cwd: test_path_buf("/tmp/project"),
             runtime_workspace_roots: vec![
-                test_path_buf("/tmp/project").abs(),
-                test_path_buf("/tmp/project/extra").abs(),
+                test_path_buf("/tmp/project"),
+                test_path_buf("/tmp/project/extra"),
             ],
             instruction_sources: vec![LegacyAppPathString::from_abs_path(
                 &test_path_buf("/tmp/project/AGENTS.md").abs(),
@@ -4920,7 +4912,7 @@ mod tests {
         )
         .await
         .expect("resume response should map");
-        assert_eq!(started.session.runtime_workspace_roots, Vec::new());
+        assert!(started.session.runtime_workspace_roots.is_empty());
     }
 
     #[tokio::test]
@@ -4939,7 +4931,8 @@ mod tests {
                 cwd.as_path(),
                 &config,
                 ThreadParamsMode::Remote,
-            ),
+            )
+            .expect("valid profile"),
             PermissionProfile::read_only()
         );
     }
@@ -4964,7 +4957,8 @@ mod tests {
                 cwd.as_path(),
                 &config,
                 ThreadParamsMode::Embedded,
-            ),
+            )
+            .expect("valid profile"),
             PermissionProfile::read_only()
         );
     }
@@ -4998,7 +4992,7 @@ mod tests {
             codex_protocol::config_types::ApprovalsReviewer::User,
             PermissionProfile::read_only(),
             /*active_permission_profile*/ None,
-            test_path_buf("/tmp/project").abs(),
+            test_path_buf("/tmp/project"),
             Vec::new(),
             Vec::new(),
             /*reasoning_effort*/ None,
@@ -5034,7 +5028,7 @@ mod tests {
             codex_protocol::config_types::ApprovalsReviewer::User,
             PermissionProfile::read_only(),
             /*active_permission_profile*/ None,
-            test_path_buf("/tmp/project").abs(),
+            test_path_buf("/tmp/project"),
             Vec::new(),
             Vec::new(),
             /*reasoning_effort*/ None,
@@ -5088,3 +5082,7 @@ mod tests {
         ));
     }
 }
+
+#[cfg(test)]
+#[path = "app_server_session/remote_paths_tests.rs"]
+mod remote_paths_tests;

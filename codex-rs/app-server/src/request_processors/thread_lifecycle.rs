@@ -1213,8 +1213,11 @@ pub(super) async fn handle_pending_thread_resume_request(
         model,
         model_provider: model_provider_id,
         service_tier,
-        cwd,
-        runtime_workspace_roots: workspace_roots,
+        cwd: cwd.into_path_buf(),
+        runtime_workspace_roots: workspace_roots
+            .into_iter()
+            .map(codex_utils_absolute_path::AbsolutePathBuf::into_path_buf)
+            .collect(),
         instruction_sources,
         approval_policy: approval_policy.into(),
         approvals_reviewer: approvals_reviewer.into(),

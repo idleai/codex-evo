@@ -805,7 +805,7 @@ async fn mcp_server_status_list_returns_raw_server_and_tool_names(plugin: bool) 
         )?;
         let request_id = mcp
             .send_plugin_install_request(PluginInstallParams {
-                marketplace_path: Some(AbsolutePathBuf::try_from(marketplace_path)?),
+                marketplace_path: Some(AbsolutePathBuf::try_from(marketplace_path)?.to_path_buf()),
                 remote_marketplace_name: None,
                 install_attempt_id: None,
                 plugin_name: "sample".to_string(),

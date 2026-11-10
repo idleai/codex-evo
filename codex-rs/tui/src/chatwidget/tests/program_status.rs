@@ -22,7 +22,9 @@ async fn program_status_tracks_live_results_and_resolved_approvals() {
             turn_id: "status-turn".to_string(),
             environment_id: None,
             command: vec!["echo".to_string(), "hello".to_string()],
-            cwd: AbsolutePathBuf::current_dir().expect("current dir"),
+            cwd: AbsolutePathBuf::current_dir()
+                .expect("current dir")
+                .to_path_buf(),
             reason: Some("need confirmation".to_string()),
             network_approval_context: None,
             proposed_execpolicy_amendment: None,

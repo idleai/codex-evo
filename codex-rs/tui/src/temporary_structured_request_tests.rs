@@ -206,7 +206,7 @@ async fn preserves_custom_permissions_and_disables_required_mcp_servers() -> col
         ),
         (
             Some("title-restricted".to_string()),
-            config.model_provider_id,
+            config.model_provider_id.clone(),
             true,
             Some(ThreadSource::Feature("thread_title".to_string())),
         )

@@ -167,7 +167,14 @@ fn collect_resume_override_mismatches(
     }
     if let Some(requested_runtime_workspace_roots) = request.runtime_workspace_roots.as_ref() {
         let requested_runtime_workspace_roots = requested_runtime_workspace_roots.to_vec();
-        if requested_runtime_workspace_roots != config_snapshot.workspace_roots {
+        if requested_runtime_workspace_roots
+            .iter()
+            .map(PathBuf::as_path)
+            .ne(config_snapshot
+                .workspace_roots
+                .iter()
+                .map(AbsolutePathBuf::as_path))
+        {
             mismatch_details.push(format!(
                 "runtime_workspace_roots requested={requested_runtime_workspace_roots:?} active={:?}",
                 config_snapshot.workspace_roots
@@ -1318,7 +1325,9 @@ impl ThreadRequestProcessor {
                 return Err(invalid_request(format!("project not found: {project_id}")));
             }
         }
-        let runtime_workspace_roots = runtime_workspace_roots.map(resolve_runtime_workspace_roots);
+        let runtime_workspace_roots = runtime_workspace_roots
+            .map(resolve_runtime_workspace_roots)
+            .transpose()?;
         let cwd = runner_access
             .as_ref()
             .map(|access| access.binding.checkout_root.display().to_string())
@@ -1783,8 +1792,12 @@ impl ThreadRequestProcessor {
             model: config_snapshot.model,
             model_provider: config_snapshot.model_provider_id,
             service_tier: config_snapshot.service_tier,
-            cwd,
-            runtime_workspace_roots: config_snapshot.workspace_roots,
+            cwd: cwd.into_path_buf(),
+            runtime_workspace_roots: config_snapshot
+                .workspace_roots
+                .into_iter()
+                .map(AbsolutePathBuf::into_path_buf)
+                .collect(),
             instruction_sources,
             approval_policy: config_snapshot.approval_policy.into(),
             approvals_reviewer: config_snapshot.approvals_reviewer.into(),
@@ -4204,8 +4217,9 @@ impl ThreadRequestProcessor {
         let history_cwd = history_settings
             .map(|settings| settings.cwd.to_path_buf())
             .or_else(|| thread_history.session_cwd());
-        let mut runtime_workspace_roots =
-            runtime_workspace_roots.map(resolve_runtime_workspace_roots);
+        let mut runtime_workspace_roots = runtime_workspace_roots
+            .map(resolve_runtime_workspace_roots)
+            .transpose()?;
         if runtime_workspace_roots.is_none() {
             // A retained owned snapshot is authoritative. Only use startup metadata when
             // no such snapshot exists; missing roots do not resurrect an older selection.
@@ -4251,7 +4265,12 @@ impl ThreadRequestProcessor {
                     })
                     .collect::<Result<Vec<_>, _>>()?;
                 // Validation can normalize distinct saved paths to the same root.
-                runtime_workspace_roots = Some(resolve_runtime_workspace_roots(restored_roots));
+                runtime_workspace_roots = Some(resolve_runtime_workspace_roots(
+                    restored_roots
+                        .into_iter()
+                        .map(AbsolutePathBuf::into_path_buf)
+                        .collect(),
+                )?);
             }
         }
         let mut typesafe_overrides = self.build_thread_config_overrides(
@@ -4643,8 +4662,12 @@ impl ThreadRequestProcessor {
                     model: session_configured.model,
                     model_provider: session_configured.model_provider_id,
                     service_tier: session_configured.service_tier,
-                    cwd: session_configured.cwd,
-                    runtime_workspace_roots: config_snapshot.workspace_roots,
+                    cwd: session_configured.cwd.into_path_buf(),
+                    runtime_workspace_roots: config_snapshot
+                        .workspace_roots
+                        .into_iter()
+                        .map(AbsolutePathBuf::into_path_buf)
+                        .collect(),
                     instruction_sources,
                     approval_policy: session_configured.approval_policy.into(),
                     approvals_reviewer: session_configured.approvals_reviewer.into(),
@@ -5655,7 +5678,9 @@ impl ThreadRequestProcessor {
         } else {
             Some(cli_overrides)
         };
-        let runtime_workspace_roots = runtime_workspace_roots.map(resolve_runtime_workspace_roots);
+        let runtime_workspace_roots = runtime_workspace_roots
+            .map(resolve_runtime_workspace_roots)
+            .transpose()?;
         let mut typesafe_overrides = self.build_thread_config_overrides(
             model,
             model_provider,
@@ -6075,8 +6100,12 @@ impl ThreadRequestProcessor {
             model: config_snapshot.model.clone(),
             model_provider: session_configured.model_provider_id,
             service_tier: config_snapshot.service_tier.clone(),
-            cwd: session_configured.cwd,
-            runtime_workspace_roots: config_snapshot.workspace_roots,
+            cwd: session_configured.cwd.into_path_buf(),
+            runtime_workspace_roots: config_snapshot
+                .workspace_roots
+                .into_iter()
+                .map(AbsolutePathBuf::into_path_buf)
+                .collect(),
             instruction_sources,
             approval_policy: session_configured.approval_policy.into(),
             approvals_reviewer: session_configured.approvals_reviewer.into(),
@@ -6841,7 +6870,7 @@ fn thread_from_stored_thread(
         recency_at: Some(thread.recency_at.timestamp()),
         status: ThreadStatus::NotLoaded,
         path,
-        cwd,
+        cwd: cwd.into_path_buf(),
         cli_version: thread.cli_version,
         originator: thread.originator,
         agent_nickname: source.get_nickname(),
@@ -7023,7 +7052,7 @@ fn build_thread_from_snapshot(
         recency_at: Some(now),
         status: ThreadStatus::NotLoaded,
         path,
-        cwd: config_snapshot.cwd().clone(),
+        cwd: config_snapshot.cwd().to_path_buf(),
         cli_version: env!("CARGO_PKG_VERSION").to_string(),
         originator: (!config_snapshot.originator.is_empty())
             .then(|| config_snapshot.originator.clone()),

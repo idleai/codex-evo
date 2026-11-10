@@ -703,7 +703,7 @@ async fn queued_unknown_slash_reports_error_when_dequeued() {
 
     chat.set_local_worktree_operations(/*enabled*/ true);
     let non_git = tempfile::tempdir().unwrap();
-    chat.config.cwd = non_git.path().to_path_buf().abs();
+    chat.config.cwd = non_git.path().to_path_buf();
     let drain = chat.submit_queued_slash_prompt(UserMessage::from("/worktree").into());
     assert_matches!(drain, QueueDrain::Continue);
     assert!(drain_insert_history(&mut rx).iter().any(|lines| {
@@ -732,9 +732,10 @@ async fn ctrl_d_with_modal_open_does_not_quit() {
 #[tokio::test]
 async fn slash_init_does_not_depend_on_loaded_instruction_sources() {
     let (mut chat, mut rx, _op_rx) = make_chatwidget_manual(/*model_override*/ None).await;
-    chat.instruction_source_paths = vec![codex_utils_path_uri::PathUri::from_abs_path(
-        &chat.config.cwd.join("project-instructions.md"),
-    )];
+    chat.instruction_source_paths = vec![
+        crate::remote_paths::path_uri(&chat.config.cwd.join("project-instructions.md"))
+            .expect("absolute path"),
+    ];
 
     submit_composer_text(&mut chat, "/init");
 
@@ -1860,13 +1861,13 @@ async fn slash_copy_picker_copies_status_fields_and_preserves_source_after_copyi
     let session_id = "00000000-0000-0000-0000-000000000123";
     chat.thread_id = Some(ThreadId::from_string(session_id).expect("valid thread ID"));
     chat.thread_name = Some("Clipboard example".to_string());
-    chat.config.cwd = test_path_buf("/workspace").abs();
+    chat.config.cwd = test_path_buf("/workspace");
     let directory = chat.config.cwd.display().to_string();
     chat.dispatch_command(SlashCommand::Status);
     drain_insert_history(&mut rx);
 
     // The picker must copy the status that was displayed, not newer widget settings.
-    chat.config.cwd = test_path_buf("/another-workspace").abs();
+    chat.config.cwd = test_path_buf("/another-workspace");
     chat.thread_name = Some("New name".to_string());
     chat.dispatch_command(SlashCommand::Copy);
     assert_chatwidget_snapshot!(
@@ -1910,7 +1911,7 @@ async fn slash_copy_picker_copies_status_fields_and_preserves_source_after_copyi
 #[tokio::test]
 async fn slash_copy_status_omits_missing_fields_and_copies_full_directory() {
     let (mut chat, mut rx, _op_rx) = make_chatwidget_manual(Some("gpt-5.4")).await;
-    chat.config.cwd = test_path_buf(&format!("/workspace/{}", "nested/".repeat(/*n*/ 20))).abs();
+    chat.config.cwd = test_path_buf(&format!("/workspace/{}", "nested/".repeat(/*n*/ 20)));
     let directory = chat.config.cwd.display().to_string();
     chat.thread_name = Some(String::new());
     chat.dispatch_command(SlashCommand::Status);
@@ -2250,9 +2251,10 @@ async fn assert_daybreak_catalog_and_account_gates(provider_id: &str) {
                     cyber_access_programs: capability,
                     ..Default::default()
                 });
+            let provider = chat.config.model_provider.clone();
             chat.config
                 .model_providers
-                .insert(provider_id.into(), chat.config.model_provider.clone());
+                .insert(provider_id.into(), provider);
             assert!(!chat.daybreak_account_eligible());
             assert!(chat.daybreak_command_description().is_none());
         }
@@ -2262,9 +2264,10 @@ async fn assert_daybreak_catalog_and_account_gates(provider_id: &str) {
                 ..Default::default()
             });
     }
+    let provider = chat.config.model_provider.clone();
     chat.config
         .model_providers
-        .insert(provider_id.into(), chat.config.model_provider.clone());
+        .insert(provider_id.into(), provider);
     // Session updates change the provider ID; eligibility must not use the startup definition.
     chat.config.model_provider.capabilities = None;
     assert!(chat.daybreak_account_eligible());

@@ -1,10 +1,6 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
   "definitions": {
-    "AbsolutePathBuf": {
-      "description": "A path that is guaranteed to be absolute and normalized (though it is not guaranteed to be canonicalized or exist on the filesystem).\n\nIMPORTANT: When deserializing an `AbsolutePathBuf`, a base path must be set using [AbsolutePathBufGuard::new]. If no base path is set, the deserialization will fail unless the path being deserialized is already absolute.",
-      "type": "string"
-    },
     "MarketplaceInterface": {
       "properties": {
         "displayName": {
@@ -19,7 +15,7 @@
     "MarketplaceLoadErrorInfo": {
       "properties": {
         "marketplacePath": {
-          "$ref": "#/definitions/AbsolutePathBuf"
+          "type": "string"
         },
         "message": {
           "type": "string"
@@ -100,15 +96,12 @@
           ]
         },
         "composerIcon": {
-          "anyOf": [
-            {
-              "$ref": "#/definitions/AbsolutePathBuf"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "description": "Local composer icon path, resolved from the installed plugin package."
+          "default": null,
+          "description": "Local composer icon path, resolved from the installed plugin package.",
+          "type": [
+            "string",
+            "null"
+          ]
         },
         "composerIconUrl": {
           "description": "Remote composer icon URL from the plugin catalog.",
@@ -140,26 +133,20 @@
           ]
         },
         "logo": {
-          "anyOf": [
-            {
-              "$ref": "#/definitions/AbsolutePathBuf"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "description": "Local logo path, resolved from the installed plugin package."
+          "default": null,
+          "description": "Local logo path, resolved from the installed plugin package.",
+          "type": [
+            "string",
+            "null"
+          ]
         },
         "logoDark": {
-          "anyOf": [
-            {
-              "$ref": "#/definitions/AbsolutePathBuf"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "description": "Local dark-mode logo path, resolved from the installed plugin package."
+          "default": null,
+          "description": "Local dark-mode logo path, resolved from the installed plugin package.",
+          "type": [
+            "string",
+            "null"
+          ]
         },
         "logoUrl": {
           "description": "Remote logo URL from the plugin catalog.",
@@ -197,7 +184,7 @@
         "screenshots": {
           "description": "Local screenshot paths, resolved from the installed plugin package.",
           "items": {
-            "$ref": "#/definitions/AbsolutePathBuf"
+            "type": "string"
           },
           "type": "array"
         },
@@ -243,15 +230,12 @@
           "type": "string"
         },
         "path": {
-          "anyOf": [
-            {
-              "$ref": "#/definitions/AbsolutePathBuf"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "description": "Local marketplace file path when the marketplace is backed by a local file. Remote-only catalog marketplaces do not have a local path."
+          "default": null,
+          "description": "Local marketplace file path when the marketplace is backed by a local file. Remote-only catalog marketplaces do not have a local path.",
+          "type": [
+            "string",
+            "null"
+          ]
         },
         "plugins": {
           "items": {
@@ -381,7 +365,7 @@
         {
           "properties": {
             "path": {
-              "$ref": "#/definitions/AbsolutePathBuf"
+              "type": "string"
             },
             "type": {
               "enum": [

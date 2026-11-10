@@ -42,7 +42,6 @@ use codex_message_history::HistoryBatchCursor;
 use codex_protocol::ThreadId;
 use codex_protocol::openai_models::ModelPreset;
 use codex_protocol::openai_models::ReasoningEffort;
-use codex_utils_absolute_path::AbsolutePathBuf;
 use codex_utils_approval_presets::ApprovalPreset;
 use codex_utils_path_uri::PathUri;
 use strum_macros::IntoStaticStr;
@@ -103,7 +102,7 @@ pub(crate) enum ManagedWorktreeMode {
 #[derive(Debug)]
 pub(crate) struct ManagedWorktreeTransition {
     pub(crate) source_thread_id: ThreadId,
-    pub(crate) source_cwd: AbsolutePathBuf,
+    pub(crate) source_cwd: PathBuf,
     pub(crate) manager: codex_worktree::WorktreeManager,
     pub(crate) checkout: codex_worktree::ManagedWorktree,
     pub(crate) config: Box<crate::legacy_core::config::Config>,
@@ -114,7 +113,7 @@ pub(crate) struct ManagedWorktreeTransition {
 #[derive(Debug)]
 pub(crate) struct ManagedWorktreeCreated {
     pub(crate) source_thread_id: ThreadId,
-    pub(crate) source_cwd: AbsolutePathBuf,
+    pub(crate) source_cwd: PathBuf,
     pub(crate) mode: ManagedWorktreeMode,
     pub(crate) name: Option<String>,
     pub(crate) result: Result<
@@ -190,12 +189,12 @@ pub(crate) struct ConnectorsSnapshot {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum PluginLocation {
-    Local { marketplace_path: AbsolutePathBuf },
+    Local { marketplace_path: PathBuf },
     Remote { marketplace_name: String },
 }
 
 impl PluginLocation {
-    pub(crate) fn into_request_params(self) -> (Option<AbsolutePathBuf>, Option<String>) {
+    pub(crate) fn into_request_params(self) -> (Option<PathBuf>, Option<String>) {
         match self {
             PluginLocation::Local { marketplace_path } => (Some(marketplace_path), None),
             PluginLocation::Remote { marketplace_name } => (None, Some(marketplace_name)),
@@ -324,7 +323,7 @@ pub(crate) enum AppEvent {
     },
     /// Create an empty thread from the command center.
     NewAgentsOverviewSession {
-        cwd: Option<AbsolutePathBuf>,
+        cwd: Option<PathBuf>,
     },
     /// Update the agents overview after a background thread listing finishes.
     AgentsOverviewThreadsLoaded {
@@ -337,7 +336,7 @@ pub(crate) enum AppEvent {
     },
     /// Create an empty session in a worktree from the selected project's default branch.
     NewAgentsOverviewWorktree {
-        cwd: Option<AbsolutePathBuf>,
+        cwd: Option<PathBuf>,
     },
     AgentsOverviewWorktreeCreated(Result<crate::app::PendingWorktree, String>),
     /// Fork the selected dashboard conversation and open the new session.

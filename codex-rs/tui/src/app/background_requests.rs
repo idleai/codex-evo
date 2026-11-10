@@ -31,7 +31,6 @@ use crate::hooks_rpc::HooksListTarget;
 use crate::hooks_rpc::fetch_hooks_list;
 use crate::hooks_rpc::write_hook_trust;
 use crate::hooks_rpc::write_hook_trusts;
-use codex_utils_absolute_path::AbsolutePathBuf;
 
 pub(super) const THREAD_USAGE_FETCH_TIMEOUT: std::time::Duration =
     std::time::Duration::from_secs(/*secs*/ 65);
@@ -1106,7 +1105,6 @@ async fn request_plugin_list_with_marketplace_kinds(
     cwd: PathBuf,
     marketplace_kinds: Option<Vec<PluginListMarketplaceKind>>,
 ) -> Result<PluginListResponse> {
-    let cwd = AbsolutePathBuf::try_from(cwd).wrap_err("plugin list cwd must be absolute")?;
     let request_id = RequestId::String(format!("plugin-list-{}", Uuid::new_v4()));
     request_handle
         .request_typed(ClientRequest::PluginList {
@@ -1137,7 +1135,6 @@ pub(super) async fn fetch_marketplace_add(
     cwd: PathBuf,
     source: String,
 ) -> Result<MarketplaceAddResponse> {
-    let cwd = AbsolutePathBuf::try_from(cwd).wrap_err("marketplace/add cwd must be absolute")?;
     let source = marketplace_add_source_for_request(cwd.as_path(), source);
     let request_id = RequestId::String(format!("marketplace-add-{}", Uuid::new_v4()));
     request_handle
@@ -1168,9 +1165,15 @@ fn marketplace_add_source_for_request(cwd: &std::path::Path, source: String) -> 
         || base_source.starts_with(".\\")
         || base_source.starts_with("..\\")
     {
-        let mut resolved = AbsolutePathBuf::resolve_path_against_base(base_source, cwd)
-            .to_string_lossy()
-            .into_owned();
+        let resolved = crate::remote_paths::path_uri(cwd).ok().and_then(|cwd| {
+            codex_utils_path_uri::LegacyAppPathString::from_string(base_source)
+                .resolve_against(&cwd, None)
+                .ok()
+        });
+        let Some(resolved) = resolved else {
+            return source;
+        };
+        let mut resolved = resolved.to_path_buf().to_string_lossy().into_owned();
         if let Some(suffix) = suffix {
             resolved.push_str(&suffix);
         }
@@ -1482,18 +1485,38 @@ mod tests {
     }
 
     #[test]
+    fn marketplace_add_resolves_relative_paths_on_the_server_platform() {
+        for (cwd, expected) in [
+            (r"C:\workspace\project", r"C:\workspace\marketplace#main"),
+            (
+                r"\\server\share\project",
+                r"\\server\share\marketplace#main",
+            ),
+            ("/workspace/project", "/workspace/marketplace#main"),
+        ] {
+            assert_eq!(
+                marketplace_add_source_for_request(
+                    std::path::Path::new(cwd),
+                    "../marketplace#main".to_string()
+                ),
+                expected
+            );
+        }
+    }
+
+    #[test]
     fn hide_cli_only_plugin_marketplaces_removes_openai_bundled() {
         let mut response = PluginListResponse {
             marketplaces: vec![
                 PluginMarketplaceEntry {
                     name: "openai-bundled".to_string(),
-                    path: Some(test_absolute_path("/marketplaces/openai-bundled")),
+                    path: Some(test_absolute_path("/marketplaces/openai-bundled").to_path_buf()),
                     interface: None,
                     plugins: Vec::new(),
                 },
                 PluginMarketplaceEntry {
                     name: "openai-curated".to_string(),
-                    path: Some(test_absolute_path("/marketplaces/openai-curated")),
+                    path: Some(test_absolute_path("/marketplaces/openai-curated").to_path_buf()),
                     interface: None,
                     plugins: Vec::new(),
                 },
@@ -1508,7 +1531,7 @@ mod tests {
             response.marketplaces,
             vec![PluginMarketplaceEntry {
                 name: "openai-curated".to_string(),
-                path: Some(test_absolute_path("/marketplaces/openai-curated")),
+                path: Some(test_absolute_path("/marketplaces/openai-curated").to_path_buf()),
                 interface: None,
                 plugins: Vec::new(),
             }]
@@ -1521,10 +1544,10 @@ mod tests {
 
         assert_eq!(
             PluginLocation::Local {
-                marketplace_path: local_path.clone()
+                marketplace_path: local_path.to_path_buf()
             }
             .into_request_params(),
-            (Some(local_path), None)
+            (Some(local_path.to_path_buf()), None)
         );
         assert_eq!(
             PluginLocation::Remote {

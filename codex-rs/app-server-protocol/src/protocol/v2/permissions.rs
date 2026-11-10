@@ -26,6 +26,7 @@ use serde::Serialize;
 use std::io;
 use std::num::NonZeroUsize;
 use std::path::Path;
+use std::path::PathBuf;
 
 v2_enum_from_core! {
     pub enum NetworkApprovalProtocol from CoreNetworkApprovalProtocol {
@@ -556,7 +557,8 @@ pub enum SandboxPolicy {
     #[ts(rename_all = "camelCase")]
     WorkspaceWrite {
         #[serde(default)]
-        writable_roots: Vec<AbsolutePathBuf>,
+        #[serde(deserialize_with = "crate::server_path::deserialize_vec")]
+        writable_roots: Vec<PathBuf>,
         #[serde(default)]
         network_access: bool,
         #[serde(default)]
@@ -585,7 +587,8 @@ enum SandboxPolicyDeserialize {
     #[serde(rename_all = "camelCase")]
     WorkspaceWrite {
         #[serde(default)]
-        writable_roots: Vec<AbsolutePathBuf>,
+        #[serde(deserialize_with = "crate::server_path::deserialize_vec")]
+        writable_roots: Vec<PathBuf>,
         #[serde(default)]
         read_only_access: Option<LegacyReadOnlyAccess>,
         #[serde(default)]
@@ -649,8 +652,10 @@ impl<'de> Deserialize<'de> for SandboxPolicy {
 }
 
 impl SandboxPolicy {
-    pub fn to_core(&self) -> codex_protocol::protocol::SandboxPolicy {
-        match self {
+    /// Localizes a wire policy on the executor. A client may hold foreign paths,
+    /// but execution must still reject relative or foreign writable roots.
+    pub fn try_to_core(&self) -> io::Result<codex_protocol::protocol::SandboxPolicy> {
+        Ok(match self {
             SandboxPolicy::DangerFullAccess => {
                 codex_protocol::protocol::SandboxPolicy::DangerFullAccess
             }
@@ -673,12 +678,15 @@ impl SandboxPolicy {
                 exclude_tmpdir_env_var,
                 exclude_slash_tmp,
             } => codex_protocol::protocol::SandboxPolicy::WorkspaceWrite {
-                writable_roots: writable_roots.clone(),
+                writable_roots: writable_roots
+                    .iter()
+                    .map(AbsolutePathBuf::from_absolute_path_checked)
+                    .collect::<io::Result<_>>()?,
                 network_access: *network_access,
                 exclude_tmpdir_env_var: *exclude_tmpdir_env_var,
                 exclude_slash_tmp: *exclude_slash_tmp,
             },
-        }
+        })
     }
 }
 
@@ -705,7 +713,10 @@ impl From<codex_protocol::protocol::SandboxPolicy> for SandboxPolicy {
                 exclude_tmpdir_env_var,
                 exclude_slash_tmp,
             } => SandboxPolicy::WorkspaceWrite {
-                writable_roots,
+                writable_roots: writable_roots
+                    .into_iter()
+                    .map(AbsolutePathBuf::into_path_buf)
+                    .collect(),
                 network_access,
                 exclude_tmpdir_env_var,
                 exclude_slash_tmp,

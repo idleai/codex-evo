@@ -55,7 +55,6 @@ use codex_features::Features;
 use codex_protocol::ThreadId;
 use codex_protocol::request_permissions::PermissionGrantScope;
 use codex_protocol::request_permissions::RequestPermissionProfile;
-use codex_utils_absolute_path::AbsolutePathBuf;
 use codex_utils_path_uri::LegacyAppPathString;
 use crossterm::event::KeyCode;
 use crossterm::event::KeyEvent;
@@ -108,7 +107,7 @@ pub(crate) struct ApplyPatchApprovalRequest {
     pub thread_label: Option<String>,
     pub id: String,
     pub reason: Option<String>,
-    pub cwd: AbsolutePathBuf,
+    pub cwd: std::path::PathBuf,
     pub changes: HashMap<PathBuf, FileChange>,
 }
 
@@ -1150,7 +1149,6 @@ mod tests {
     use codex_protocol::models::FileSystemPermissions;
     use codex_protocol::models::NetworkPermissions;
     use codex_utils_absolute_path::AbsolutePathBuf;
-    use codex_utils_absolute_path::test_support::PathExt;
     use codex_utils_absolute_path::test_support::test_path_buf;
     use crossterm::event::KeyModifiers;
     use insta::assert_snapshot;
@@ -1477,7 +1475,7 @@ mod tests {
                 thread_label: None,
                 id: "patch".into(),
                 reason: None,
-                cwd: absolute_path("/tmp"),
+                cwd: absolute_path("/tmp").to_path_buf(),
                 changes: HashMap::new(),
             }),
         ] {
@@ -2254,7 +2252,7 @@ mod tests {
             thread_label: Some("Banach [worker]".to_string()),
             id: "test".to_string(),
             reason: None,
-            cwd: test_path_buf("/tmp").abs(),
+            cwd: test_path_buf("/tmp"),
             changes,
         });
         let keymap = crate::keymap::RuntimeKeymap::defaults();
@@ -2287,7 +2285,7 @@ mod tests {
             thread_label: None,
             id: "test".to_string(),
             reason: None,
-            cwd: absolute_path("/tmp"),
+            cwd: absolute_path("/tmp").to_path_buf(),
             changes: HashMap::new(),
         });
         let view = make_overlay(request, tx, Features::with_defaults());

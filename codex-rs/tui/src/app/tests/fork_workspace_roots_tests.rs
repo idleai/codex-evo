@@ -79,7 +79,7 @@ async fn check_fork_dispatch(mode: ThreadParamsMode) -> Result<()> {
             app.resume_model_settings(),
         )
         .await?;
-    let expected_roots = vec![remote_cwd, server_root];
+    let expected_roots = vec![remote_cwd.into_path_buf(), server_root.into_path_buf()];
     assert_eq!(started.session.runtime_workspace_roots, expected_roots);
     app.enqueue_primary_thread_session(started.session, started.turns)
         .await?;

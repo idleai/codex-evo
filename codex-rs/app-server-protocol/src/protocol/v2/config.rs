@@ -17,7 +17,6 @@ use codex_protocol::config_types::Verbosity;
 use codex_protocol::config_types::WebSearchMode;
 use codex_protocol::config_types::WebSearchToolConfig;
 use codex_protocol::openai_models::ReasoningEffort;
-use codex_utils_absolute_path::AbsolutePathBuf;
 use codex_utils_path_uri::PathUri;
 pub use codex_utils_redacted_string::SerdeRedactedString;
 use serde::Deserialize;
@@ -37,7 +36,8 @@ pub enum ConfigLayerSource {
     #[ts(rename_all = "camelCase")]
     PackagedDefaults {
         /// Path to the packaged default configuration file.
-        file: AbsolutePathBuf,
+        #[serde(deserialize_with = "crate::server_path::deserialize")]
+        file: PathBuf,
     },
 
     /// Managed preferences layer delivered by MDM (macOS only).
@@ -54,7 +54,8 @@ pub enum ConfigLayerSource {
     System {
         /// This is the path to the system config.toml file, though it is not
         /// guaranteed to exist.
-        file: AbsolutePathBuf,
+        #[serde(deserialize_with = "crate::server_path::deserialize")]
+        file: PathBuf,
     },
 
     /// Enterprise-managed config layer delivered by the cloud config bundle.
@@ -79,7 +80,8 @@ pub enum ConfigLayerSource {
     User {
         /// This is the path to the user's config.toml file, though it is not
         /// guaranteed to exist.
-        file: AbsolutePathBuf,
+        #[serde(deserialize_with = "crate::server_path::deserialize")]
+        file: PathBuf,
 
         /// Name of the selected profile-v2 config layered on top of the base
         /// user config, when this layer represents one.
@@ -91,7 +93,8 @@ pub enum ConfigLayerSource {
     #[serde(rename_all = "camelCase")]
     #[ts(rename_all = "camelCase")]
     Project {
-        dot_codex_folder: AbsolutePathBuf,
+        #[serde(deserialize_with = "crate::server_path::deserialize")]
+        dot_codex_folder: PathBuf,
     },
 
     /// Session-layer overrides supplied via `-c`/`--config`.
@@ -104,7 +107,8 @@ pub enum ConfigLayerSource {
     #[serde(rename_all = "camelCase")]
     #[ts(rename_all = "camelCase")]
     LegacyManagedConfigTomlFromFile {
-        file: AbsolutePathBuf,
+        #[serde(deserialize_with = "crate::server_path::deserialize")]
+        file: PathBuf,
     },
 
     LegacyManagedConfigTomlFromMdm,
@@ -367,7 +371,8 @@ pub struct ConfigWriteResponse {
     pub status: WriteStatus,
     pub version: String,
     /// Canonical path to the config file that was written.
-    pub file_path: AbsolutePathBuf,
+    #[serde(deserialize_with = "crate::server_path::deserialize")]
+    pub file_path: PathBuf,
     pub overridden_metadata: Option<OverriddenMetadata>,
 }
 
@@ -904,6 +909,7 @@ pub struct SkillMigration {
 #[ts(export_to = "v2/")]
 pub struct SessionMigration {
     pub path: PathBuf,
+    #[serde(deserialize_with = "crate::server_path::deserialize")]
     pub cwd: PathBuf,
     pub title: Option<String>,
 }

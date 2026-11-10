@@ -1173,7 +1173,7 @@ async fn resume_reloads_config_when_saved_workspace_roots_change(
     let (items, _, _) = RolloutRecorder::load_rollout_items(&path).await?;
     client.shutdown().await?;
 
-    assert_eq!(resumed.runtime_workspace_roots, Vec::new());
+    assert!(resumed.runtime_workspace_roots.is_empty());
     assert!(
         blocked_resume.matching_loads.load(Ordering::Relaxed) >= 2,
         "roots-only updates must reload config"

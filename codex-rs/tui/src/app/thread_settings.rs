@@ -257,6 +257,12 @@ impl App {
 }
 
 fn apply_thread_settings_to_session(session: &mut ThreadSessionState, settings: &ThreadSettings) {
+    let Ok(permission_profile) =
+        crate::remote_paths::permission_profile(&settings.sandbox_policy, settings.cwd.as_path())
+    else {
+        tracing::warn!("invalid server permission snapshot");
+        return;
+    };
     if settings.collaboration_mode.mode == ModeKind::Default {
         session.model = settings.model.clone();
         session.reasoning_effort = settings.effort.clone();
@@ -265,10 +271,7 @@ fn apply_thread_settings_to_session(session: &mut ThreadSessionState, settings: 
     session.service_tier = settings.service_tier.clone();
     session.approval_policy = settings.approval_policy;
     session.approvals_reviewer = settings.approvals_reviewer.to_core();
-    session.permission_profile = PermissionProfile::from_legacy_sandbox_policy_for_cwd(
-        &settings.sandbox_policy.to_core(),
-        settings.cwd.as_path(),
-    );
+    session.permission_profile = permission_profile;
     session.active_permission_profile = settings.active_permission_profile.clone().map(Into::into);
     session.set_cwd_retargeting_implicit_runtime_workspace_root(settings.cwd.clone());
     let mut collaboration_mode = settings.collaboration_mode.clone();

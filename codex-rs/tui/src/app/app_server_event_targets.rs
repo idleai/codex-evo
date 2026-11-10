@@ -241,7 +241,6 @@ pub(super) fn server_notification_thread_target(
 mod tests {
     use super::ServerNotificationThreadTarget;
     use super::server_notification_thread_target;
-    use crate::test_support::PathBufExt;
     use crate::test_support::test_path_buf;
     use codex_app_server_protocol::GuardianWarningNotification;
     use codex_app_server_protocol::McpServerStartupState;
@@ -262,7 +261,7 @@ mod tests {
     fn test_thread_settings() -> ThreadSettings {
         ThreadSettings {
             disabled_plugin_ids: Vec::new(),
-            cwd: test_path_buf("/tmp/thread-settings").abs(),
+            cwd: test_path_buf("/tmp/thread-settings"),
             approval_policy: codex_app_server_protocol::AskForApproval::Never,
             approvals_reviewer: codex_app_server_protocol::ApprovalsReviewer::User,
             sandbox_policy: codex_app_server_protocol::SandboxPolicy::ReadOnly {

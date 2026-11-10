@@ -13,21 +13,28 @@ use codex_config::ConfigLayerSource;
 /// function instead of a `From` implementation.
 pub(crate) fn config_layer_source_to_api(source: ConfigLayerSource) -> ApiConfigLayerSource {
     match source {
-        ConfigLayerSource::PackagedDefaults { file } => {
-            ApiConfigLayerSource::PackagedDefaults { file }
-        }
+        ConfigLayerSource::PackagedDefaults { file } => ApiConfigLayerSource::PackagedDefaults {
+            file: file.into_path_buf(),
+        },
         ConfigLayerSource::Mdm { domain, key } => ApiConfigLayerSource::Mdm { domain, key },
-        ConfigLayerSource::System { file } => ApiConfigLayerSource::System { file },
+        ConfigLayerSource::System { file } => ApiConfigLayerSource::System {
+            file: file.into_path_buf(),
+        },
         ConfigLayerSource::EnterpriseManaged { id, name } => {
             ApiConfigLayerSource::EnterpriseManaged { id, name }
         }
-        ConfigLayerSource::User { file, profile } => ApiConfigLayerSource::User { file, profile },
-        ConfigLayerSource::Project { dot_codex_folder } => {
-            ApiConfigLayerSource::Project { dot_codex_folder }
-        }
+        ConfigLayerSource::User { file, profile } => ApiConfigLayerSource::User {
+            file: file.into_path_buf(),
+            profile,
+        },
+        ConfigLayerSource::Project { dot_codex_folder } => ApiConfigLayerSource::Project {
+            dot_codex_folder: dot_codex_folder.into_path_buf(),
+        },
         ConfigLayerSource::SessionFlags => ApiConfigLayerSource::SessionFlags,
         ConfigLayerSource::LegacyManagedConfigTomlFromFile { file } => {
-            ApiConfigLayerSource::LegacyManagedConfigTomlFromFile { file }
+            ApiConfigLayerSource::LegacyManagedConfigTomlFromFile {
+                file: file.into_path_buf(),
+            }
         }
         ConfigLayerSource::LegacyManagedConfigTomlFromMdm => {
             ApiConfigLayerSource::LegacyManagedConfigTomlFromMdm

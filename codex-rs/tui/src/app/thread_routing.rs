@@ -269,7 +269,7 @@ impl App {
         self.sync_side_thread_ui();
     }
 
-    pub(super) async fn thread_cwd(&self, thread_id: ThreadId) -> Option<AbsolutePathBuf> {
+    pub(super) async fn thread_cwd(&self, thread_id: ThreadId) -> Option<PathBuf> {
         let channel = self.thread_event_channels.get(&thread_id)?;
         let store = channel.store.lock().await;
         store.session.as_ref().map(|session| session.cwd.clone())
@@ -1465,9 +1465,7 @@ impl App {
             self.config
                 .workspace_roots
                 .clone_from(&session.runtime_workspace_roots);
-            self.config
-                .permissions
-                .set_workspace_roots(session.runtime_workspace_roots.clone());
+            self.config.sync_native_workspace_roots();
         }
 
         let thread_id = session.thread_id;

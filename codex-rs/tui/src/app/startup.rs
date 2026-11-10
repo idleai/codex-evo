@@ -327,7 +327,7 @@ impl App {
 
         let harness_overrides = startup_try!(normalize_harness_overrides_for_cwd(
             harness_overrides,
-            &config.cwd
+            config.local_cwd()
         ));
         app_server.model_provider_override = harness_overrides.model_provider.clone();
         let fresh_start = matches!(

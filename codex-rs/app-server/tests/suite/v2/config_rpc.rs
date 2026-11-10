@@ -889,7 +889,7 @@ sandbox_mode = "workspace-write"
     assert_eq!(
         origins.get("model").expect("origin").name,
         ConfigLayerSource::User {
-            file: user_file.clone(),
+            file: user_file.to_path_buf(),
             profile: None,
         }
     );
@@ -955,7 +955,7 @@ allowed_domains = ["example.com"]
             .expect("origin")
             .name,
         ConfigLayerSource::User {
-            file: user_file.clone(),
+            file: user_file.to_path_buf(),
             profile: None,
         }
     );
@@ -965,7 +965,7 @@ allowed_domains = ["example.com"]
             .expect("origin")
             .name,
         ConfigLayerSource::User {
-            file: user_file.clone(),
+            file: user_file.to_path_buf(),
             profile: None,
         }
     );
@@ -1133,7 +1133,7 @@ access = "deny"
             .expect("user policy origin")
             .name,
         ConfigLayerSource::User {
-            file: user_file.clone(),
+            file: user_file.to_path_buf(),
             profile: None,
         }
     );
@@ -1143,7 +1143,7 @@ access = "deny"
             .expect("project policy origin")
             .name,
         ConfigLayerSource::Project {
-            dot_codex_folder: project_config.clone(),
+            dot_codex_folder: project_config.to_path_buf(),
         }
     );
     assert_eq!(
@@ -1152,7 +1152,7 @@ access = "deny"
             .expect("user browser use origin")
             .name,
         ConfigLayerSource::User {
-            file: user_file,
+            file: user_file.to_path_buf(),
             profile: None,
         }
     );
@@ -1162,7 +1162,7 @@ access = "deny"
             .expect("project computer use origin")
             .name,
         ConfigLayerSource::Project {
-            dot_codex_folder: project_config,
+            dot_codex_folder: project_config.to_path_buf(),
         }
     );
 
@@ -1513,7 +1513,7 @@ enabled = false
             .expect("origin")
             .name,
         ConfigLayerSource::User {
-            file: user_file.clone(),
+            file: user_file.to_path_buf(),
             profile: None,
         }
     );
@@ -1523,14 +1523,14 @@ enabled = false
             .expect("origin")
             .name,
         ConfigLayerSource::User {
-            file: user_file.clone(),
+            file: user_file.to_path_buf(),
             profile: None,
         }
     );
     assert_eq!(
         origins.get("apps.app1.enabled").expect("origin").name,
         ConfigLayerSource::User {
-            file: user_file.clone(),
+            file: user_file.to_path_buf(),
             profile: None,
         }
     );
@@ -1540,7 +1540,7 @@ enabled = false
             .expect("origin")
             .name,
         ConfigLayerSource::User {
-            file: user_file.clone(),
+            file: user_file.to_path_buf(),
             profile: None,
         }
     );
@@ -1550,7 +1550,7 @@ enabled = false
             .expect("origin")
             .name,
         ConfigLayerSource::User {
-            file: user_file.clone(),
+            file: user_file.to_path_buf(),
             profile: None,
         }
     );
@@ -1560,7 +1560,7 @@ enabled = false
             .expect("origin")
             .name,
         ConfigLayerSource::User {
-            file: user_file.clone(),
+            file: user_file.to_path_buf(),
             profile: None,
         }
     );
@@ -1657,7 +1657,7 @@ model_reasoning_effort = "high"
     assert_eq!(
         origins.get("model_reasoning_effort").expect("origin").name,
         ConfigLayerSource::Project {
-            dot_codex_folder: project_config
+            dot_codex_folder: project_config.to_path_buf()
         }
     );
 
@@ -1730,7 +1730,7 @@ async fn config_read_respects_managed_project_root_markers() -> Result<()> {
     assert_eq!(
         project_layers,
         vec![(
-            AbsolutePathBuf::try_from(child_config)?,
+            child_config,
             json!({"model_reasoning_effort": "high"}),
             None,
         )]
@@ -1805,7 +1805,7 @@ writable_roots = [{}]
     assert_eq!(
         origins.get("model").expect("origin").name,
         ConfigLayerSource::LegacyManagedConfigTomlFromFile {
-            file: managed_file.clone(),
+            file: managed_file.to_path_buf(),
         }
     );
 
@@ -1813,7 +1813,7 @@ writable_roots = [{}]
     assert_eq!(
         origins.get("approval_policy").expect("origin").name,
         ConfigLayerSource::LegacyManagedConfigTomlFromFile {
-            file: managed_file.clone(),
+            file: managed_file.to_path_buf(),
         }
     );
 
@@ -1821,7 +1821,7 @@ writable_roots = [{}]
     assert_eq!(
         origins.get("sandbox_mode").expect("origin").name,
         ConfigLayerSource::User {
-            file: user_file.clone(),
+            file: user_file.to_path_buf(),
             profile: None,
         }
     );
@@ -1837,7 +1837,7 @@ writable_roots = [{}]
             .expect("origin")
             .name,
         ConfigLayerSource::LegacyManagedConfigTomlFromFile {
-            file: managed_file.clone(),
+            file: managed_file.to_path_buf(),
         }
     );
 
@@ -1848,7 +1848,7 @@ writable_roots = [{}]
             .expect("origin")
             .name,
         ConfigLayerSource::User {
-            file: user_file.clone(),
+            file: user_file.to_path_buf(),
             profile: None,
         }
     );
@@ -1900,7 +1900,7 @@ model = "gpt-old"
     let expected_file_path = AbsolutePathBuf::resolve_path_against_base("config.toml", codex_home);
 
     assert_eq!(write.status, WriteStatus::Ok);
-    assert_eq!(write.file_path, expected_file_path);
+    assert_eq!(write.file_path, expected_file_path.to_path_buf());
     assert!(write.overridden_metadata.is_none());
 
     let verify_id = mcp
@@ -2497,7 +2497,7 @@ async fn config_batch_write_applies_multiple_edits() -> Result<()> {
         timeout(DEFAULT_READ_TIMEOUT, mcp.read_response(batch_id)).await??;
     assert_eq!(batch_write.status, WriteStatus::Ok);
     let expected_file_path = AbsolutePathBuf::resolve_path_against_base("config.toml", codex_home);
-    assert_eq!(batch_write.file_path, expected_file_path);
+    assert_eq!(batch_write.file_path, expected_file_path.to_path_buf());
 
     let read_id = mcp
         .send_config_read_request(ConfigReadParams {
@@ -2638,7 +2638,7 @@ access = "deny"
     assert_eq!(batch_write.status, WriteStatus::Ok);
     assert_eq!(
         batch_write.file_path,
-        AbsolutePathBuf::resolve_path_against_base("config.toml", &codex_home)
+        AbsolutePathBuf::resolve_path_against_base("config.toml", &codex_home).into_path_buf()
     );
     assert_eq!(batch_write.overridden_metadata, None);
 
@@ -2890,7 +2890,7 @@ fn assert_layers_user_then_optional_system(
     assert_eq!(
         layers[first_index].name,
         ConfigLayerSource::User {
-            file: user_file,
+            file: user_file.to_path_buf(),
             profile: None
         }
     );
@@ -2916,12 +2916,14 @@ fn assert_layers_managed_user_then_optional_system(
     assert_eq!(layers.len(), first_index + 3);
     assert_eq!(
         layers[first_index].name,
-        ConfigLayerSource::LegacyManagedConfigTomlFromFile { file: managed_file }
+        ConfigLayerSource::LegacyManagedConfigTomlFromFile {
+            file: managed_file.to_path_buf()
+        }
     );
     assert_eq!(
         layers[first_index + 1].name,
         ConfigLayerSource::User {
-            file: user_file,
+            file: user_file.to_path_buf(),
             profile: None
         }
     );

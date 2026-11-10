@@ -1116,7 +1116,13 @@ async fn run_exec_session(args: ExecRunArgs) -> anyhow::Result<()> {
                     model: config.model.clone(),
                     model_provider: Some(config.model_provider_id.clone()),
                     cwd: Some(config.cwd.to_string_lossy().to_string()),
-                    runtime_workspace_roots: Some(config.workspace_roots.clone()),
+                    runtime_workspace_roots: Some(
+                        config
+                            .workspace_roots
+                            .iter()
+                            .map(AbsolutePathBuf::to_path_buf)
+                            .collect(),
+                    ),
                     approval_policy: Some(config.permissions.approval_policy.value().into()),
                     approvals_reviewer: resume_approvals_reviewer_override,
                     sandbox: sandbox.flatten(),
@@ -1464,7 +1470,13 @@ fn thread_start_params_from_config(
         model: config.model.clone(),
         model_provider: Some(config.model_provider_id.clone()),
         cwd: Some(config.cwd.to_string_lossy().to_string()),
-        runtime_workspace_roots: Some(config.workspace_roots.clone()),
+        runtime_workspace_roots: Some(
+            config
+                .workspace_roots
+                .iter()
+                .map(AbsolutePathBuf::to_path_buf)
+                .collect(),
+        ),
         approval_policy: Some(config.permissions.approval_policy.value().into()),
         approvals_reviewer: Some(config.approvals_reviewer.into()),
         sandbox: sandbox.flatten(),
@@ -1495,7 +1507,13 @@ fn thread_resume_params_from_config(
         model: config.model.clone(),
         model_provider: Some(config.model_provider_id.clone()),
         cwd: Some(config.cwd.to_string_lossy().to_string()),
-        runtime_workspace_roots: Some(config.workspace_roots.clone()),
+        runtime_workspace_roots: Some(
+            config
+                .workspace_roots
+                .iter()
+                .map(AbsolutePathBuf::to_path_buf)
+                .collect(),
+        ),
         approval_policy: Some(config.permissions.approval_policy.value().into()),
         approvals_reviewer: approvals_reviewer_override,
         sandbox: sandbox.flatten(),
@@ -1641,9 +1659,11 @@ fn session_configured_from_thread_response(
     approvals_reviewer: codex_protocol::config_types::ApprovalsReviewer,
     permission_profile: PermissionProfile,
     active_permission_profile: Option<codex_protocol::models::ActivePermissionProfile>,
-    cwd: AbsolutePathBuf,
+    cwd: PathBuf,
     reasoning_effort: Option<codex_protocol::openai_models::ReasoningEffort>,
 ) -> Result<SessionConfiguredEvent, String> {
+    let cwd = AbsolutePathBuf::from_absolute_path_checked(cwd)
+        .map_err(|err| format!("invalid local execution cwd: {err}"))?;
     let session_id = SessionId::from_string(session_id)
         .map_err(|err| format!("session id `{session_id}` is invalid: {err}"))?;
     let thread_id = ThreadId::from_string(thread_id)

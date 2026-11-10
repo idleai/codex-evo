@@ -17,3 +17,6 @@ mod vt100_history;
 mod vt100_live_commit;
 #[cfg(unix)]
 mod worktree_stack;
+
+#[cfg(unix)]
+mod remote_windows_paths;

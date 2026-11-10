@@ -323,7 +323,7 @@ fn thread_resume_response_round_trips_initial_turns_page() {
             recency_at: Some(1),
             status: ThreadStatus::Idle,
             path: None,
-            cwd: absolute_path("tmp"),
+            cwd: absolute_path("tmp").to_path_buf(),
             cli_version: "0.0.0".to_string(),
             source: SessionSource::Exec,
             can_accept_direct_input: None,
@@ -338,7 +338,7 @@ fn thread_resume_response_round_trips_initial_turns_page() {
         model: "gpt-5".to_string(),
         model_provider: "openai".to_string(),
         service_tier: None,
-        cwd: absolute_path("tmp"),
+        cwd: absolute_path("tmp").to_path_buf(),
         runtime_workspace_roots: Vec::new(),
         instruction_sources: Vec::new(),
         approval_policy: AskForApproval::OnRequest,
@@ -1479,8 +1479,8 @@ fn fs_changed_notification_round_trips() {
     let notification = FsChangedNotification {
         watch_id: "0195ec6b-1d6f-7c2e-8c7a-56f2c4a8b9d1".to_string(),
         changed_paths: vec![
-            absolute_path("tmp/repo/.git/HEAD"),
-            absolute_path("tmp/repo/.git/FETCH_HEAD"),
+            absolute_path("tmp/repo/.git/HEAD").to_path_buf(),
+            absolute_path("tmp/repo/.git/FETCH_HEAD").to_path_buf(),
         ],
     };
 
@@ -2042,7 +2042,7 @@ fn sandbox_policy_round_trips_external_sandbox_network_access() {
         network_access: NetworkAccess::Enabled,
     };
 
-    let core_policy = v2_policy.to_core();
+    let core_policy = v2_policy.try_to_core().expect("native policy");
     assert_eq!(
         core_policy,
         codex_protocol::protocol::SandboxPolicy::ExternalSandbox {
@@ -2060,7 +2060,7 @@ fn sandbox_policy_round_trips_read_only_network_access() {
         network_access: true,
     };
 
-    let core_policy = v2_policy.to_core();
+    let core_policy = v2_policy.try_to_core().expect("native policy");
     assert_eq!(
         core_policy,
         codex_protocol::protocol::SandboxPolicy::ReadOnly {
@@ -2908,7 +2908,7 @@ fn sandbox_policy_round_trips_workspace_write_access() {
         exclude_slash_tmp: false,
     };
 
-    let core_policy = v2_policy.to_core();
+    let core_policy = v2_policy.try_to_core().expect("native policy");
     assert_eq!(
         core_policy,
         codex_protocol::protocol::SandboxPolicy::WorkspaceWrite {
@@ -2958,7 +2958,7 @@ fn sandbox_policy_deserializes_legacy_workspace_write_full_access_field() {
     assert_eq!(
         policy,
         SandboxPolicy::WorkspaceWrite {
-            writable_roots: vec![absolute_path("/workspace")],
+            writable_roots: vec![absolute_path("/workspace").to_path_buf()],
             network_access: true,
             exclude_tmpdir_env_var: true,
             exclude_slash_tmp: true,
@@ -4012,7 +4012,7 @@ fn skills_list_params_serialization_uses_force_reload() {
 fn skills_extra_roots_set_params_serialization_uses_extra_roots() {
     assert_eq!(
         serde_json::to_value(SkillsExtraRootsSetParams {
-            extra_roots: vec![absolute_path("tmp/skills")],
+            extra_roots: vec![absolute_path("tmp/skills").to_path_buf()],
         })
         .unwrap(),
         json!({
@@ -4040,7 +4040,10 @@ fn plugin_source_serializes_local_git_npm_and_remote_variants() {
     let local_path_json = local_path.as_path().display().to_string();
 
     assert_eq!(
-        serde_json::to_value(PluginSource::Local { path: local_path }).unwrap(),
+        serde_json::to_value(PluginSource::Local {
+            path: local_path.to_path_buf()
+        })
+        .unwrap(),
         json!({
             "type": "local",
             "path": local_path_json,
@@ -4196,10 +4199,10 @@ fn plugin_interface_serializes_local_paths_and_remote_urls_separately() {
         terms_of_service_url: None,
         default_prompt: None,
         brand_color: None,
-        composer_icon: Some(composer_icon),
+        composer_icon: Some(composer_icon.to_path_buf()),
         composer_icon_url: Some("https://example.com/linear/icon.png".to_string()),
         logo: None,
-        logo_dark: Some(logo_dark),
+        logo_dark: Some(logo_dark.to_path_buf()),
         logo_url: Some("https://example.com/linear/logo.png".to_string()),
         logo_url_dark: Some("https://example.com/linear/logo-dark.png".to_string()),
         screenshots: Vec::new(),
@@ -4323,7 +4326,7 @@ fn plugin_read_params_serialization_uses_install_source_fields() {
     let marketplace_path_json = marketplace_path.as_path().display().to_string();
     assert_eq!(
         serde_json::to_value(PluginReadParams {
-            marketplace_path: Some(marketplace_path.clone()),
+            marketplace_path: Some(marketplace_path.to_path_buf()),
             remote_marketplace_name: None,
             plugin_name: "gmail".to_string(),
         })
@@ -4343,7 +4346,7 @@ fn plugin_read_params_serialization_uses_install_source_fields() {
         }))
         .unwrap(),
         PluginReadParams {
-            marketplace_path: Some(marketplace_path),
+            marketplace_path: Some(marketplace_path.to_path_buf()),
             remote_marketplace_name: None,
             plugin_name: "gmail".to_string(),
         },
@@ -4374,7 +4377,7 @@ fn plugin_install_params_serialization_omits_force_remote_sync() {
     let marketplace_path_json = marketplace_path.as_path().display().to_string();
     assert_eq!(
         serde_json::to_value(PluginInstallParams {
-            marketplace_path: Some(marketplace_path.clone()),
+            marketplace_path: Some(marketplace_path.to_path_buf()),
             remote_marketplace_name: None,
             install_attempt_id: Some("94c79f7b-cceb-4415-9a3e-b51b2f718d43".to_string()),
             plugin_name: "gmail".to_string(),
@@ -4396,7 +4399,7 @@ fn plugin_install_params_serialization_omits_force_remote_sync() {
         }))
         .unwrap(),
         PluginInstallParams {
-            marketplace_path: Some(marketplace_path),
+            marketplace_path: Some(marketplace_path.to_path_buf()),
             remote_marketplace_name: None,
             install_attempt_id: None,
             plugin_name: "gmail".to_string(),
@@ -4448,7 +4451,7 @@ fn plugin_share_params_and_response_serialization_use_camel_case_fields() {
 
     assert_eq!(
         serde_json::to_value(PluginShareSaveParams {
-            plugin_path: plugin_path.clone(),
+            plugin_path: plugin_path.to_path_buf(),
             remote_plugin_id: None,
             discoverability: None,
             share_targets: None,
@@ -4464,7 +4467,7 @@ fn plugin_share_params_and_response_serialization_use_camel_case_fields() {
 
     assert_eq!(
         serde_json::to_value(PluginShareSaveParams {
-            plugin_path,
+            plugin_path: plugin_path.to_path_buf(),
             remote_plugin_id: Some("plugins~Plugin_00000000000000000000000000000000".to_string(),),
             discoverability: Some(PluginShareDiscoverability::Private),
             share_targets: Some(vec![
@@ -4592,9 +4595,9 @@ fn plugin_share_params_and_response_serialization_use_camel_case_fields() {
             remote_plugin_id: "plugins~Plugin_00000000000000000000000000000000".to_string(),
             plugin_id: "gmail@codex-curated".to_string(),
             plugin_name: "gmail".to_string(),
-            plugin_path,
+            plugin_path: plugin_path.to_path_buf(),
             marketplace_name: "codex-curated".to_string(),
-            marketplace_path,
+            marketplace_path: marketplace_path.to_path_buf(),
             remote_version: Some("1.2.3".to_string()),
         })
         .unwrap(),
@@ -4808,7 +4811,7 @@ fn marketplace_remove_response_serializes_nullable_installed_root() {
     assert_eq!(
         serde_json::to_value(MarketplaceRemoveResponse {
             marketplace_name: "debug".to_string(),
-            installed_root: Some(installed_root),
+            installed_root: Some(installed_root.to_path_buf()),
         })
         .unwrap(),
         json!({
@@ -4843,7 +4846,7 @@ fn marketplace_upgrade_response_serializes_camel_case_fields() {
     assert_eq!(
         serde_json::to_value(MarketplaceUpgradeResponse {
             selected_marketplaces: vec!["debug".to_string()],
-            upgraded_roots: vec![upgraded_root],
+            upgraded_roots: vec![upgraded_root.to_path_buf()],
             errors: vec![MarketplaceUpgradeErrorInfo {
                 marketplace_name: "broken".to_string(),
                 message: "failed to clone".to_string(),

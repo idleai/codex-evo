@@ -105,6 +105,26 @@ auth, or gateway OAuth. A separate catalog URL, when configured, must also be
 loopback. It continues working across account changes without inheriting
 Copilot or OpenAI credentials.
 
+## Windows server with a macOS or Linux terminal client
+
+Run the app-server in Windows PowerShell from the intended workspace:
+
+```powershell
+codex app-server --listen ws://127.0.0.1:4500
+```
+
+After forwarding that socket to the client machine, connect from its native
+terminal with a CLI built from this branch:
+
+```sh
+codex --remote ws://127.0.0.1:4500
+```
+
+The client preserves Windows drive and UNC paths through startup, turns, resume,
+and fork. An optional `-C 'C:\Users\you\project with spaces'` selects a workspace
+on the Windows server. Local client configuration still uses local paths; the
+server validates workspace and permission paths before execution.
+
 ## Isolation boundaries
 
 - OpenAI and ChatGPT sign-in are removed from the CLI and terminal onboarding.

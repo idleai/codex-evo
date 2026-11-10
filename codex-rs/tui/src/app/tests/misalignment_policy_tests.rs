@@ -249,8 +249,7 @@ async fn misalignment_continuation_requires_current_review_and_submits_once() ->
             codex_app_server_protocol::TurnStartParams {
                 thread_id: thread_id.to_string(),
                 cwd: (!server_owned).then(|| config.cwd.to_path_buf()),
-                runtime_workspace_roots: (!server_owned)
-                    .then(|| config.permissions.user_visible_workspace_roots().to_vec()),
+                runtime_workspace_roots: (!server_owned).then(|| config.workspace_roots.clone()),
                 approval_policy: (!server_owned).then_some(AskForApproval::OnRequest),
                 approvals_reviewer: (!server_owned).then(|| config.approvals_reviewer.into()),
                 sandbox_policy: (!server_owned && !preserve)

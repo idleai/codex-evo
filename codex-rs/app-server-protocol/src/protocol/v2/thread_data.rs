@@ -14,7 +14,6 @@ use codex_protocol::protocol::SessionSource as CoreSessionSource;
 use codex_protocol::protocol::SubAgentSource as CoreSubAgentSource;
 use codex_protocol::protocol::ThreadHistoryMode as CoreThreadHistoryMode;
 use codex_protocol::protocol::ThreadSource as CoreThreadSource;
-use codex_utils_absolute_path::AbsolutePathBuf;
 #[cfg(test)]
 use schemars::r#gen::SchemaGenerator;
 #[cfg(test)]
@@ -262,7 +261,8 @@ pub struct Thread {
     /// [UNSTABLE] Path to the thread on disk.
     pub path: Option<PathBuf>,
     /// Working directory captured for the thread.
-    pub cwd: AbsolutePathBuf,
+    #[serde(deserialize_with = "crate::server_path::deserialize")]
+    pub cwd: PathBuf,
     /// Version of the CLI that created the thread.
     pub cli_version: String,
     /// Originator recorded when the thread was created, independent of its current client or executor.
@@ -324,7 +324,8 @@ struct ThreadCompatibility {
     recency_at: Option<i64>,
     status: ThreadStatus,
     path: Option<PathBuf>,
-    cwd: AbsolutePathBuf,
+    #[serde(deserialize_with = "crate::server_path::deserialize")]
+    cwd: PathBuf,
     cli_version: String,
     originator: Option<String>,
     source: SessionSource,

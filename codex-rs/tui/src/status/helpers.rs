@@ -271,13 +271,13 @@ mod tests {
         let codex_home = TempDir::new().expect("temp codex home");
         let cwd = TempDir::new().expect("temp cwd");
         let mut config = test_config(&codex_home, &cwd).await;
-        config.cwd = home.join("workspace").join("project").abs();
+        config.cwd = home.join("workspace").join("project");
 
         let paths = [
             home.join(".codex").join("AGENTS.md"),
             home.join("workspace").join("AGENTS.md"),
-            config.cwd.join("AGENTS.md").to_path_buf(),
-            config.cwd.join("nested").join("AGENTS.md").to_path_buf(),
+            config.cwd.join("AGENTS.md"),
+            config.cwd.join("nested").join("AGENTS.md"),
         ]
         .map(|path| PathUri::from_abs_path(&path.abs()));
 
@@ -307,7 +307,8 @@ mod tests {
         let codex_home = TempDir::new().expect("temp codex home");
         let cwd = TempDir::new().expect("temp cwd");
         let config = test_config(&codex_home, &cwd).await;
-        let native_source = PathUri::from_abs_path(&config.cwd.join("AGENTS.md"));
+        let native_source =
+            crate::remote_paths::path_uri(&config.cwd.join("AGENTS.md")).expect("absolute path");
         let foreign_source = if cfg!(windows) {
             PathUri::parse("file:///remote%20workspace/AGENTS.md")
                 .expect("POSIX instruction source")

@@ -1234,7 +1234,9 @@ async fn skills_extra_roots_set_updates_process_runtime_roots() -> Result<()> {
 
     let set_request_id = mcp
         .send_skills_extra_roots_set_request(SkillsExtraRootsSetParams {
-            extra_roots: vec![AbsolutePathBuf::from_absolute_path(&extra_skills_root)?],
+            extra_roots: vec![
+                AbsolutePathBuf::from_absolute_path(&extra_skills_root)?.to_path_buf(),
+            ],
         })
         .await?;
     let _: SkillsExtraRootsSetResponse =
@@ -1261,7 +1263,7 @@ async fn skills_extra_roots_set_updates_process_runtime_roots() -> Result<()> {
     let missing_root = extra_root.path().join("missing-skills");
     let reset_request_id = mcp
         .send_skills_extra_roots_set_request(SkillsExtraRootsSetParams {
-            extra_roots: vec![AbsolutePathBuf::from_absolute_path(&missing_root)?],
+            extra_roots: vec![AbsolutePathBuf::from_absolute_path(&missing_root)?.to_path_buf()],
         })
         .await?;
     let _: SkillsExtraRootsSetResponse =

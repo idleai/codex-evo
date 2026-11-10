@@ -23,7 +23,7 @@ pub(super) async fn test_config() -> (tempfile::TempDir, Config) {
     config.codex_home = codex_home.path().abs();
     config.sqlite = codex_state::SqliteConfig::new_for_testing(codex_home.path().abs());
     config.log_dir = codex_home.path().join("log");
-    config.cwd = PathBuf::from(test_path_display("/tmp/project")).abs();
+    config.cwd = PathBuf::from(test_path_display("/tmp/project"));
     config.config_layer_stack = ConfigLayerStack::default();
     config.startup_warnings.clear();
     (codex_home, config)
@@ -972,14 +972,16 @@ pub(super) fn begin_exec_with_source(
     let command = vec!["bash".to_string(), "-lc".to_string(), raw_cmd.to_string()];
     let command_actions = codex_shell_command::parse_command::parse_command(&command)
         .into_iter()
-        .map(|parsed| AppServerCommandAction::from_core_with_cwd(parsed, &chat.config.cwd))
+        .map(|parsed| {
+            AppServerCommandAction::from_core_with_cwd(parsed, &chat.config.cwd.clone().abs())
+        })
         .collect();
     let item = AppServerThreadItemPayload::CommandExecution {
         model_context: None,
         sandbox_type: None,
         id: call_id.to_string(),
         command: codex_shell_command::parse_command::shlex_join(&command),
-        cwd: chat.config.cwd.clone().into(),
+        cwd: codex_utils_path_uri::LegacyAppPathString::from_path(&chat.config.cwd),
         process_id: None,
         plugin_id: None,
         script_path: None,
@@ -1006,7 +1008,7 @@ pub(super) fn begin_unified_exec_startup(
         sandbox_type: None,
         id: call_id.to_string(),
         command: codex_shell_command::parse_command::shlex_join(&command),
-        cwd: chat.config.cwd.clone().into(),
+        cwd: codex_utils_path_uri::LegacyAppPathString::from_path(&chat.config.cwd),
         process_id: Some(process_id.to_string()),
         plugin_id: None,
         script_path: None,
@@ -1467,7 +1469,7 @@ pub(super) fn plugins_test_summary(
         name: name.to_string(),
         share_context: None,
         source: PluginSource::Local {
-            path: plugins_test_absolute_path(&format!("plugins/{name}")),
+            path: plugins_test_absolute_path(&format!("plugins/{name}")).to_path_buf(),
         },
         installed,
         installed_at: None,
@@ -1542,7 +1544,7 @@ pub(super) fn plugins_test_curated_marketplace(
 ) -> PluginMarketplaceEntry {
     PluginMarketplaceEntry {
         name: OPENAI_CURATED_MARKETPLACE_NAME.to_string(),
-        path: Some(plugins_test_absolute_path("marketplaces/chatgpt")),
+        path: Some(plugins_test_absolute_path("marketplaces/chatgpt").to_path_buf()),
         interface: Some(MarketplaceInterface {
             display_name: Some("ChatGPT Marketplace".to_string()),
         }),
@@ -1553,7 +1555,7 @@ pub(super) fn plugins_test_curated_marketplace(
 pub(super) fn plugins_test_repo_marketplace(plugins: Vec<PluginSummary>) -> PluginMarketplaceEntry {
     PluginMarketplaceEntry {
         name: "repo".to_string(),
-        path: Some(plugins_test_absolute_path("marketplaces/repo")),
+        path: Some(plugins_test_absolute_path("marketplaces/repo").to_path_buf()),
         interface: Some(MarketplaceInterface {
             display_name: Some("Repo Marketplace".to_string()),
         }),
@@ -1586,10 +1588,10 @@ pub(super) fn render_loaded_plugins_popup(
         .marketplaces
         .retain(|marketplace| marketplace.path.is_some());
     let response_for_refresh = response.clone();
-    chat.on_plugins_loaded(cwd.to_path_buf(), Ok(response));
+    chat.on_plugins_loaded(cwd.clone(), Ok(response));
     chat.add_plugins_output();
-    chat.on_plugins_loaded(cwd.to_path_buf(), Ok(response_for_refresh));
-    chat.on_plugin_remote_sections_loaded(cwd.to_path_buf(), remote_marketplaces, Vec::new());
+    chat.on_plugins_loaded(cwd.clone(), Ok(response_for_refresh));
+    chat.on_plugin_remote_sections_loaded(cwd, remote_marketplaces, Vec::new());
     render_bottom_popup(chat, /*width*/ 100)
 }
 
@@ -1604,7 +1606,7 @@ pub(super) fn plugins_test_detail(
     PluginDetail {
         onboarding_skill: None,
         marketplace_name: "ChatGPT Marketplace".to_string(),
-        marketplace_path: Some(plugins_test_absolute_path("marketplaces/chatgpt")),
+        marketplace_path: Some(plugins_test_absolute_path("marketplaces/chatgpt").to_path_buf()),
         summary,
         share_url: None,
         description: description.map(str::to_string),

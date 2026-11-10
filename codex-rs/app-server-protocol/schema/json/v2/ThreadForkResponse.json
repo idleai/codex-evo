@@ -1191,7 +1191,7 @@
             "writableRoots": {
               "default": [],
               "items": {
-                "$ref": "#/definitions/AbsolutePathBuf"
+                "type": "string"
               },
               "type": "array"
             }
@@ -1378,12 +1378,8 @@
           "type": "integer"
         },
         "cwd": {
-          "allOf": [
-            {
-              "$ref": "#/definitions/AbsolutePathBuf"
-            }
-          ],
-          "description": "Working directory captured for the thread."
+          "description": "Working directory captured for the thread.",
+          "type": "string"
         },
         "ephemeral": {
           "description": "Whether the thread is ephemeral and should not be materialized on disk.",
@@ -3166,7 +3162,7 @@
       "description": "Reviewer currently used for approval requests on this thread."
     },
     "cwd": {
-      "$ref": "#/definitions/AbsolutePathBuf"
+      "type": "string"
     },
     "disabledPluginIds": {
       "default": [],

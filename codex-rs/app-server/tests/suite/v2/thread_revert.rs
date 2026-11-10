@@ -322,7 +322,12 @@ async fn thread_revert_preserves_fork_cutoff_after_cold_resume() -> Result<()> {
             .start_turn_and_wait_for_completion(TurnStartParams {
                 thread_id: child.id.clone(),
                 cwd: Some(saved_cwd.clone()),
-                runtime_workspace_roots,
+                runtime_workspace_roots: runtime_workspace_roots.map(|paths| {
+                    paths
+                        .into_iter()
+                        .map(codex_utils_absolute_path::AbsolutePathBuf::into_path_buf)
+                        .collect()
+                }),
                 input: vec![UserInput::Text {
                     text: text.to_string(),
                     text_elements: Vec::new(),
@@ -384,7 +389,13 @@ async fn thread_revert_preserves_fork_cutoff_after_cold_resume() -> Result<()> {
             .await?;
         assert_eq!(
             (cwd.as_path(), runtime_workspace_roots),
-            (saved_cwd.as_path(), saved_roots.clone())
+            (
+                saved_cwd.as_path(),
+                saved_roots
+                    .iter()
+                    .map(codex_utils_absolute_path::AbsolutePathBuf::to_path_buf)
+                    .collect::<Vec<_>>()
+            )
         );
         mcp.start_turn_and_wait_for_completion(TurnStartParams {
             thread_id: child.id.clone(),

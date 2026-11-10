@@ -16,7 +16,6 @@ pub(super) async fn fetch_plugin_mentions(
     request_handle: AppServerRequestHandle,
     cwd: PathBuf,
 ) -> Result<Vec<PluginCapabilitySummary>> {
-    let cwd = AbsolutePathBuf::try_from(cwd).wrap_err("plugin installed cwd must be absolute")?;
     let request_id = RequestId::String(format!("plugin-installed-{}", Uuid::new_v4()));
     let response = request_handle
         .request_typed(ClientRequest::PluginInstalled {

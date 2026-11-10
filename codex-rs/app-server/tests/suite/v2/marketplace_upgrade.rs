@@ -176,7 +176,7 @@ async fn marketplace_upgrade_all_configured_git_marketplaces() -> Result<()> {
         response,
         MarketplaceUpgradeResponse {
             selected_marketplaces: vec!["debug".to_string(), "tools".to_string()],
-            upgraded_roots: vec![debug_root.clone(), tools_root.clone()],
+            upgraded_roots: vec![debug_root.to_path_buf(), tools_root.to_path_buf()],
             errors: Vec::new(),
         }
     );
@@ -335,7 +335,7 @@ async fn automatic_upgrade_isolates_git_while_explicit_install_preserves_configu
         .request(|request_id| ClientRequest::PluginInstall {
             request_id,
             params: PluginInstallParams {
-                marketplace_path: Some(marketplace_path),
+                marketplace_path: Some(marketplace_path.to_path_buf()),
                 remote_marketplace_name: None,
                 install_attempt_id: None,
                 plugin_name: "toolkit".to_string(),
@@ -411,7 +411,7 @@ async fn marketplace_upgrade_named_marketplace_only() -> Result<()> {
         response,
         MarketplaceUpgradeResponse {
             selected_marketplaces: vec!["tools".to_string()],
-            upgraded_roots: vec![tools_root.clone()],
+            upgraded_roots: vec![tools_root.to_path_buf()],
             errors: Vec::new(),
         }
     );

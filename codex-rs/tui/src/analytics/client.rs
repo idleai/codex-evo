@@ -71,7 +71,7 @@ impl Live {
         self.session
             .get_or_try_init(|| async {
                 let session = AnalyticsSession::from_config(
-                    self.config.as_ref(),
+                    self.config.local_config(),
                     self.config.http_client_factory(),
                 )
                 .await?;

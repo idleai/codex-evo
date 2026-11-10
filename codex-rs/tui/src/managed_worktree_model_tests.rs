@@ -111,7 +111,8 @@ pub(super) async fn exercise(
     let mut config = config.clone();
     config.cwd = codex_utils_absolute_path::AbsolutePathBuf::from_absolute_path(
         dunce::canonicalize(repository)?,
-    )?;
+    )?
+    .to_path_buf();
     config
         .features
         .enable(codex_features::Feature::ToolCallMcpElicitation)?;

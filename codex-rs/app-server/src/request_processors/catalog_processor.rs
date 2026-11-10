@@ -36,8 +36,12 @@ fn skills_to_info(
                     codex_app_server_protocol::SkillInterface {
                         display_name: interface.display_name,
                         short_description: interface.short_description,
-                        icon_small: interface.icon_small,
-                        icon_large: interface.icon_large,
+                        icon_small: interface
+                            .icon_small
+                            .map(codex_utils_absolute_path::AbsolutePathBuf::into_path_buf),
+                        icon_large: interface
+                            .icon_large
+                            .map(codex_utils_absolute_path::AbsolutePathBuf::into_path_buf),
                         icon_small_url: None,
                         icon_large_url: None,
                         brand_color: interface.brand_color,
@@ -94,7 +98,7 @@ fn hooks_to_info(hooks: &[codex_hooks::HookListEntry]) -> Vec<HookMetadata> {
                 timeout_sec: hook.timeout_sec,
                 status_message: hook.status_message.clone(),
                 additional_context_limit: hook.additional_context_limit,
-                source_path: hook.source_path.clone(),
+                source_path: hook.source_path.to_path_buf(),
                 source: hook.source.into(),
                 plugin_id: hook.plugin_id.clone(),
                 environment_id: hook.environment_id.clone(),
@@ -609,6 +613,10 @@ impl CatalogRequestProcessor {
         params: SkillsExtraRootsSetParams,
     ) -> Result<SkillsExtraRootsSetResponse, JSONRPCErrorError> {
         let SkillsExtraRootsSetParams { extra_roots } = params;
+        let extra_roots = extra_roots
+            .into_iter()
+            .map(native_request_path)
+            .collect::<Result<Vec<_>, _>>()?;
         self.skills_watcher
             .register_runtime_extra_roots(&extra_roots);
         self.thread_manager
@@ -727,7 +735,7 @@ impl CatalogRequestProcessor {
         } = params;
         let edit = match (path, name) {
             (Some(path), None) => ConfigEdit::SetSkillConfig {
-                path: path.into_path_buf(),
+                path: native_request_path(path)?.into_path_buf(),
                 enabled,
             },
             (None, Some(name)) if !name.trim().is_empty() => {

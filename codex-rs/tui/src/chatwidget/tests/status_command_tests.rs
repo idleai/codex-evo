@@ -122,7 +122,7 @@ async fn status_command_renders_native_and_foreign_instruction_sources() {
         )
     };
     chat.instruction_source_paths = vec![
-        PathUri::from_abs_path(&chat.config.cwd.join("AGENTS.md")),
+        crate::remote_paths::path_uri(&chat.config.cwd.join("AGENTS.md")).expect("absolute path"),
         foreign_source,
     ];
 

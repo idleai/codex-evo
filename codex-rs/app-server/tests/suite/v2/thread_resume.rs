@@ -719,7 +719,12 @@ async fn thread_resume_restores_startup_and_updated_runtime_workspace_roots() ->
         .send_thread_start_request(ThreadStartParams {
             model: Some("gpt-5.4".to_string()),
             cwd: Some(initial_cwd.to_string_lossy().into_owned()),
-            runtime_workspace_roots: Some(initial_roots.clone()),
+            runtime_workspace_roots: Some(
+                initial_roots
+                    .iter()
+                    .map(codex_utils_absolute_path::AbsolutePathBuf::to_path_buf)
+                    .collect(),
+            ),
             environments: Some(explicit_environments.clone()),
             ..Default::default()
         })
@@ -746,7 +751,12 @@ async fn thread_resume_restores_startup_and_updated_runtime_workspace_roots() ->
                     text_elements: Vec::new(),
                 }],
                 environments,
-                runtime_workspace_roots: roots,
+                runtime_workspace_roots: roots.map(|paths| {
+                    paths
+                        .into_iter()
+                        .map(codex_utils_absolute_path::AbsolutePathBuf::into_path_buf)
+                        .collect()
+                }),
                 ..Default::default()
             }),
         )
@@ -763,7 +773,7 @@ async fn thread_resume_restores_startup_and_updated_runtime_workspace_roots() ->
         runtime_workspace_roots,
         ..
     } = timeout(DEFAULT_READ_TIMEOUT, mcp.read_response(resume_id)).await??;
-    assert_eq!(runtime_workspace_roots, vec![explicit_cwd.clone()]);
+    assert_eq!(runtime_workspace_roots, vec![explicit_cwd.to_path_buf()]);
 
     // A cwd-only update must retain the fallback's additional folder, not the live roots.
     mcp.clear_message_buffer();
@@ -836,7 +846,13 @@ async fn thread_resume_restores_startup_and_updated_runtime_workspace_roots() ->
     } = timeout(DEFAULT_READ_TIMEOUT, mcp.read_response(resume_id)).await??;
     assert_eq!(
         (cwd, runtime_workspace_roots),
-        (initial_cwd.clone(), expected_roots)
+        (
+            initial_cwd.to_path_buf(),
+            expected_roots
+                .into_iter()
+                .map(codex_utils_absolute_path::AbsolutePathBuf::into_path_buf)
+                .collect::<Vec<_>>()
+        )
     );
 
     Ok(())
@@ -938,7 +954,12 @@ sandbox = "unelevated"
             .send_thread_resume_request(ThreadResumeParams {
                 thread_id: thread_id.clone(),
                 cwd: cwd_override.map(|cwd| cwd.to_string_lossy().into_owned()),
-                runtime_workspace_roots: roots_override,
+                runtime_workspace_roots: roots_override.map(|paths| {
+                    paths
+                        .into_iter()
+                        .map(codex_utils_absolute_path::AbsolutePathBuf::into_path_buf)
+                        .collect()
+                }),
                 service_tier: (index == 2).then_some(Some("priority".to_string())),
                 personality: (index == 2).then_some(Personality::None),
                 config: (index == 1).then(|| {
@@ -954,7 +975,13 @@ sandbox = "unelevated"
             timeout(DEFAULT_READ_TIMEOUT, mcp.read_response(resume_id)).await??;
         assert_eq!(
             (resumed.cwd, resumed.runtime_workspace_roots),
-            (expected_cwd.clone(), expected_roots.clone())
+            (
+                expected_cwd.to_path_buf(),
+                expected_roots
+                    .iter()
+                    .map(codex_utils_absolute_path::AbsolutePathBuf::to_path_buf)
+                    .collect::<Vec<_>>()
+            )
         );
         if index < 3 {
             mcp.start_turn_and_wait_for_completion(TurnStartParams {
@@ -1171,7 +1198,14 @@ async fn cold_resume_workspace_roots_validate_foreign_startup_paths() -> Result<
             } = timeout(DEFAULT_READ_TIMEOUT, mcp.read_response(resume_id)).await??;
             assert_eq!(
                 (thread.id, cwd, runtime_workspace_roots),
-                (thread_id, local_cwd.clone(), expected_roots)
+                (
+                    thread_id,
+                    local_cwd.to_path_buf(),
+                    expected_roots
+                        .into_iter()
+                        .map(codex_utils_absolute_path::AbsolutePathBuf::into_path_buf)
+                        .collect::<Vec<_>>()
+                )
             );
         } else {
             let error = timeout(
@@ -1857,9 +1891,10 @@ async fn cold_resume_reresolves_persisted_active_permission_profile() -> Result<
                 DEFAULT_READ_TIMEOUT,
                 mcp.start_turn_and_wait_for_completion(TurnStartParams {
                     thread_id: thread_id.clone(),
-                    runtime_workspace_roots: Some(vec![AbsolutePathBuf::from_absolute_path(
-                        previous_workspace_root.path(),
-                    )?]),
+                    runtime_workspace_roots: Some(vec![
+                        AbsolutePathBuf::from_absolute_path(previous_workspace_root.path())?
+                            .to_path_buf(),
+                    ]),
                     input: vec![UserInput::Text {
                         text: "update runtime workspace roots".to_string(),
                         text_elements: Vec::new(),
@@ -1900,7 +1935,7 @@ async fn cold_resume_reresolves_persisted_active_permission_profile() -> Result<
         );
         assert_eq!(
             runtime_workspace_roots,
-            vec![previous_workspace_root.path().abs()]
+            vec![previous_workspace_root.path().to_path_buf()]
         );
     }
     Ok(())
@@ -2834,7 +2869,7 @@ async fn thread_resume_returns_rollout_history() -> Result<()> {
     assert_eq!(thread.model_provider, "mock_provider");
     assert!(thread.path.as_ref().expect("thread path").is_absolute());
     assert_eq!(thread.cwd.as_path(), cwd.as_path());
-    assert_eq!(cwd, test_absolute_path("/"));
+    assert_eq!(cwd, test_absolute_path("/").into_path_buf());
     assert_eq!(thread.cli_version, "0.0.0");
     assert_eq!(thread.source, SessionSource::Cli);
     assert_eq!(thread.git_info, None);
@@ -5080,7 +5115,7 @@ async fn thread_resume_checkpoints_settings_without_advancing_recency() -> Resul
         .await?;
     let ThreadResumeResponse { cwd, .. } =
         timeout(DEFAULT_READ_TIMEOUT, mcp.read_response(resume_id)).await??;
-    assert_eq!(cwd, AbsolutePathBuf::from_absolute_path(codex_home.path())?);
+    assert_eq!(cwd, codex_home.path().to_path_buf());
 
     let turn_id = mcp
         .send_turn_start_request(TurnStartParams {

@@ -1187,7 +1187,7 @@ mod tests {
         let client = InProcessAppServerClient::start(InProcessClientStartArgs {
             required_human_approval: true,
             arg0_paths: Arg0DispatchPaths::default(),
-            config: Arc::new(config),
+            config: Arc::new(config.native_config().expect("native configuration")),
             cli_overrides: Vec::new(),
             loader_overrides: Default::default(),
             strict_config: false,

@@ -70,7 +70,7 @@ async fn config_toggle_save_uses_host_config_and_applies_live_while_offline() ->
     app.config = config.clone();
     app.local_settings = LocalSettings::from(&config);
     app.launch_cwd = local_cwd.to_path_buf();
-    app.config.cwd = session_cwd.clone();
+    app.config.cwd = session_cwd.to_path_buf();
     app.loader_overrides = loader_overrides;
     app.app_server_target = AppServerTarget::Remote {
         endpoint: crate::RemoteAppServerEndpoint::WebSocket {
@@ -83,7 +83,7 @@ async fn config_toggle_save_uses_host_config_and_applies_live_while_offline() ->
     let mut tui = crate::tui::test_support::make_test_tui()?;
     let mut app_server = Box::pin(crate::start_embedded_app_server_for_picker(&app.config)).await?;
     let mut session_config = config;
-    session_config.cwd = session_cwd.clone();
+    session_config.cwd = session_cwd.to_path_buf();
     let init = app.chatwidget_init_for_forked_or_resumed_thread(
         &mut tui,
         session_config,
@@ -138,7 +138,7 @@ async fn config_toggle_save_uses_host_config_and_applies_live_while_offline() ->
     assert_eq!(app.launch_cwd, local_cwd.to_path_buf());
     assert_eq!(
         (&app.config.cwd, &app.chat_widget.config_ref().cwd),
-        (&session_cwd, &session_cwd),
+        (&session_cwd.to_path_buf(), &session_cwd.to_path_buf()),
     );
 
     app_server.shutdown().await?;

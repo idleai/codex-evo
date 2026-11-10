@@ -168,8 +168,7 @@ impl App {
                 return;
             };
             params.cwd = Some(config.cwd.to_path_buf());
-            params.runtime_workspace_roots =
-                Some(config.permissions.user_visible_workspace_roots().to_vec());
+            params.runtime_workspace_roots = Some(config.workspace_roots.clone());
             params.approval_policy = Some(config.permissions.approval_policy.value().into());
             params.approvals_reviewer = Some(config.approvals_reviewer.into());
             params.sandbox_policy = sandbox_policy;

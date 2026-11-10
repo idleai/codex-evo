@@ -184,7 +184,7 @@ async fn plugin_share_save_uploads_local_plugin() -> Result<()> {
                     interface: Some(expected_plugin_interface()),
                     keywords: Vec::new(),
                 },
-                local_plugin_path: Some(expected_plugin_path),
+                local_plugin_path: Some(expected_plugin_path.to_path_buf()),
             }],
         }
     );
@@ -675,9 +675,9 @@ async fn plugin_share_checkout_adds_personal_marketplace_entry() -> Result<()> {
             remote_plugin_id: "plugins_123".to_string(),
             plugin_id: "demo-plugin@codex-curated".to_string(),
             plugin_name: "demo-plugin".to_string(),
-            plugin_path: plugin_path.clone(),
+            plugin_path: plugin_path.to_path_buf(),
             marketplace_name: "codex-curated".to_string(),
-            marketplace_path: marketplace_path.clone(),
+            marketplace_path: marketplace_path.to_path_buf(),
             remote_version: Some("1.2.3".to_string()),
         }
     );
@@ -760,7 +760,7 @@ async fn plugin_share_checkout_adds_personal_marketplace_entry() -> Result<()> {
         .await?;
     let response: PluginShareCheckoutResponse =
         timeout(DEFAULT_TIMEOUT, mcp.read_response(request_id)).await??;
-    assert_eq!(response.plugin_path, plugin_path);
+    assert_eq!(response.plugin_path, plugin_path.to_path_buf());
     assert_eq!(
         std::fs::read_to_string(plugin_path.as_path().join("local-edit.txt"))?,
         "keep"

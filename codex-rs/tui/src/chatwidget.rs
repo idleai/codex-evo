@@ -888,14 +888,12 @@ impl ThreadItemRenderSource {
 
 fn exec_approval_request_from_params(
     params: CommandExecutionRequestApprovalParams,
-    fallback_cwd: &AbsolutePathBuf,
+    fallback_cwd: &Path,
 ) -> ExecApprovalRequestEvent {
-    // TODO(anp): Keep this as PathUri once `tui::approval_events::ExecApprovalRequestEvent` and
-    // approval rendering support foreign paths.
     let cwd = params
         .cwd
-        .and_then(|cwd| cwd.to_inferred_abs_path())
-        .unwrap_or_else(|| fallback_cwd.clone());
+        .map(|cwd| PathBuf::from(cwd.as_str()))
+        .unwrap_or_else(|| fallback_cwd.to_path_buf());
     ExecApprovalRequestEvent {
         kind: params.kind,
         call_id: params.item_id,

@@ -133,18 +133,15 @@ impl ChatWidget {
         self.update_collaboration_mode_indicator();
         self.forked_from = session.forked_from_id;
         self.current_rollout_path = session.rollout_path.clone();
-        self.current_cwd = Some(session.cwd.to_path_buf());
+        self.current_cwd = Some(session.cwd.clone());
         self.config.cwd = session.cwd.clone();
         self.config.model_provider_id = session.model_provider_id.clone();
         self.set_daybreak_enabled(self.daybreak_enabled);
         if connector_scope_changed {
             self.invalidate_connector_scope();
         }
-        let runtime_workspace_roots = session.runtime_workspace_roots.clone();
-        self.config.workspace_roots = runtime_workspace_roots.clone();
-        self.config
-            .permissions
-            .set_workspace_roots(runtime_workspace_roots);
+        self.config.workspace_roots = session.runtime_workspace_roots.clone();
+        self.config.sync_native_workspace_roots();
         self.config.service_tier = session.service_tier.clone();
         self.effective_service_tier = session.service_tier.clone();
         if let Err(err) = self
