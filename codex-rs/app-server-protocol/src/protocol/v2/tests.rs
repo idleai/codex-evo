@@ -304,6 +304,7 @@ fn thread_resume_response_round_trips_initial_turns_page() {
             extra: None,
             session_id: "thr_123".to_string(),
             forked_from_id: None,
+            attached_to_thread_id: None,
             parent_thread_id: None,
             preview: String::new(),
             ephemeral: false,
@@ -421,6 +422,7 @@ fn thread_items_list_round_trips() {
         cursor: Some(ThreadItemsListCursor::Opaque("cursor_1".to_string())),
         limit: Some(50),
         sort_direction: Some(SortDirection::Asc),
+        defer_output: None,
     };
 
     assert_eq!(
@@ -462,6 +464,7 @@ fn thread_items_list_round_trips() {
         let response = ThreadItemsListResponse {
             data: vec![ThreadItemEntry {
                 turn_id: "turn_456".to_string(),
+                output_deferred: false,
                 item: ThreadItem {
                     payload: ThreadItemPayload::ContextCompaction {
                         id: "item_1".to_string(),
@@ -501,6 +504,7 @@ fn thread_items_list_round_trips() {
         cursor: None,
         limit: None,
         sort_direction: None,
+        defer_output: None,
     };
 
     assert_eq!(
@@ -2161,6 +2165,7 @@ fn config_granular_approval_policy_is_marked_experimental() {
         forced_chatgpt_workspace_id: None,
         forced_login_method: None,
         web_search: None,
+        client_search_provider: None,
         tools: None,
         instructions: None,
         developer_instructions: None,
@@ -2196,6 +2201,7 @@ fn config_approvals_reviewer_is_marked_experimental() {
         forced_chatgpt_workspace_id: None,
         forced_login_method: None,
         web_search: None,
+        client_search_provider: None,
         tools: None,
         instructions: None,
         developer_instructions: None,
@@ -3197,6 +3203,35 @@ fn audio_references_round_trip_through_core_and_json() {
 }
 
 #[test]
+fn answer_moderation_exposes_nullable_display_fields() {
+    for (stored, expected) in [
+        (
+            json!({"moderated": false}),
+            json!({"moderated": false, "display": null}),
+        ),
+        (
+            json!({"moderated": true, "display": {
+                "action": "answerHelpline",
+                "checkTrustedContacts": false,
+            }}),
+            json!({"moderated": true, "display": {
+                "action": "answerHelpline",
+                "blockType": null,
+                "cyberTrustedAccess": null,
+                "checkTrustedContacts": false,
+            }}),
+        ),
+    ] {
+        let core: codex_protocol::items::AgentMessageModeration =
+            serde_json::from_value(stored).unwrap();
+        assert_eq!(
+            serde_json::to_value(AgentMessageModeration::from(core)).unwrap(),
+            expected
+        );
+    }
+}
+
+#[test]
 fn core_turn_item_into_thread_item_converts_supported_variants() {
     let user_item = TurnItem::UserMessage(UserMessageItem {
         id: "user-1".to_string(),
@@ -3286,6 +3321,7 @@ fn core_turn_item_into_thread_item_converts_supported_variants() {
     );
 
     let agent_item = TurnItem::AgentMessage(AgentMessageItem {
+        moderation: None,
         id: "agent-1".to_string(),
         content: vec![
             AgentMessageContent::Text {
@@ -3301,9 +3337,17 @@ fn core_turn_item_into_thread_item_converts_supported_variants() {
         questions: None,
     });
 
+    let agent_payload = ThreadItemPayload::from(agent_item);
     assert_eq!(
-        ThreadItemPayload::from(agent_item),
+        serde_json::to_value(&agent_payload)
+            .unwrap()
+            .get("moderation"),
+        Some(&serde_json::Value::Null),
+    );
+    assert_eq!(
+        agent_payload,
         ThreadItemPayload::AgentMessage {
+            moderation: None,
             id: "agent-1".to_string(),
             text: "Hello world".to_string(),
             phase: None,
@@ -3314,6 +3358,10 @@ fn core_turn_item_into_thread_item_converts_supported_variants() {
     );
 
     let agent_item_with_phase = TurnItem::AgentMessage(AgentMessageItem {
+        moderation: Some(codex_protocol::items::AgentMessageModeration {
+            moderated: true,
+            display: None,
+        }),
         id: "agent-2".to_string(),
         content: vec![AgentMessageContent::Text {
             text: "final".to_string(),
@@ -3335,6 +3383,10 @@ fn core_turn_item_into_thread_item_converts_supported_variants() {
     assert_eq!(
         ThreadItemPayload::from(agent_item_with_phase),
         ThreadItemPayload::AgentMessage {
+            moderation: Some(AgentMessageModeration {
+                moderated: true,
+                display: None
+            }),
             id: "agent-2".to_string(),
             text: "final".to_string(),
             phase: Some(MessagePhase::FinalAnswer),
@@ -3353,6 +3405,7 @@ fn core_turn_item_into_thread_item_converts_supported_variants() {
     );
 
     let async_item = ThreadItemPayload::from(TurnItem::AgentMessage(AgentMessageItem {
+        moderation: None,
         id: "async-1".to_string(),
         content: vec![AgentMessageContent::Text {
             text: "Which?".to_string(),
@@ -3369,6 +3422,7 @@ fn core_turn_item_into_thread_item_converts_supported_variants() {
         serde_json::to_value(&async_item).unwrap(),
         json!({
             "type": "agentMessage", "id": "async-1", "text": "Which?", "phase": "final_answer",
+            "moderation": null,
             "memoryCitation": null, "delivery": "async", "questions": [{"title": "Which?", "options": null}]
         })
     );
@@ -4888,6 +4942,10 @@ fn core_error_info_converts_to_camel_case() {
             json!("policyCapacityUnavailable"),
         ),
         (CoreCodexErrorInfo::CyberPolicy, json!("cyberPolicy")),
+        (
+            CoreCodexErrorInfo::InferenceHookDenied,
+            json!("inferenceHookDenied"),
+        ),
         (CoreCodexErrorInfo::BioPolicy, json!("other")),
         (CoreCodexErrorInfo::InvalidPrompt, json!("other")),
         (
@@ -4899,9 +4957,11 @@ fn core_error_info_converts_to_camel_case() {
             json!("rateLimitExceeded"),
         ),
     ] {
+        let converted = CodexErrorInfo::from(core);
+        assert_eq!(serde_json::to_value(&converted).unwrap(), expected);
         assert_eq!(
-            serde_json::to_value(CodexErrorInfo::from(core)).unwrap(),
-            expected
+            serde_json::from_value::<CodexErrorInfo>(expected).unwrap(),
+            converted
         );
     }
 }

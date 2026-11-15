@@ -1,10 +1,11 @@
 # Isolated GitHub Copilot build
 
 `idle/github-copilot-auth` layers direct GitHub Copilot authentication and
-service isolation onto the Idle fork. The November 8 update includes `idle-base`
-through `1d0b0889ad`, including attributed shared sessions and runner interruption.
-This follows the 0.166 source baseline synchronized into `origin/main` at
-`67f0994b53`.
+service isolation onto the Idle fork. The November 15 update merges upstream
+stable `rust-v0.169.0` (`d32063f96c2dff1dc96af839b3952abb6acfeda4`) and identifies
+the custom build as `0.169.0+copilot.1`. It retains the Idle shared-session and
+runner features, the combined Copilot/local model picker, and native Unix
+clients connecting to Windows app servers.
 
 The idle profile picker, named/default subagent profiles, portable handoffs,
 provider catalogs, and Responses compatibility settings remain available. While
@@ -36,6 +37,12 @@ The isolated Copilot build stamps its version into both the Cargo workspace and
 lockfile so `--version` and `/status` identify the installed build. Its version is
 distinct from the normal Idle build. Building this checkout does not switch the
 installed CLI or Remote daemon.
+
+Copilot Responses requests include reasoning summaries when the selected model
+supports them. These summaries supply the terminal's animated reasoning status
+and expanded transcript. `model_reasoning_summary = "none"` still disables them.
+Summary requests use the existing Copilot endpoint. In a remote setup, update
+the server as well as the client because the server builds inference requests.
 
 ## Local DeepSeek alongside the Copilot catalog
 

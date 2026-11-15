@@ -5,7 +5,7 @@
 export type PluginInterface = { displayName: string | null, shortDescription: string | null, longDescription: string | null, developerName: string | null, category: string | null, capabilities: Array<string>, websiteUrl: string | null, privacyPolicyUrl: string | null, termsOfServiceUrl: string | null,
 /**
  * Starter prompts for the plugin. Capped at 3 entries with a maximum of
- * 128 characters per entry.
+ * 512 characters per entry.
  */
 defaultPrompt: Array<string> | null, brandColor: string | null,
 /**

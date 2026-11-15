@@ -256,7 +256,10 @@ impl App {
     }
 }
 
-fn apply_thread_settings_to_session(session: &mut ThreadSessionState, settings: &ThreadSettings) {
+pub(super) fn apply_thread_settings_to_session(
+    session: &mut ThreadSessionState,
+    settings: &ThreadSettings,
+) {
     let Ok(permission_profile) =
         crate::remote_paths::permission_profile(&settings.sandbox_policy, settings.cwd.as_path())
     else {

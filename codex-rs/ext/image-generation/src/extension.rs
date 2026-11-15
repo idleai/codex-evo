@@ -31,6 +31,7 @@ type SaveRootResolver = dyn Fn(&Config) -> Option<AbsolutePathBuf> + Send + Sync
 #[derive(Clone)]
 struct ImageGenerationExtensionConfig {
     available: bool,
+    gif_enabled: bool,
     http_client_factory: HttpClientFactory,
     provider: ModelProviderInfo,
     save_root: Option<AbsolutePathBuf>,
@@ -44,6 +45,7 @@ impl ImageGenerationExtensionConfig {
             || config.model_provider.uses_openai_actor_authorization();
         Self {
             available,
+            gif_enabled: config.features.image_generation_animation_enabled(),
             http_client_factory: config.http_client_factory(),
             provider: config.model_provider.clone(),
             save_root: resolve_save_root(config),
@@ -112,9 +114,16 @@ impl ToolContributor for ImageGenerationExtension {
         if !config.available {
             return Vec::new();
         }
+        let auth = thread_store
+            .get::<codex_model_provider::ProviderAuthContext>()
+            .unwrap_or_else(|| {
+                Arc::new(codex_model_provider::ProviderAuthContext {
+                    credentials: Arc::clone(&self.auth_manager),
+                    runtime_auth: None,
+                })
+            });
 
-        let provider =
-            create_model_provider(config.provider.clone(), Some(self.auth_manager.clone()));
+        let provider = auth.model_provider(config.provider.clone());
         if !provider.capabilities().image_generation {
             return Vec::new();
         }
@@ -129,6 +138,7 @@ impl ToolContributor for ImageGenerationExtension {
             ),
             config.save_root.clone(),
             thread_store.level_id().to_string(),
+            config.gif_enabled,
         ))]
     }
 }

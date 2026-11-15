@@ -123,6 +123,7 @@ impl AnalyticsEventsClient {
             queue: Some(AnalyticsEventsQueue::new(
                 auth_manager,
                 AnalyticsEventsDestination::CaptureFile { path },
+                /*runtime_auth*/ None,
             )),
         }
     }
@@ -154,6 +155,7 @@ fn sample_skill_track_event(thread_id: &str, plugin_id: Option<&str>) -> TrackEv
         skill_id: format!("skill-{thread_id}"),
         skill_name: "doc".to_string(),
         event_params: SkillInvocationEventParams {
+            turn_trigger: None,
             product_client_id: None,
             skill_scope: None,
             plugin_id: plugin_id.map(str::to_string),
@@ -204,6 +206,7 @@ fn sample_mcp_tool_call_event(thread_id: &str, plugin_id: Option<&str>) -> Track
         event_type: "codex_mcp_tool_call_event",
         event_params: CodexMcpToolCallEventParams {
             base: CodexToolItemEventBase {
+                turn_trigger: None,
                 thread_id: thread_id.to_string(),
                 session_id: format!("session-{thread_id}"),
                 turn_id: "turn-1".to_string(),
@@ -260,6 +263,7 @@ fn sample_plugin_used_track_event(thread_id: &str, plugin_id: Option<&str>) -> T
     TrackEventRequest::PluginUsed(CodexPluginUsedEventRequest {
         event_type: "codex_plugin_used",
         event_params: CodexPluginUsedMetadata {
+            turn_trigger: None,
             plugin: CodexPluginMetadata {
                 plugin_id: plugin_id.map(str::to_string),
                 remote_plugin_id: None,
@@ -344,23 +348,26 @@ fn analytics_destination_disables_network_without_capture_file() {
 #[cfg(debug_assertions)]
 fn analytics_destination_only_allows_literal_loopback_capture() {
     assert_eq!(
-        AnalyticsEventsDestination::from_base_url(ChatgptBaseUrl::Configured(
-            "http://127.0.0.1:1234".to_string()
-        )),
+        AnalyticsEventsDestination::from_base_url(
+            ChatgptBaseUrl::Configured("http://127.0.0.1:1234".to_string()),
+            http::HeaderMap::new(),
+        ),
         AnalyticsEventsDestination::LoopbackHttp {
             url: "http://127.0.0.1:1234/codex/analytics-events/events".to_string()
         }
     );
     assert_eq!(
-        AnalyticsEventsDestination::from_base_url(ChatgptBaseUrl::Configured(
-            "https://chatgpt.com/backend-api".to_string()
-        )),
+        AnalyticsEventsDestination::from_base_url(
+            ChatgptBaseUrl::Configured("https://chatgpt.com/backend-api".to_string()),
+            http::HeaderMap::new(),
+        ),
         AnalyticsEventsDestination::Disabled
     );
     assert_eq!(
-        AnalyticsEventsDestination::from_base_url(ChatgptBaseUrl::Configured(
-            "http://127.0.0.1.evil.test".to_string()
-        )),
+        AnalyticsEventsDestination::from_base_url(
+            ChatgptBaseUrl::Configured("http://127.0.0.1.evil.test".to_string()),
+            http::HeaderMap::new(),
+        ),
         AnalyticsEventsDestination::Disabled
     );
 }
@@ -425,6 +432,7 @@ async fn loopback_capture_omits_credentials_and_rejects_redirects() {
         vec![sample_regular_track_event("thread-1")],
         &factory,
         Some("private-product"),
+        None,
     )
     .await;
 
@@ -453,12 +461,15 @@ async fn capture_file_writes_exact_serialized_request() {
     let auth = codex_login::CodexAuth::create_dummy_chatgpt_auth_for_testing();
 
     let factory = HttpClientFactory::new(OutboundProxyPolicy::ReqwestDefault);
+    // Capture-only delivery must not initialize or depend on runtime authentication.
+    let runtime = (Default::default(), Default::default());
     send_track_events_request(
         &auth,
         &destination,
         vec![event],
         &factory,
         /*product_sku*/ None,
+        Some(&runtime),
     )
     .await;
 
@@ -494,6 +505,7 @@ async fn capture_file_writes_final_batches_as_separate_lines() {
             batch,
             &factory,
             /*product_sku*/ None,
+            /*runtime_auth*/ None,
         )
         .await;
     }
@@ -572,6 +584,7 @@ async fn api_key_auth_sends_only_plugin_events_to_codex_backend() {
             plugin_measurement("plugin-measurement", "sample@test"),
         ],
         &ThreadProducts::default(),
+        /*runtime_auth*/ None,
     )
     .await;
 
@@ -706,6 +719,7 @@ fn sample_thread(thread_id: &str) -> Thread {
         extra: None,
         session_id: format!("session-{thread_id}"),
         forked_from_id: None,
+        attached_to_thread_id: None,
         parent_thread_id: None,
         preview: "first prompt".to_string(),
         ephemeral: false,
@@ -1299,7 +1313,14 @@ async fn account_switch_between_batches_does_not_send_old_credentials() {
         sample_accepted_line_fingerprint_event("one"),
         sample_accepted_line_fingerprint_event("two"),
     ];
-    send_track_events(&manager, &destination, events, &ThreadProducts::default()).await;
+    send_track_events(
+        &manager,
+        &destination,
+        events,
+        &ThreadProducts::default(),
+        /*runtime_auth*/ None,
+    )
+    .await;
     server.abort();
     let _ = server.await;
     let requests = requests.lock().unwrap();

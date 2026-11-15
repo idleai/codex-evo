@@ -15,6 +15,7 @@ use codex_models_manager::cache::ModelsCache;
 use codex_models_manager::manager::ModelsManager;
 use codex_models_manager::manager::ModelsManagerFuture;
 use codex_models_manager::manager::RefreshStrategy;
+use codex_models_manager::manager::RefreshedModelCatalog;
 use codex_models_manager::manager::SharedModelsManager;
 use codex_models_manager::manager::StaticModelsManager;
 use codex_models_manager::model_info::model_info_from_slug;
@@ -27,6 +28,7 @@ use codex_protocol::openai_models::ModelsResponse;
 use codex_protocol::openai_models::ReasoningEffort;
 use codex_protocol::openai_models::ReasoningEffortPreset;
 use tokio::sync::TryLockError;
+use tokio::sync::watch;
 
 use crate::ProviderCapabilities;
 use crate::RemoteCompactionSupport;
@@ -105,7 +107,8 @@ impl ModelProvider for GitHubCopilotModelProvider {
         ProviderCapabilities {
             namespace_tools: true,
             codex_agent_messages: false,
-            reasoning_summaries: false,
+            // Summaries are part of the Copilot Responses request and power the TUI status line.
+            reasoning_summaries: true,
             image_generation: false,
             web_search: false,
             external_web_access: false,
@@ -304,6 +307,43 @@ impl GitHubCopilotAwareModelsManager {
 }
 
 impl ModelsManager for GitHubCopilotAwareModelsManager {
+    fn ensure_initialized(
+        &self,
+        http_client_factory: HttpClientFactory,
+    ) -> ModelsManagerFuture<'_, ()> {
+        if self.github_copilot_catalog().is_some() {
+            Box::pin(async {})
+        } else {
+            self.inner.ensure_initialized(http_client_factory)
+        }
+    }
+
+    fn model_catalog_updates(&self) -> Option<watch::Receiver<Option<Arc<RefreshedModelCatalog>>>> {
+        if self.github_copilot_catalog().is_some() {
+            None
+        } else {
+            self.inner.model_catalog_updates()
+        }
+    }
+
+    fn refreshed_model_catalog(&self) -> Option<Arc<[ModelInfo]>> {
+        match self.github_copilot_catalog() {
+            Some(catalog) => Some(catalog.models.into()),
+            None => self.inner.refreshed_model_catalog(),
+        }
+    }
+
+    fn refresh_originator_catalogs(
+        &self,
+        http_client_factory: HttpClientFactory,
+    ) -> ModelsManagerFuture<'_, ()> {
+        if self.github_copilot_catalog().is_some() {
+            Box::pin(std::future::ready(()))
+        } else {
+            self.inner.refresh_originator_catalogs(http_client_factory)
+        }
+    }
+
     fn for_originator(&self, originator: &str) -> Option<SharedModelsManager> {
         self.inner.for_originator(originator).map(|inner| {
             Arc::new(Self {

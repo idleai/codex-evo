@@ -16,7 +16,6 @@ async fn dropping_server_releases_backend_with_an_open_mcp_session() -> color_ey
         Features::default(),
         AppEventSender::new(events),
         status,
-        /*managed_requirement*/ None,
         /*worktrees*/ None,
     )
     .await?;

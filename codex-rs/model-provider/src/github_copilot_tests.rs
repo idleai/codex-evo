@@ -175,6 +175,10 @@ async fn github_copilot_wrapper_preserves_exact_provider_catalog_metadata() {
     );
     let manager = provider.models_manager_without_cache(None);
     manager.set_api_key_model_discovery_enabled(true);
+    let updates = manager
+        .model_catalog_updates()
+        .expect("remote provider catalog updates must be forwarded");
+    assert!(manager.refreshed_model_catalog().is_none());
     Mock::given(method("GET"))
         .and(path("/models"))
         .respond_with(ResponseTemplate::new(200).set_body_json(ModelsResponse {
@@ -191,6 +195,15 @@ async fn github_copilot_wrapper_preserves_exact_provider_catalog_metadata() {
             RefreshStrategy::Online,
             HttpClientFactory::new(OutboundProxyPolicy::ReqwestDefault),
         )
+        .await;
+
+    assert!(updates.has_changed().unwrap());
+    assert_eq!(
+        manager.refreshed_model_catalog().unwrap()[0].slug,
+        "catalog-model"
+    );
+    manager
+        .ensure_initialized(HttpClientFactory::new(OutboundProxyPolicy::ReqwestDefault))
         .await;
 
     for unknown in ["catalog-model-other", "namespace/catalog-model"] {
@@ -227,6 +240,13 @@ async fn github_copilot_wrapper_refreshes_provider_catalog_after_auth_change() {
         Some(Arc::clone(&auth_manager)),
     );
     let manager = provider.models_manager_without_cache(None);
+    manager
+        .ensure_initialized(HttpClientFactory::new(OutboundProxyPolicy::ReqwestDefault))
+        .await;
+    manager
+        .refresh_originator_catalogs(HttpClientFactory::new(OutboundProxyPolicy::ReqwestDefault))
+        .await;
+    assert!(manager.model_catalog_updates().is_none());
     let first = manager
         .raw_model_catalog(
             RefreshStrategy::Online,
@@ -249,6 +269,10 @@ async fn github_copilot_wrapper_refreshes_provider_catalog_after_auth_change() {
     let second = manager.get_remote_models().await;
     assert_eq!(second.len(), 1);
     assert_eq!(second[0].slug, "second-catalog-model");
+    assert_eq!(
+        manager.refreshed_model_catalog().unwrap()[0].slug,
+        "second-catalog-model"
+    );
 }
 
 #[tokio::test]

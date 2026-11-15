@@ -16,7 +16,7 @@ fn gov_cloud_startup_persists_only_acknowledgment() -> Result<()> {
         write_test_config(home.path(), &cwd)?;
         let path = home.path().join("config.toml");
         let config = std::fs::read_to_string(&path)?.replace(
-            "model_provider = \"openai\"",
+            "model_provider = \"terminal-test\"",
             "model_provider = \"amazon-bedrock\"",
         );
         let config = format!(

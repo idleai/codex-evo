@@ -1,6 +1,7 @@
 pub mod cloud_config;
 pub(crate) mod debug_sandbox;
 mod exit_status;
+mod git_credential;
 pub(crate) mod login;
 
 use clap::Args;
@@ -13,6 +14,8 @@ use std::path::PathBuf;
 pub use debug_sandbox::run_command_under_landlock;
 pub use debug_sandbox::run_command_under_seatbelt;
 pub use debug_sandbox::run_command_under_windows_sandbox;
+pub use git_credential::GitCredentialArgs;
+pub use git_credential::run_git_credential;
 pub use login::run_login_status;
 pub use login::run_login_with_github_copilot;
 pub use login::run_logout;

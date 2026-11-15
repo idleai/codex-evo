@@ -3,6 +3,7 @@ pub(crate) mod api;
 pub(crate) mod child_config;
 mod child_profile;
 pub(crate) mod control;
+pub(crate) mod helper_daybreak;
 mod history;
 pub(crate) mod host;
 mod registry;

@@ -153,6 +153,7 @@ async fn windows_remote_paths_survive_start_turn_resume_fork_and_reconnect() -> 
                 None,
                 None,
                 None,
+                None,
             )
             .await?;
         let event = tokio::time::timeout(std::time::Duration::from_secs(5), server.next_event())

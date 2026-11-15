@@ -7,10 +7,12 @@
 use std::sync::Arc;
 
 use codex_core::config::Config;
+use codex_features::RuntimeAuthMode;
 use codex_login::AuthManager;
 use codex_otel::SessionTelemetry;
 use codex_protocol::ThreadId;
 use codex_protocol::protocol::Event;
+use codex_runtime_agent_instance::RuntimeAuthManager;
 
 pub(crate) struct TurnCostWorker;
 
@@ -18,7 +20,11 @@ pub(crate) struct TurnCostWorker;
 pub(crate) struct TurnCostWorkerHandle;
 
 impl TurnCostWorker {
-    pub(crate) fn spawn(_config: Arc<Config>, _auth_manager: Arc<AuthManager>) -> Option<Self> {
+    pub(crate) fn spawn(
+        _config: Arc<Config>,
+        _auth_manager: Arc<AuthManager>,
+        _runtime_auth: Option<(Arc<RuntimeAuthManager>, RuntimeAuthMode)>,
+    ) -> Option<Self> {
         None
     }
 

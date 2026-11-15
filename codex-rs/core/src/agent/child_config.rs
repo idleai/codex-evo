@@ -4,6 +4,7 @@
 //! inheritance, and validation messages remain the same for each multi-agent version.
 
 use crate::agent::child_profile::apply_spawn_agent_profile;
+use crate::agent::host::AgentRuntimeServices;
 use crate::agent::role::DEFAULT_ROLE_NAME;
 use crate::agent::role::apply_role_to_config;
 use crate::agent::types::SpawnAgentForkMode;
@@ -83,7 +84,11 @@ pub(crate) async fn prepare_agent_spawn_config(
     }
     let full_history_fork = matches!(fork_mode, Some(SpawnAgentForkMode::FullHistory));
     let models_manager = if profile.is_some() {
-        build_models_manager(&config, Arc::clone(&session.services.auth_manager))
+        build_models_manager(
+            &config,
+            Arc::clone(&session.services.auth_manager),
+            session.services.runtime_auth.get().cloned(),
+        )
     } else {
         Arc::clone(&session.services.models_manager)
     };
@@ -112,6 +117,14 @@ pub(crate) async fn prepare_agent_spawn_config(
         options.reasoning_effort.or(default_reasoning_effort),
     )
     .await?;
+    let shares_service_tier = match &session.agent_runtime {
+        AgentRuntimeServices::Controller => true,
+        AgentRuntimeServices::Host(services) => services.service_tier.is_some(),
+    };
+    if !shares_service_tier {
+        // Inherit the parent's thread preference before applying child role overrides.
+        config.service_tier = session.thread_settings_snapshot().await.service_tier;
+    }
     if !full_history_fork
         || (options.version == SpawnConfigVersion::V2 && options.role_name.is_some())
     {
@@ -125,8 +138,14 @@ pub(crate) async fn prepare_agent_spawn_config(
                 .clone_from(&turn.developer_instructions);
         }
     }
-    config.service_tier = child_service_tier;
-    let parent_service_tier = session.services.agent_control.service_tier();
+    if child_service_tier.is_some() || shares_service_tier {
+        config.service_tier = child_service_tier;
+    }
+    let parent_service_tier = crate::agent::host::service_tier(
+        session,
+        session.thread_settings_snapshot().await.service_tier,
+    )
+    .await;
     apply_spawn_agent_service_tier(
         &models_manager,
         &mut config,
@@ -199,6 +218,12 @@ fn build_agent_shared_config(turn: &TurnContext) -> Result<Config, String> {
     // Preserve activation for history forks without freezing the parent's model-owned prompts.
     // Fresh child startup restores configured preferences from the retained snapshot.
     config.token_budget = turn.configured_token_budget.clone();
+    if let Some(thread_namespaces) = &turn.overridden_direct_only_tool_namespaces {
+        config
+            .code_mode
+            .direct_only_tool_namespaces
+            .clone_from(thread_namespaces);
+    }
     config.model = Some(turn.model_info().slug.clone());
     config.model_provider = turn.provider.info().clone();
     config.model_reasoning_effort = turn

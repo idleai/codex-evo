@@ -154,9 +154,16 @@ impl ToolContributor for WebSearchExtension {
         if !config.provider_supports_search || *mode == WebSearchMode::Disabled {
             return Vec::new();
         }
+        let auth = thread_store
+            .get::<codex_model_provider::ProviderAuthContext>()
+            .unwrap_or_else(|| {
+                Arc::new(codex_model_provider::ProviderAuthContext {
+                    credentials: Arc::clone(&self.auth_manager),
+                    runtime_auth: None,
+                })
+            });
 
-        let provider =
-            create_model_provider(config.provider.clone(), Some(self.auth_manager.clone()));
+        let provider = auth.model_provider(config.provider.clone());
         if !provider.capabilities().web_search {
             return Vec::new();
         }
