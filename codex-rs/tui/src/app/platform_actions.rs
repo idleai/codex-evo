@@ -171,6 +171,18 @@ impl App {
             }
             return;
         }
+        let cwd =
+            match AbsolutePathBuf::from_absolute_path_checked(&self.chat_widget.config_ref().cwd) {
+                Ok(cwd) => cwd,
+                Err(err) => {
+                    self.chat_widget
+                        .retain_input_after_failed_permission_selection();
+                    self.chat_widget.add_error_message(format!(
+                        "Could not start Windows sandbox setup: invalid working directory: {err}"
+                    ));
+                    return;
+                }
+            };
         if !self.refresh_windows_sandbox_config(app_server).await {
             return;
         }
@@ -196,7 +208,7 @@ impl App {
                     request_id,
                     params: codex_app_server_protocol::WindowsSandboxSetupStartParams {
                         mode: setup_mode,
-                        cwd: Some(self.chat_widget.config_ref().cwd.clone()),
+                        cwd: Some(cwd),
                     },
                 }),
         )
