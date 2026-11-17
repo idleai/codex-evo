@@ -6,7 +6,7 @@ expression: rendered
 
   >_ OpenAI Codex (v0.0.0)
 
-  Model:           gpt-5.6-sol (reasoning none, summaries auto)
+  Model:           gpt-5.6-sol (reasoning none, summaries detailed)
   Model provider:  server-ollama
   Directory:       [[workspace]]
   Permissions:     Custom (workspace with network access, Ask for approval)

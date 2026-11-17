@@ -73,12 +73,13 @@ impl ChatWidget {
                         self.queue_user_message(user_message);
                         return;
                     }
-                    // Submitted is emitted when user submits.
-                    // Reset any reasoning header only when we are actually submitting a turn.
-                    self.reasoning_buffer.clear();
-                    self.reasoning_header = None;
-                    self.reasoning_summary_parts.clear();
-                    self.set_status_header(String::from("Working"));
+                    // A follow-up steers the active turn; its reasoning item can still stream.
+                    if !self.turn_lifecycle.agent_turn_running {
+                        self.reasoning_buffer.clear();
+                        self.reasoning_header = None;
+                        self.reasoning_summary_parts.clear();
+                        self.set_status_header(String::from("Working"));
+                    }
                     self.submit_user_message_with_history_and_shell_escape_policy(
                         user_message,
                         UserMessageHistoryRecord::UserMessageText,

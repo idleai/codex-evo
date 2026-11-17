@@ -471,9 +471,7 @@ async fn replacement_uses_server_defaults_and_preserves_explicit_launch_settings
                 starts[0]["config"]["features"].get("concurrent_reasoning_summaries"),
             ),
             (
-                explicit
-                    .starts_with("profile_summary")
-                    .then_some(&serde_json::json!("detailed")),
+                Some(&serde_json::json!("detailed")),
                 explicit
                     .starts_with("profile_summary")
                     .then_some(&serde_json::json!(explicit != "profile_summary_off")),

@@ -1230,6 +1230,7 @@ impl ChatWidget {
         }
         self.refresh_status_line_if_workspace_headline_due();
         self.refresh_thread_usage_if_settlement_due();
+        self.sync_status_indicator();
         self.refresh_terminal_program_status();
     }
 

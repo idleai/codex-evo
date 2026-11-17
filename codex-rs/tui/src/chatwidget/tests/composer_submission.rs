@@ -927,7 +927,10 @@ async fn enter_with_only_remote_images_submits_user_turn() {
             detail: None,
         }]
     );
-    assert_eq!(summary, None);
+    assert_eq!(
+        summary,
+        Some(codex_protocol::config_types::ReasoningSummary::Detailed)
+    );
     assert!(chat.remote_image_urls().is_empty());
 
     let mut user_cell = None;

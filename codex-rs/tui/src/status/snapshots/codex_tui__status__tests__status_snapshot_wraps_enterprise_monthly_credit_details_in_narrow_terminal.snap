@@ -12,7 +12,7 @@ expression: sanitized
 
   Model:                 gpt-5.1-codex-max
                          (reasoning none,
-                         summaries auto)
+                         summaries detailed)
   Directory:             [[workspace]]
   Permissions:           Custom (workspace
                          with network access,

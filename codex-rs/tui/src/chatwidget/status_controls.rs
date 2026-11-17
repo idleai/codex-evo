@@ -9,6 +9,22 @@ use crate::bottom_pane::footer_content::FooterContent;
 use crate::status::thread_cost_micros;
 
 impl ChatWidget {
+    /// Reapply the selected status when tool or timer activity recreates a hidden row.
+    pub(super) fn sync_status_indicator(&mut self) {
+        if self
+            .bottom_pane
+            .status_widget()
+            .is_some_and(|status| status.header() != self.status_state.current_status.header)
+        {
+            self.bottom_pane.update_status(
+                self.status_state.current_status.header.clone(),
+                self.status_state.current_status.details.clone(),
+                StatusDetailsCapitalization::Preserve,
+                self.status_state.current_status.details_max_lines,
+            );
+        }
+    }
+
     /// Update the status indicator header and details.
     ///
     /// Passing `None` clears any existing details. Returns whether the visible status indicator

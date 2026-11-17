@@ -1,6 +1,7 @@
 //! Reasoning activity retains the latest usable line through empty items and status-row replacement.
 
 use super::*;
+use codex_protocol::config_types::ReasoningSummary;
 use pretty_assertions::assert_eq;
 
 fn delta(chat: &mut ChatWidget, id: &str, text: &str) {
@@ -30,6 +31,105 @@ fn complete(chat: &mut ChatWidget, id: &str) {
             /*completed_at_ms*/ 0,
         )),
         /*replay_kind*/ None,
+    );
+}
+
+#[tokio::test]
+async fn reasoning_status_survives_steering_an_active_turn() {
+    let (mut chat, _rx, mut ops) = make_chatwidget_manual(/*model_override*/ None).await;
+    chat.thread_id = Some(ThreadId::new());
+    handle_turn_started(&mut chat, "turn-1");
+    handle_agent_reasoning_started(&mut chat, "reasoning");
+    delta(&mut chat, "reasoning", "**Checking files**\n**Running");
+
+    chat.handle_composer_input_result(
+        InputResult::Submitted {
+            text: "Also check the tests".into(),
+            text_elements: Vec::new(),
+        },
+        /*had_modal_or_popup*/ false,
+    );
+    assert_matches!(next_submit_op(&mut ops), Op::UserTurn { .. });
+    assert_eq!(chat.input_queue.pending_steers.len(), 1);
+    assert_eq!(
+        chat.bottom_pane.status_widget().unwrap().header(),
+        "Checking files"
+    );
+
+    // The same item's next delta must continue its partially streamed heading.
+    delta(&mut chat, "reasoning", " tests**");
+    assert_eq!(
+        chat.bottom_pane.status_widget().unwrap().header(),
+        "Running tests"
+    );
+    handle_turn_started(&mut chat, "turn-2");
+    assert_eq!(
+        chat.bottom_pane.status_widget().unwrap().header(),
+        "Working"
+    );
+    assert!(chat.reasoning_buffer.is_empty());
+}
+
+#[tokio::test]
+async fn reasoning_summary_submission_defaults_to_detailed_and_preserves_opt_out() {
+    for (configured, expected) in [
+        (None, ReasoningSummary::Detailed),
+        (Some(ReasoningSummary::None), ReasoningSummary::None),
+        (Some(ReasoningSummary::Concise), ReasoningSummary::Concise),
+        (Some(ReasoningSummary::Auto), ReasoningSummary::Auto),
+    ] {
+        let (mut chat, _rx, mut ops) = make_chatwidget_manual(/*model_override*/ None).await;
+        chat.thread_id = Some(ThreadId::new());
+        chat.config.model_reasoning_summary = configured;
+        chat.handle_composer_input_result(
+            InputResult::Submitted {
+                text: "Check the tests".into(),
+                text_elements: Vec::new(),
+            },
+            /*had_modal_or_popup*/ false,
+        );
+        let Op::UserTurn { summary, .. } = next_submit_op(&mut ops) else {
+            panic!("expected a user turn");
+        };
+        assert_eq!(summary, Some(expected));
+    }
+}
+
+#[tokio::test]
+async fn reasoning_status_survives_a_hook_timer_recreating_the_row() {
+    let (mut chat, _rx, _ops) = make_chatwidget_manual(/*model_override*/ None).await;
+    chat.on_task_started();
+    handle_agent_reasoning_started(&mut chat, "reasoning");
+    delta(&mut chat, "reasoning", "**Checking files**");
+    complete(&mut chat, "reasoning");
+    chat.on_agent_message_delta("Let me check the tests.\n".into());
+    chat.on_commit_tick();
+    assert!(!chat.bottom_pane.status_indicator_visible());
+
+    handle_hook_started(
+        &mut chat,
+        codex_app_server_protocol::HookRunSummary {
+            id: "hook".into(),
+            event_name: codex_app_server_protocol::HookEventName::PreToolUse,
+            handler_type: codex_app_server_protocol::HookHandlerType::Command,
+            execution_mode: codex_app_server_protocol::HookExecutionMode::Sync,
+            scope: codex_app_server_protocol::HookScope::Turn,
+            source_path: test_path_buf("/tmp/hooks.json").abs().into(),
+            source: codex_app_server_protocol::HookSource::User,
+            display_order: 0,
+            status: codex_app_server_protocol::HookRunStatus::Running,
+            status_message: Some("Checking command policy".into()),
+            started_at: 1,
+            completed_at: None,
+            duration_ms: None,
+            entries: Vec::new(),
+        },
+    );
+    // The delayed reveal happens during drawing, outside notification dispatch.
+    reveal_running_hooks(&mut chat);
+    assert_eq!(
+        chat.bottom_pane.status_widget().unwrap().header(),
+        "Checking files"
     );
 }
 

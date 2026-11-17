@@ -152,6 +152,7 @@ use codex_context_fragments::SideConversationPolicy;
 use codex_otel::TelemetryAuthMode;
 use codex_protocol::ThreadId;
 use codex_protocol::approvals::GuardianAssessmentEvent;
+use codex_protocol::config_types::ReasoningSummary;
 use codex_protocol::config_types::SERVICE_TIER_DEFAULT_REQUEST_VALUE;
 use codex_protocol::models::ActivePermissionProfile;
 use codex_protocol::models::BaseInstructionsProvenance;
@@ -1973,7 +1974,7 @@ impl AppServerSession {
             params.model = Some(model);
             params.service_tier = service_tier;
             params.effort = effort;
-            params.summary = summary;
+            params.summary = Some(reasoning_summary_for_tui(summary));
             params.collaboration_mode = collaboration_mode;
         } else if let Some(selection) = cloud_selection {
             params.model = Some(selection.model.clone());
@@ -2536,6 +2537,12 @@ fn approvals_reviewer_override_from_config(
     Some(config.approvals_reviewer.into())
 }
 
+/// TUI activity summaries are opt-out, independently of the model's catalog default.
+/// An explicit selection, including `none`, remains authoritative.
+pub(crate) fn reasoning_summary_for_tui(summary: Option<ReasoningSummary>) -> ReasoningSummary {
+    summary.unwrap_or(ReasoningSummary::Detailed)
+}
+
 fn config_request_overrides_from_config(
     config: &Config,
     thread_params_mode: ThreadParamsMode,
@@ -2582,7 +2589,11 @@ fn config_request_overrides_from_config(
             .as_ref()
             .map(std::string::ToString::to_string),
     );
-    // Only winning launch choices may replace server defaults or saved thread settings.
+    insert(
+        "model_reasoning_summary",
+        Some(reasoning_summary_for_tui(config.model_reasoning_summary).to_string()),
+    );
+    // Other settings only replace server defaults or saved choices for a winning launch override.
     let origins = config.config_layer_stack.origins();
     let effective = config.config_layer_stack.effective_config();
     web_search::apply_launch_override(
@@ -2604,10 +2615,11 @@ fn config_request_overrides_from_config(
             )
         })
     };
-    for key in ["model_reasoning_summary", "model_verbosity"] {
-        if is_launch(key) {
-            overrides.insert(key.to_string(), serde_json::json!(effective[key]));
-        }
+    if is_launch("model_verbosity") {
+        overrides.insert(
+            "model_verbosity".to_string(),
+            serde_json::json!(effective["model_verbosity"]),
+        );
     }
     if is_launch("features.concurrent_reasoning_summaries") {
         overrides
@@ -4465,6 +4477,7 @@ mod tests {
         let string = |value: &str| serde_json::Value::String(value.to_string());
         let expected_config = HashMap::from([
             ("model_reasoning_effort".to_string(), string("high")),
+            ("model_reasoning_summary".to_string(), string("detailed")),
             ("bypass_hook_trust".to_string(), true.into()),
         ]);
         assert_eq!(start.config, Some(expected_config.clone()));
@@ -4490,7 +4503,7 @@ mod tests {
             "model_reasoning_summary = \"detailed\"\nmodel_verbosity = \"high\"\nweb_search = \"cached\"\n",
         )?;
         for (selected_profile, project, cli, expected) in [
-            (false, false, false, [None, None, None]),
+            (false, false, false, [Some("concise"), None, None]),
             (
                 true,
                 false,
@@ -4509,7 +4522,7 @@ mod tests {
                 true,
                 [Some("auto"), Some("medium"), Some("live")],
             ),
-            (true, true, false, [None, None, None]),
+            (true, true, false, [Some("concise"), None, None]),
             (
                 true,
                 true,
@@ -4584,7 +4597,13 @@ mod tests {
 
         assert_eq!(params.model, None);
         assert_eq!(params.model_provider, None);
-        assert_eq!(params.config, None);
+        assert_eq!(
+            params.config,
+            Some(HashMap::from([(
+                "model_reasoning_summary".to_string(),
+                serde_json::json!("detailed"),
+            )]))
+        );
     }
 
     #[tokio::test]

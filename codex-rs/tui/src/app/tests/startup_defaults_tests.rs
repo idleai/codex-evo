@@ -662,7 +662,7 @@ async fn fresh_startup_reads_destination_and_cleared_model_uses_catalog() -> Res
             server = server.with_remote_cwd_override(Some(launch_cwd.path().to_path_buf()));
         }
         if !remote {
-            // Direct starts must inherit summaries even without a preceding defaults read.
+            // Direct starts also forward the TUI's summary preference before a defaults read.
             server.start_thread(&config).await?;
         }
         assert!(config.config_layer_stack.is_projectless());
@@ -717,7 +717,7 @@ async fn fresh_startup_reads_destination_and_cleared_model_uses_catalog() -> Res
         assert_eq!(latest["model"], serde_json::Value::Null);
         assert!(latest["config"].get("model_reasoning_effort").is_none());
         for start in &starts {
-            assert!(start["config"].get("model_reasoning_summary").is_none());
+            assert_eq!(start["config"]["model_reasoning_summary"], "detailed");
             assert!(
                 start["config"]["features"]
                     .get("concurrent_reasoning_summaries")

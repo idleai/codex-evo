@@ -78,10 +78,13 @@ async fn web_search_overrides_preserve_explicit_legacy_choices() -> Result<()> {
             .await?;
         assert_eq!(
             config_request_overrides_from_config(&config, ThreadParamsMode::Remote),
-            Some(std::collections::HashMap::from([(
-                "web_search".to_string(),
-                serde_json::json!(expected),
-            )])),
+            Some(std::collections::HashMap::from([
+                ("web_search".to_string(), serde_json::json!(expected)),
+                (
+                    "model_reasoning_summary".to_string(),
+                    serde_json::json!("detailed"),
+                ),
+            ])),
             "{settings}",
         );
     }

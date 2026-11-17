@@ -13,7 +13,7 @@ expression: sanitized
   Model:               ｶﾞﾊﾟｶﾞﾊﾟｶﾞﾊﾟｶﾞ
                        ﾊﾟ-model (reasoning
                        none, summaries
-                       auto)
+                       detailed)
   Directory:           [[workspace]]
   Permissions:         Custom (workspace
                        with network

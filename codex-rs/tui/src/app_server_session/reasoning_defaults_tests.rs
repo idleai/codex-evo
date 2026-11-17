@@ -1,4 +1,4 @@
-//! Verify TUI reasoning defaults and server-owned settings on outbound model requests.
+//! TUI summaries default to detailed on the wire, including after resume and model defaults of none.
 
 use super::*;
 use crate::legacy_core::config::ConfigBuilder;
@@ -8,24 +8,45 @@ use core_test_support::responses;
 use pretty_assertions::assert_eq;
 use serde_json::json;
 
-#[tokio::test]
-async fn reasoning_defaults_reach_responses() -> Result<()> {
+#[test]
+fn reasoning_defaults_reach_responses() -> Result<()> {
+    // Like the other embedded-server fixtures, startup and resume load full configs on this thread.
+    const TEST_STACK_SIZE_BYTES: usize = 16 * 1024 * 1024;
+    std::thread::Builder::new()
+        .name("tui-reasoning-defaults".into())
+        .stack_size(TEST_STACK_SIZE_BYTES)
+        .spawn(|| -> Result<()> {
+            let runtime = tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()?;
+            for model_default in [ReasoningSummary::None, ReasoningSummary::Concise] {
+                runtime.block_on(crate::boxed_future!(reasoning_defaults_cases(
+                    model_default
+                )))?;
+            }
+            Ok(())
+        })?
+        .join()
+        .expect("reasoning defaults test thread panicked")
+}
+
+async fn reasoning_defaults_cases(model_default: ReasoningSummary) -> Result<()> {
     for (settings, summary, stream_options, mode) in [
         (
             "",
-            json!("concise"),
+            json!("detailed"),
             json!(null),
             ThreadParamsMode::Embedded,
         ),
         (
             "[features]\nconcurrent_reasoning_summaries = false",
-            json!("concise"),
+            json!("detailed"),
             json!(null),
             ThreadParamsMode::Embedded,
         ),
         (
             "[features]\nconcurrent_reasoning_summaries = true",
-            json!("concise"),
+            json!("detailed"),
             json!({"reasoning_summary_delivery": "sequential_cutoff"}),
             ThreadParamsMode::Embedded,
         ),
@@ -48,6 +69,24 @@ async fn reasoning_defaults_reach_responses() -> Result<()> {
             ThreadParamsMode::Embedded,
         ),
         (
+            "model_reasoning_summary = 'concise'",
+            json!("concise"),
+            json!(null),
+            ThreadParamsMode::Embedded,
+        ),
+        (
+            "model_reasoning_summary = 'auto'",
+            json!("auto"),
+            json!(null),
+            ThreadParamsMode::Embedded,
+        ),
+        (
+            "model_verbosity = 'high'\nweb_search = 'live'",
+            json!("detailed"),
+            json!(null),
+            ThreadParamsMode::Remote,
+        ),
+        (
             "model_reasoning_summary = 'detailed'\nmodel_verbosity = 'high'\nweb_search = 'live'",
             json!("detailed"),
             json!(null),
@@ -63,7 +102,7 @@ async fn reasoning_defaults_reach_responses() -> Result<()> {
             .iter_mut()
             .find(|model| model.slug == "gpt-5.5")
             .expect("bundled model")
-            .default_reasoning_summary = codex_protocol::config_types::ReasoningSummary::Concise;
+            .default_reasoning_summary = model_default;
         // Thread startup reloads config, so the fixture catalog must survive that reload.
         std::fs::write(
             home.path().join("catalog.json"),
@@ -92,42 +131,56 @@ stream_max_retries = 0
             codex_protocol::config_types::TrustLevel::Trusted,
         )
         .map_err(|error| color_eyre::eyre::eyre!(error.to_string()))?;
-        let server_config = ConfigBuilder::default()
-            .codex_home(home.path().to_path_buf())
-            .build()
-            .await?;
+        let server_config = crate::boxed_future!(
+            ConfigBuilder::default()
+                .codex_home(home.path().to_path_buf())
+                .build()
+        )
+        .await?;
         let client_home = tempfile::tempdir()?;
         let config = if mode == ThreadParamsMode::Remote {
             std::fs::write(
                 client_home.path().join("config.toml"),
-                "model_reasoning_summary = 'concise'\nmodel_verbosity = 'low'\nweb_search = 'disabled'",
+                "model_verbosity = 'low'\nweb_search = 'disabled'",
             )?;
-            ConfigBuilder::default()
-                .codex_home(client_home.path().to_path_buf())
-                .build()
-                .await?
+            crate::boxed_future!(
+                ConfigBuilder::default()
+                    .codex_home(client_home.path().to_path_buf())
+                    .build()
+            )
+            .await?
         } else {
             server_config.clone()
         };
-        let mut app_server = crate::start_embedded_app_server_for_picker(&server_config).await?;
+        let mut app_server =
+            crate::boxed_future!(crate::start_embedded_app_server_for_picker(&server_config))
+                .await?;
         app_server.thread_params_mode = mode;
-        let started = app_server.start_thread(&config).await?;
+        let started = crate::boxed_future!(app_server.start_thread(&config)).await?;
         for resume in [false, true] {
             if resume {
-                if mode != ThreadParamsMode::Remote {
-                    break;
-                }
-                app_server.shutdown().await?;
-                app_server = crate::start_embedded_app_server_for_picker(&server_config).await?;
-                app_server.thread_params_mode = mode;
+                // Simulate an existing conversation whose summaries were disabled.
                 app_server
-                    .resume_thread(
-                        &crate::local_settings::LocalSettings::from(&config),
-                        config.clone(),
-                        started.session.thread_id,
-                        ResumeModelSettings::RestoreFromThread,
-                    )
+                    .thread_settings_update(ThreadSettingsUpdateParams {
+                        thread_id: started.session.thread_id.to_string(),
+                        summary: Some(ReasoningSummary::None),
+                        ..ThreadSettingsUpdateParams::default()
+                    })
                     .await?;
+                app_server.shutdown().await?;
+                app_server = crate::boxed_future!(crate::start_embedded_app_server_for_picker(
+                    &server_config
+                ))
+                .await?;
+                app_server.thread_params_mode = mode;
+                let local_settings = crate::local_settings::LocalSettings::from(&config);
+                crate::boxed_future!(app_server.resume_thread(
+                    &local_settings,
+                    config.clone(),
+                    started.session.thread_id,
+                    ResumeModelSettings::RestoreFromThread,
+                ))
+                .await?;
             }
             let response = responses::mount_sse_once(
                 &server,
@@ -153,7 +206,7 @@ stream_max_retries = 0
                     &config.workspace_roots,
                     started.session.model.clone(),
                     /*effort*/ None,
-                    /*summary*/ None,
+                    config.model_reasoning_summary,
                     /*service_tier*/ None,
                     /*collaboration_mode*/ None,
                     /*output_schema*/ None,
@@ -180,7 +233,7 @@ stream_max_retries = 0
             assert_eq!(
                 json!({"summary": body["reasoning"]["summary"], "stream_options": body["stream_options"]}),
                 json!({"summary": summary, "stream_options": stream_options}),
-                "settings: {settings}"
+                "settings: {settings}; model default: {model_default:?}; mode: {mode:?}; resumed: {resume}"
             );
             if mode == ThreadParamsMode::Remote {
                 assert_eq!(body["text"]["verbosity"], json!("high"));

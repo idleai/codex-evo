@@ -327,10 +327,10 @@ impl StatusHistoryCell {
             if remote_connection.is_none() {
                 config_entries.push((
                     "reasoning summaries",
-                    config
-                        .model_reasoning_summary
-                        .map(|summary| summary.to_string())
-                        .unwrap_or_else(|| "auto".to_string()),
+                    crate::app_server_session::reasoning_summary_for_tui(
+                        config.model_reasoning_summary,
+                    )
+                    .to_string(),
                 ));
             }
         }

@@ -1,9 +1,9 @@
 # Isolated GitHub Copilot build
 
 `idle/github-copilot-auth` layers direct GitHub Copilot authentication and
-service isolation onto the Idle fork. The November 15 update merges upstream
-stable `rust-v0.169.0` (`d32063f96c2dff1dc96af839b3952abb6acfeda4`) and identifies
-the custom build as `0.169.0+copilot.1`. It retains the Idle shared-session and
+service isolation onto the Idle fork. The current build is
+`0.169.0-copilot.2`, based on upstream stable `rust-v0.169.0`
+(`d32063f96c2dff1dc96af839b3952abb6acfeda4`). It retains the Idle shared-session and
 runner features, the combined Copilot/local model picker, and native Unix
 clients connecting to Windows app servers.
 
@@ -38,9 +38,11 @@ lockfile so `--version` and `/status` identify the installed build. Its version 
 distinct from the normal Idle build. Building this checkout does not switch the
 installed CLI or Remote daemon.
 
-Copilot Responses requests include reasoning summaries when the selected model
-supports them. These summaries supply the terminal's animated reasoning status
-and expanded transcript. `model_reasoning_summary = "none"` still disables them.
+The TUI requests detailed reasoning summaries by default, including resumed
+turns and models whose default is `none`. When the selected model supports
+summaries, they supply the terminal's animated reasoning status and expanded
+transcript. Explicit `model_reasoning_summary = "none"` disables them. Follow-up
+input and delayed hooks preserve the current reasoning heading.
 Summary requests use the existing Copilot endpoint. In a remote setup, update
 the server as well as the client because the server builds inference requests.
 

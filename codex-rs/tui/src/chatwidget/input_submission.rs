@@ -510,7 +510,9 @@ impl ChatWidget {
             active_permission_profile,
             effective_mode.model().to_string(),
             effective_mode.reasoning_effort(),
-            /*summary*/ None,
+            Some(crate::app_server_session::reasoning_summary_for_tui(
+                self.config.model_reasoning_summary,
+            )),
             service_tier,
             /*final_output_json_schema*/ None,
             collaboration_mode,
